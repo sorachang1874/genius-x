@@ -1,0 +1,10 @@
+{
+  "name": "@genius-x/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Student + assistant client (React PWA, runs in iPad browser). Single app, role-separated internally.",
+  "type": "module",
+  "dependencies": {
+    "@genius-x/contracts": "workspace:*"
+  }
+}

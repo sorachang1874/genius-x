@@ -1,0 +1,17 @@
+{
+  "name": "genius-x",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Genius X — AI companion enlightenment for children aged 4-10. Monorepo root.",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "//": "Cross-workspace commands. Per-package scripts live in each workspace.",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "build": "pnpm -r run build"
+  }
+}

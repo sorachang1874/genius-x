@@ -1,0 +1,41 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/server:
+    dependencies:
+      '@genius-x/ai-gateway':
+        specifier: workspace:*
+        version: link:../../packages/ai-gateway
+      '@genius-x/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@genius-x/course-config':
+        specifier: workspace:*
+        version: link:../../packages/course-config
+
+  apps/web:
+    dependencies:
+      '@genius-x/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
+  packages/ai-gateway:
+    dependencies:
+      '@genius-x/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/contracts: {}
+
+  packages/course-config:
+    dependencies:
+      '@genius-x/contracts':
+        specifier: workspace:*
+        version: link:../contracts

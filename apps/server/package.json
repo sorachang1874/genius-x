@@ -1,0 +1,12 @@
+{
+  "name": "@genius-x/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Course engine (stage state machine) + WebSocket classroom sync + API. Calls AI only through @genius-x/ai-gateway.",
+  "type": "module",
+  "dependencies": {
+    "@genius-x/contracts": "workspace:*",
+    "@genius-x/ai-gateway": "workspace:*",
+    "@genius-x/course-config": "workspace:*"
+  }
+}

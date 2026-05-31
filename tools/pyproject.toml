@@ -1,0 +1,18 @@
+[project]
+name = "genius-x-tools"
+version = "0.0.0"
+description = "Offline AI tools layer for Genius X: prompt eval, content analysis, safety experiments, notebooks. Decoupled from the Node/TS main pipeline."
+requires-python = ">=3.12"
+# Dependencies are intentionally left empty for now. Add them per tool as needed
+# (e.g. openai/anthropic SDKs, pandas, jupyter, pytest) — keep the main pipeline unaffected.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest", "jupyter"]
+
+[tool.ruff]
+target-version = "py312"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
