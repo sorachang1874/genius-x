@@ -6,7 +6,7 @@ Read-only during agent work. Boundary contracts: `docs/contracts/course-engine.m
 
 ## Cycle goal
 
-XState stage machine + Socket.IO classroom sync + reconnect/resume, driven by `lesson001`.
+Generic reducer engine + Socket.IO classroom sync + reconnect/resume, driven by `lesson001`.
 **No AI in M1** — stages advance on unlock/complete events; gateway calls come in M2/M3.
 
 ## Tasks
@@ -14,7 +14,7 @@ XState stage machine + Socket.IO classroom sync + reconnect/resume, driven by `l
 | ID | Task | Owner | Paths | Depends on | Parallel-safe |
 | --- | --- | --- | --- | --- | --- |
 | LEAD-A1 | ✅ DONE — folded into **contracts-v1** (session join types added; full generic engine contract applied + tagged) | Lead/E | `packages/contracts` | — | done |
-| C-M1a | XState stage machine (states=stages, guards from per-student status), consumes `lesson001` | C | `apps/server/src/engine` | contracts v0 | yes |
+| C-M1a | Generic reducer (`EngineEvent`→`EngineResult`) + guard registry + Zod config validator, consumes `lesson001` | C | `apps/server/src/engine` | contracts-v1.1 | yes |
 | C-M1b | Socket.IO sync + authoritative session state (HELLO/RESUME_STATE, ASSISTANT_UNLOCK→STAGE_UNLOCK, STAGE_COMPLETE, GLOBAL_STATE) | C | `apps/server/src/sync`, `.../session` | C-M1a, LEAD-A1 | no |
 | C-M1c | Reconnect/resume + Redis session persistence + crash recovery | C | `apps/server/src/session` | C-M1b | no |
 | E-M1 | M1 smoke: drive a session through all stages (no AI), assert SLO/acceptance (unlock ≤500ms, resume, no illegal transition) | E | `apps/server/test` (or harness) | C-M1b | after C-M1b |

@@ -20,14 +20,16 @@ clients in sync over Socket.IO, with reconnect/resume from authoritative server 
 
 ## Do-not-touch
 
-- `packages/contracts/**` and `docs/contracts/**` — FROZEN (read-only). The only allowed
-  change is **LEAD-A1** (session join types), done by the lead, not in this branch.
+- `packages/contracts/**` and `docs/contracts/**` — FROZEN at `contracts-v1.1` (read-only).
+  A contract change goes through the lead + independent review, never in this branch.
 - `apps/web/**`, `packages/ai-gateway/**`, shadow systems.
 
-## Frozen contracts to import (read-only)
+## Frozen contracts to import (read-only — `contracts-v1.1`)
 
-- `@genius-x/contracts`: `StageId`, `UnlockBy`, `ServerMessage`, `ClientMessage`,
-  `ClassSession`, `StudentSessionState`, `ErrorCode`, (after LEAD-A1) session join types.
+- `@genius-x/contracts`: `EngineEvent`, `EngineCommand`, `EngineResult`; `LessonConfig`,
+  `AdvanceCondition`, `StudentPredicate`; `ClassSession`, `StudentRuntimeState`;
+  `ServerMessage`, `ClientMessage`, `StageCompletePayload`; `SessionJoinRequest/Response`;
+  `ErrorCode`.
 - `@genius-x/course-config`: `lesson001`.
 - `@genius-x/config`: `loadConfig`.
 
@@ -40,11 +42,12 @@ clients in sync over Socket.IO, with reconnect/resume from authoritative server 
 
 ## Implementation notes
 
-- State machine: **XState v5**. States = the 7 stages; events = unlock/complete; guards from
-  per-student `stageStatus`. Pure, unit-testable, persistable.
-- Sync: **Socket.IO**, one room per class session. Server holds authoritative state; clients
-  are views. Resume = `HELLO` → `RESUME_STATE`.
-- Persistence: Redis for live `ClassSession`; recover current stage on reconnect/crash.
+- Engine: **generic pure reducer** over `lesson001` (NOT XState) — see the design note +
+  `docs/architecture/lesson-runtime.md`. Guard registry + Zod config validator.
+- Sync: **Socket.IO**, one room per session; map `ClientMessage`↔`EngineEvent`, execute
+  `EngineCommand`s. Resume = `HELLO` → `RESUME_STATE` (full per-student state + version).
+- Persistence: Redis for live `ClassSession` (in-memory in local/scripted); recover on
+  reconnect/crash; fail closed on `RESUME_VERSION_MISMATCH`.
 
 ## Design note (submit BEFORE coding — lead reviews & approves)
 
