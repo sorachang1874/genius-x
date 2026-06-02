@@ -1,84 +1,95 @@
-# Design Note: D-M2 — AI Gateway + fake harness + interaction wiring
+# Design Note: D-M2 — AI Gateway + fake harness + interaction wiring (v2)
 
-> Status: **proposed, pending founder/lead approval** (Layer-2 gate). No code until approved.
+> Status: **finalized after Codex review** (3 decisions confirmed; 6 findings folded in).
+> **M2a (gateway core) = GO to implement. M2b (contracts-v1.3 + wiring) = build to this spec.**
 > Owner: Agent D. Contracts: `docs/contracts/ai-gateway.md`, `safety.md`. Implies contracts-v1.3.
 
 ## Goal
 
-Make stages actually produce AI content, via the single gateway, on **fake providers**
-(deterministic, zero keys, zero cost). This is the "AI+" core and what lets a demo show content.
+Stages produce AI content via the single gateway, on **fake providers** (deterministic, zero
+keys/cost). The "AI+" core and the prerequisite for a demo with content.
 
-## 1. Gateway public surface (`packages/ai-gateway`)
+## 1. Gateway public surface (`packages/ai-gateway`) — M2a
 
-Capability methods the server calls; each runs the pipeline and **never throws** (returns a
-fallback with `meta.degraded=true` on any failure):
+Capability methods; each runs the pipeline and **never throws** (returns a fallback with
+`meta.degraded=true` on any failure):
 
-| Method | Used by |
+| Method | Notes |
 | --- | --- |
-| `llm(req) → LlmTextResult` | icebreak reply, talent story/answer, birth speech |
-| `tts(req) → TtsResult` | speak any text |
-| `asr(req) → AsrResult` | transcribe a child's voice (takes an audio **ref**, never raw audio) |
-| `imageGen(req) → ImageGenResult` | shape (doodle/dialogue → candidate avatars) |
-| `extractMemory(req) → MemoryExtraction` | background memory point from talent |
+| `llm`, `tts`, `asr`, `imageGen` | as before; `asr` takes an audio **ref**, never raw audio |
+| `extractMemory({ transcript, allowedKeys, promptVersion, studentId, stageId })` | **validate returned key against `allowedKeys` (lesson `declaredMemoryKeys`)**; invalid → `null` + trace, never a classroom failure (Codex #6) |
 
-Pipeline (PRD §5.2): build prompt from a **versioned git template** → input safety → token
-budget → route to `ProviderAdapter` → output safety → fallback (timeout/fail/filtered/schema
-miss) → audit via `TraceSink`. Output validated (Zod) against the contract shape at the boundary.
+Pipeline: prompt from versioned git template → input safety → token budget → `ProviderAdapter`
+→ output safety → fallback (timeout/fail/filtered/schema miss) → audit via `TraceSink`. Output
+validated (Zod) at the boundary. `AiMeta` (source/degraded/promptVersion) stays **server-side**.
 
-## 2. Fake provider simulation harness
+## 2. Fake provider simulation harness — M2a
 
-Upgrade the skeleton `FakeProvider` to honor `FakeProviderConfig` fault injection:
-latency, fail, timeout, filteredOutput; async image flow (submit→poll with injected delay).
-Deterministic canned content. Scenario presets (slow / down / filtered) for the smoke. This
-is what makes overnight/CI development and SLO assertions possible without real providers.
+Upgrade `FakeProvider` to honor `FakeProviderConfig` (latency/fail/timeout/filteredOutput) +
+async image (submit→poll w/ injected delay) + deterministic content + scenario presets.
 
-## 3. Interaction lifecycle — the key design decision
+## 3. Interaction model (contracts-v1.3) — M2b
 
-A child interaction is: **input → AI thinking → output**, possibly many times per stage,
-distinct from "choosing/finishing". Proposed flow:
+**`INTERACT` ClientMessage** (interaction input; carries `interactionId` for idempotency):
+```
+INTERACT { studentId; stageId; interactionId; variantId?; input: InteractionInput }
+InteractionInput =
+  | voice{ audioRef }              // icebreak, talent follow-up answer
+  | doodle{ doodleRef }            // shape A-line
+  | answers{ answersByQuestionId } // shape B-line dialogue
+  | talentOption{ option }         // talent pick
+  | talentAnswer{ option?; audioRef }
+  | playPrepared{ preparedId; outputKind }  // birth: play the pre-generated speech
+```
+**`STAGE_COMPLETE` cleaned** (Codex #3): payload = `selection | variantChoice | done` only —
+remove `voice/doodle/interaction` (those are now INTERACT). STAGE_COMPLETE = choice/finish.
+
+**`CALL_INTERACTION` carries the input** (Codex #1): add `interactionId` + the same
+`InteractionInput` (today it only has ids — loses the actual input).
+
+## 4. Async lifecycle (Codex #2 — pending + stale-protection)
 
 ```
-client ──INTERACT{stageId,variantId?,input}──▶ server
-  server resolves the stage's interaction spec → reducer emits CALL_INTERACTION
-  InteractionRunner runs the gateway capability(ies) for that interaction
-  server ──AI_OUTPUT{studentId,stageId,result}──▶ client   (render: play audio / show images / text)
-  server feeds INTERACTION_DONE{degraded} back into the engine (counts toward minInteractions)
+INTERACT → reducer validates (current stage, etc.) → persists a PENDING interaction
+  → emits CALL_INTERACTION → InteractionRunner calls the gateway (slow)
+  → on completion: re-enter store.update, verify the interaction is still pending AND the
+    stage hasn't advanced; if stale/duplicate → TRACE + drop (do NOT emit to the child);
+    else mark done idempotently, persist, emit AI_OUTPUT, reduce INTERACTION_DONE{degraded}
+  → timeout/failure → synthesize a fallback ClientAiOutput AND still INTERACTION_DONE{degraded:true}
 ```
+- `StudentRuntimeState` gains a **pending-interactions** map (interactionId → {stageId,…}) so
+  completions are idempotent and stage-checked.
+- "AI thinking" is the window between INTERACT and AI_OUTPUT; `AI_READY` (extended below) signals
+  pre-generated content is ready.
 
-**Contract additions (contracts-v1.3) — the decision to confirm:**
-- **`INTERACT` ClientMessage** = an interaction *input*: `{ studentId; stageId; variantId?;
-  input }` where input is `voice{audioRef}` | `doodle{doodleRef}` | `answers{Record}` |
-  `talent{option}`. Separate from `STAGE_COMPLETE`, which keeps `selection`/`variantChoice`/
-  `done` (a *choice/finish*, not an interaction). This cleanly separates "I did a thing with
-  the AI" from "I picked/finished".
-- **`AI_OUTPUT` ServerMessage** = `{ studentId; stageId; result: AiResult }` — delivers AI
-  content to the one student. (`AI_READY` already exists for pre-generated birth speech.)
+## 5. Delivery (contracts-v1.3)
 
-> Alternative considered: overload `STAGE_COMPLETE` (its `voice`/`doodle` kinds) as the
-> trigger. Rejected — it conflates "interaction input" with "stage finished" (talent needs
-> many interactions before finishing), and muddies the gate semantics. Recommend `INTERACT`.
+- **`AI_OUTPUT`** carries a **child-renderable union, NOT `AiResult`** (Codex #4):
+  `AI_OUTPUT { studentId; stageId; interactionId; output: ClientAiOutput }`,
+  `ClientAiOutput = { text?; audioUrl?; imageUrls? }`. `AiMeta` stays in traces +
+  `INTERACTION_DONE.degraded`.
+- **`AI_READY`** extended (Codex #5): `{ studentId; stageId; interactionId|preparedId; outputKind }`.
+- **Projection** (Codex #5): `REQUEST_PROJECTION` is currently ignored, but the lesson projects
+  a child's birth certificate to the big screen. Add a `PROJECT` ServerMessage (to a
+  teacher/projection audience) carrying the renderable payload. In v1.3 now.
 
-## 4. CALL_INTERACTION wiring (server)
+## contracts-v1.3 change set
 
-`InteractionRunner` (new, `apps/server/src/interaction/`): given a `CALL_INTERACTION`, look up
-the stage/variant interaction spec, call the gateway, deliver `AI_OUTPUT`, then reduce
-`INTERACTION_DONE`. The reducer emits `CALL_INTERACTION` when it accepts an `INTERACT` event.
-Birth speech is pre-generated on stage entry → `AI_READY` → child taps play → `AI_OUTPUT`.
+`INTERACT` + `InteractionInput`; `CALL_INTERACTION` += interactionId + input; `StageCompletePayload`
+→ {selection,variantChoice,done}; `AI_OUTPUT` + `ClientAiOutput`; `AI_READY` += outputKind +
+interactionId/preparedId; `PROJECT` message; `StudentRuntimeState` += pending interactions;
+`extractMemory` signature += allowedKeys.
 
-## 5. Scope / split
+## Split
 
-- **M2a**: gateway core (capabilities + pipeline + fake harness + output validation + fallback) — unit-testable in isolation.
-- **M2b**: contracts-v1.3 (`INTERACT`, `AI_OUTPUT`, payload refactor) + `InteractionRunner` +
-  reducer `INTERACT`→`CALL_INTERACTION` + e2e (icebreak voice round-trip on fakes).
+- **M2a (GO now):** gateway capabilities + pipeline + fake harness + output validation +
+  fallback + `extractMemory(allowedKeys)`. Unit-testable; no contract changes.
+- **M2b (after contracts-v1.3 is applied + reviewed):** the v1.3 contracts above +
+  InteractionRunner (pending lifecycle) + reducer `INTERACT`→`CALL_INTERACTION` +
+  completion→`INTERACTION_DONE` + projection + e2e (icebreak voice round-trip on fakes).
 
-Two PRs, each branch + Codex review.
+## Decisions (confirmed, corrected per Codex)
 
-## Decisions to confirm
-
-1. Interaction model: add **`INTERACT`** (recommended) vs overload `STAGE_COMPLETE`?
-2. `AI_OUTPUT` ServerMessage shape (carry the full `AiResult`?) OK?
-3. Split M2 into M2a (gateway) + M2b (wiring), gateway first — OK?
-
-## Out of scope (later)
-
-Real Tencent providers + 天御 moderation (D3/M6) · prompt eval/Langfuse (shadow) · streaming TTS.
+1. **`INTERACT`: yes** — with `interactionId` + the full Lesson-1 input union; remove interaction payloads from `STAGE_COMPLETE`.
+2. **`AI_OUTPUT` child-renderable only: yes** (not `AiResult`).
+3. **Split M2a→M2b: yes** — M2a now; M2b after the P0 contract/lifecycle fixes above are in the contracts.

@@ -64,9 +64,20 @@ different failures; the author has blind spots (proven: the v1 lesson-runtime de
 
 **How we run it (Codex / gpt-5.5):** every review prompt starts with `docs/agents/REVIEW_BRIEF.md`
 (standing context: principles, goals, constraints, output format), then names the changed
-files + change-specific questions. Run at **`-c model_reasoning_effort="xhigh"`** (leverage
-its reasoning; reviews are worth the wait — run in the background and wait minutes, don't
-cut it off). `codex exec --sandbox read-only` so it never edits.
+files + change-specific questions, at `-c model_reasoning_effort="xhigh"`.
+
+Operational rules (learned the hard way — a `codex exec` request hung 22 min on a stalled
+socket, 0% CPU, with no auto-retry):
+
+- **Large/design reviews → run in the interactive Codex CLI** (the founder's `codex` TUI):
+  it streams, shows thinking, handles context, and a stall is visible + Ctrl-C-retryable.
+  The lead supplies the ready prompt; the founder pastes the verdict back.
+- **`codex exec` is only for small, fast confirmations**, and must: (a) **never** pipe through
+  `tail`/`head` (they buffer until EOF and hide all progress) — stream to a file and poll it;
+  (b) be wrapped in a hard `timeout` (e.g. 240s) so a hung request is killed and retried, not
+  awaited forever; (c) use `--sandbox read-only` so it never edits.
+- Network to external services here is flaky (TLS resets seen on git too) — assume a single
+  request can stall; never block the workflow on one.
 
 ## Definition of Done (anti-gaming)
 
