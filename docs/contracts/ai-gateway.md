@@ -17,7 +17,7 @@ Provider choice (D3) is internal and swappable.
 | `llm(req)` | promptVersion + input | `LlmTextResult` |
 | `tts(req)` | text | `TtsResult` |
 | `asr(req)` | audio **ref** (not raw audio) | `AsrResult` |
-| `imageGen(req)` | img2img/text2img source + count | `ImageGenResult` (moderated) |
+| `imageGen(req)` | img2img/text2img source + count | `ImageGenResult` (moderation seam; real 天御 IMS in M6) |
 | `extractMemory(input)` | child utterance | `MemoryExtraction` |
 | `birthSpeech(profile)` | name + memories + tag | `LlmTextResult` |
 
@@ -54,7 +54,9 @@ above and their output schemas (`@genius-x/contracts`).
 - On provider error/timeout/filtered/schema-miss → a fallback is returned (`degraded:true`)
   and the fallback is **counted/logged** (operator-visible degradation).
 - Filtered/unsafe output never reaches the caller.
-- `imageGen` output is moderated (天御 IMS) before return.
+- `imageGen` runs a moderation **seam** before returning (`imageModerator` hook): when a
+  moderator is injected, a block → fallback; M2a ships the seam with no moderator and traces
+  `moderation_deferred_m6`; the real 天御 IMS moderator is injected in M6.
 - No raw child audio is persisted (asr takes a ref; data-and-privacy).
 - A `TraceSink` outage does not slow or break any call (shadow).
 
