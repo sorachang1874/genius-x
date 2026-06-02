@@ -161,12 +161,13 @@ function onInteractionDone(
     return denied(state, now, `INTERACTION_DONE for ${event.stageId}, current is ${state.currentStageId}`);
   const s = state.students[event.studentId];
   if (!s) return denied(state, now, `unknown student ${event.studentId}`);
-  // only a PENDING interaction counts — late/duplicate/stale completions are dropped (idempotent)
-  if (!s.pending[event.interactionId]) {
+  // only a PENDING interaction for THIS stage counts — late/duplicate/stale completions dropped
+  const p = s.pending[event.interactionId];
+  if (!p || p.stageId !== event.stageId) {
     return {
       state,
       commands: [
-        { type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "not_pending", interactionId: event.interactionId, studentId: event.studentId }) },
+        { type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "not_pending_or_stale", interactionId: event.interactionId, studentId: event.studentId }) },
       ],
     };
   }
@@ -267,6 +268,11 @@ function onInteract(
   if (!stageById(lesson, state.currentStageId)) return denied(state, now, `unknown stage ${state.currentStageId}`);
   const s = state.students[event.studentId];
   if (!s) return denied(state, now, `unknown student ${event.studentId}`);
+  // idempotent: a duplicate interactionId (in-flight or already completed) is dropped — no
+  // second pending, no second gateway call
+  if (s.pending[event.interactionId] || s.completedInteractionIds.includes(event.interactionId)) {
+    return { state, commands: [{ type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "duplicate_interaction", interactionId: event.interactionId, studentId: event.studentId }) }] };
+  }
   const nextS: StudentRuntimeState = {
     ...s,
     pending: { ...s.pending, [event.interactionId]: { stageId: event.stageId } },

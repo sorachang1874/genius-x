@@ -19,8 +19,8 @@ export type InteractionInput =
   | { kind: "doodle"; doodleRef: DoodleRef } // shape A-line
   | { kind: "answers"; answersByQuestionId: Record<string, string> } // shape B-line dialogue
   | { kind: "talentOption"; option: string } // talent pick
-  | { kind: "talentAnswer"; option?: string; audioRef: AudioRef }
-  | { kind: "playPrepared"; interactionId: string }; // birth: play pre-generated speech
+  | { kind: "talentAnswer"; option?: string; audioRef: AudioRef };
+// birth pre-generation + a `playPrepared` input land in M4 (with AI_READY{preparedId,outputKind}).
 
 /** A student's CHOICE / finish (not an interaction). Source: D-M2 v2 (Codex #3). */
 export type StageCompletePayload =

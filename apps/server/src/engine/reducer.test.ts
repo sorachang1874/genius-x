@@ -95,6 +95,15 @@ describe("reducer — student state", () => {
     expect(s.students.k1!.completedInteractionIds).toEqual(["i1", "i2"]);
   });
 
+  it("drops a duplicate INTERACT (no second pending / no second CALL_INTERACTION)", () => {
+    const s = session("talent", ["k1"]);
+    const first = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(first.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(true);
+    const dup = reducer(first.state, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(dup.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(false);
+    expect(dup.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ dropped: true }) }) });
+  });
+
   it("GLOBAL sets class state and broadcasts", () => {
     const r = reducer(session("closure", ["k1"]), { type: "GLOBAL", state: "synced" }, NOW);
     expect(r.state.global).toBe("synced");

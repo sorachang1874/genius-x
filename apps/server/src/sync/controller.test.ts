@@ -112,6 +112,17 @@ describe("ClassroomController", () => {
     expect(emit.student.some((s) => s.msg.type === "AI_OUTPUT")).toBe(true);
     expect((await store.load("s1"))!.students.k1!.completedInteractionIds).toContain("i1");
   });
+
+  it("does NOT deliver AI_OUTPUT for a stale interaction (class advanced mid-call)", async () => {
+    const slow = new AiGateway({ provider: new FakeProvider({ llm: { latencyMs: 40 } }), safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW });
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, slow);
+    await store.save(seed("talent", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } });
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" }); // advance while gateway is mid-call
+    await new Promise((r) => setTimeout(r, 120));
+    expect(emit.student.some((s) => s.msg.type === "AI_OUTPUT")).toBe(false);
+    expect((await store.load("s1"))!.students.k1!.interactionCounts.talent ?? 0).toBe(0);
+  });
 });
 
 async function waitUntil(check: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
