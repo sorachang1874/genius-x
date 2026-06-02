@@ -62,6 +62,12 @@ different failures; the author has blind spots (proven: the v1 lesson-runtime de
 - The reviewer is adversarial: find what's wrong/risky, do not rubber-stamp.
 - This is "verifier ≠ generator" made standing, not optional.
 
+**How we run it (Codex / gpt-5.5):** every review prompt starts with `docs/agents/REVIEW_BRIEF.md`
+(standing context: principles, goals, constraints, output format), then names the changed
+files + change-specific questions. Run at **`-c model_reasoning_effort="xhigh"`** (leverage
+its reasoning; reviews are worth the wait — run in the background and wait minutes, don't
+cut it off). `codex exec --sandbox read-only` so it never edits.
+
 ## Definition of Done (anti-gaming)
 
 An agent is done when it has an **evidence trail**, not when code compiles. Forbidden in any
