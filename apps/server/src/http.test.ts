@@ -1,0 +1,26 @@
+import { describe, it, expect } from "vitest";
+import { InMemorySessionStore } from "./session/store";
+import { buildHttp } from "./http";
+
+describe("buildHttp", () => {
+  it("POST /session/join creates the session and registers a student", async () => {
+    const store = new InMemorySessionStore();
+    const app = buildHttp(store, "lesson-001", "1.0.0", "intro");
+    const res = await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "r1" } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { studentId: string; sessionId: string; role: string };
+    expect(body.sessionId).toBe("r1");
+    expect(body.role).toBe("student");
+    const session = await store.load("r1");
+    expect(session!.currentStageId).toBe("intro");
+    expect(session!.students[body.studentId]).toBeDefined();
+    await app.close();
+  });
+
+  it("GET /session/:id/state 404s for an unknown session", async () => {
+    const app = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro");
+    const res = await app.inject({ method: "GET", url: "/session/nope/state" });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+});

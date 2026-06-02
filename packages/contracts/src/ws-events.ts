@@ -39,6 +39,9 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "HELLO"; studentId: string }
   | { type: "ASSISTANT_UNLOCK"; stageId: StageId; assistantId: string }
+  /** Teacher-gated advance (e.g. closure). In MVP the main teacher acts via the assistant
+   *  device; the server should verify the connection's role when auth lands (currently trusted). */
+  | { type: "TEACHER_UNLOCK"; stageId: StageId }
   /** Explicit, audited assistant override so one straggler never freezes the class. */
   | {
       type: "FORCE_ADVANCE";

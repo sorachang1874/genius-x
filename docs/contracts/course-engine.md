@@ -34,7 +34,7 @@ the engine's vocabulary:
 ## Public interface
 
 **WebSocket** (Socket.IO; message types in `@genius-x/contracts` ws-events):
-- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `FORCE_ADVANCE`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
+- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `TEACHER_UNLOCK`, `FORCE_ADVANCE`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
 - Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_READY`, `RESUME_STATE` (full per-student state + `lessonConfigVersion`)
 
 Engine events/commands are typed in `@genius-x/contracts` (`engine.ts`: `EngineEvent`,

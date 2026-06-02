@@ -47,3 +47,8 @@ drift. The client is a thin view of the server's authoritative state.
 
 **Primary.** Auth is lightweight (room-code/QR) and does NOT depend on Better Auth being up
 (shadow). Latency dressed as "thinking" animation, never a blank wait.
+
+> Role note (v1.2): `ASSISTANT_UNLOCK` / `TEACHER_UNLOCK` carry the intended role, but the
+> server currently derives role from the **message type, not the connection identity**
+> (trusted-classroom MVP). When auth lands, the server must verify the connection's role
+> matches the message before honoring teacher/assistant unlocks.
