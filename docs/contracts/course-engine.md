@@ -2,25 +2,34 @@
 
 > Owner: **Agent C** (`apps/server`). Boundary contract — frozen at the interface level
 > before fan-out; internal design via per-task design note (docs/agents). Types:
-> `@genius-x/contracts` (ws-events, enums, student). Built on XState + Socket.IO.
+> `@genius-x/contracts` (ws-events, enums, student). Engine = **generic config interpreter
+> (pure reducer)**, see `docs/architecture/lesson-runtime.md` + Socket.IO. (Not XState — the
+> flow is runtime config data, not a statically authored statechart.)
 
 ## Purpose
 
 Drive one class through the lesson stage sequence and keep that state in sync across student
 iPads, the assistant, and the teacher screen. The server holds **authoritative** state.
 
-## Stage machine (PRD §4.1)
+## Stage machine — generic over config
 
-`standby → intro → icebreak → shape → talent → birth → closure`
+Stages, unlock roles, and advance conditions all come from `LessonConfig` (no stage name is
+hardcoded in engine code). Advance conditions are **declarative + composable + scoped** —
+see `docs/architecture/lesson-runtime.md`. The table below is **Lesson 1's instance**, not
+the engine's vocabulary:
 
-| Stage | Unlock by | Advance condition |
+`standby → intro → icebreak → shape → talent → birth → closure` (Lesson 1)
+
+| Stage (L1) | unlock | advanceCondition (declarative) |
 | --- | --- | --- |
-| intro | teacher | assistant unlock |
-| icebreak | assistant | assistant unlock |
-| shape | assistant | child selects avatar + assistant confirm |
-| talent | assistant | min interactions reached + assistant unlock |
-| birth | assistant | all children done |
+| intro | teacher | `immediate` |
+| icebreak | assistant | `immediate` |
+| shape | assistant | `allStudents{ fieldSet:"avatarUrl" }` |
+| talent | assistant | `countStudents{ min:N, of: minInteractions{2} }` |
+| birth | assistant | `allStudents{ status:"completed" }` |
 | closure | teacher | — |
+
+`FORCE_ADVANCE` (assistant override, logged) prevents a straggler freezing the class.
 
 ## Public interface
 

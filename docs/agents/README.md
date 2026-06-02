@@ -46,8 +46,21 @@ lead owns the merge.
    and test DB/schema. Gitignore the worktrees dir; use `.worktreeinclude` for `.env`.
 6. **DoD gate** (CI on the PR, in order): contract preflight → `tsc --noEmit` → lint →
    unit tests → scripted Lesson-1 smoke (fake providers). All green = mergeable, not merged.
-7. **Review**: lead/founder reads each PR's diff for *semantic* correctness and
-   over-refactoring (CI already vouches for non-breakage). Merge to main manually.
+7. **Review**: independent-review gate (below) → lead/founder reads the diff for *semantic*
+   correctness and over-refactoring (CI already vouches for non-breakage). Merge manually.
+
+## Independent review gate
+
+Significant artifacts — **design notes, contract changes, and PRs** — get an **independent
+review before founder sign-off**, by an agent that is **not the author** and ideally a
+**different model** (e.g. Codex / GPT-5.5 reviewing Claude's output). Different models catch
+different failures; the author has blind spots (proven: the v1 lesson-runtime design shipped
+3 blockers the author missed, caught only by independent review).
+
+- The lead spawns/raises the review, reads its findings, reconciles, and surfaces them to the
+  founder — the lead does not self-certify its own design.
+- The reviewer is adversarial: find what's wrong/risky, do not rubber-stamp.
+- This is "verifier ≠ generator" made standing, not optional.
 
 ## Definition of Done (anti-gaming)
 
@@ -96,4 +109,4 @@ Per-package `AGENTS.md` may be added when a subtree needs local rules.
 
 Claude Squad / Parallel Code (run 3+ heterogeneous agents side by side) · ComposioHQ `ao`
 (fleet management at 5+ concurrent) · GitHub Spec Kit (formalized spec→plan→tasks) · Docker
-Sandboxes microVMs (stronger overnight isolation) · a dedicated reviewer agent.
+Sandboxes microVMs (stronger overnight isolation).
