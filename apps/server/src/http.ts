@@ -19,9 +19,10 @@ export function buildHttp(
   app.post("/session/join", async (req, reply) => {
     const body = req.body as SessionJoinRequest;
     const sessionId = body.roomCode; // MVP: room code is the session id
-    let session = await store.load(sessionId);
-    if (!session) {
-      const fresh: ClassSession = {
+    const studentId = randomUUID();
+    // atomic: create-if-absent + add this student, without racing concurrent joins
+    await store.update(sessionId, async (current) => {
+      const session: ClassSession = current ?? {
         sessionId,
         lessonId,
         lessonConfigVersion,
@@ -32,11 +33,9 @@ export function buildHttp(
         students: {},
         assistants: [],
       };
-      session = fresh;
-    }
-    const studentId = randomUUID();
-    session.students[studentId] = freshStudentState();
-    await store.save(session);
+      session.students[studentId] = freshStudentState();
+      return { next: session, out: undefined };
+    });
     const res: SessionJoinResponse = { studentId, sessionId, role: "student" };
     return reply.send(res);
   });

@@ -3,12 +3,13 @@
  * controller → Fastify(HTTP) + Socket.IO. No business logic here. Covered by E-M1 smoke.
  */
 import { Server } from "socket.io";
+import { Redis } from "ioredis";
 import type { TraceEvent } from "@genius-x/contracts";
 import { loadConfig } from "@genius-x/config";
 import { lesson001 } from "@genius-x/course-config";
 import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
-import { InMemorySessionStore } from "./session/store";
+import { InMemorySessionStore, RedisSessionStore, type SessionStore } from "./session/store";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
 import { buildHttp } from "./http";
@@ -24,8 +25,11 @@ async function main(): Promise<void> {
   const lesson = validated.lesson;
   const firstStageId = lesson.stages[0]!.stageId;
 
-  // In-memory in local/scripted; RedisSessionStore is wired for live/production later.
-  const store = new InMemorySessionStore();
+  // Redis (durable, crash-recoverable) for live/production; in-memory for local/scripted.
+  const liveLike = config.mode === "live" || config.mode === "production";
+  const store: SessionStore = liveLike
+    ? new RedisSessionStore(new Redis(config.redisUrl!))
+    : new InMemorySessionStore();
   const trace: TraceSink = { record: (e: TraceEvent) => console.log("[trace]", e.kind, e.payload) };
   const clock: Clock = { now: () => new Date().toISOString() };
 

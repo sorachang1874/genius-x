@@ -86,4 +86,39 @@ describe("ClassroomController", () => {
     await controller.onMessage("ghost", { type: "ASSISTANT_UNLOCK", stageId: "icebreak", assistantId: "a1" });
     expect(trace.events.some((e) => (e.payload as { reason?: string }).reason === "unknown session")).toBe(true);
   });
+
+  it("fails closed on a version-mismatched session (no RESUME emitted)", async () => {
+    await store.save({ ...seed("shape", { k1: freshStudent() }), lessonConfigVersion: "9.9.9" });
+    await controller.onMessage("s1", { type: "HELLO", studentId: "k1" });
+    expect(emit.student).toHaveLength(0);
+    expect(trace.events.some((e) => (e.payload as { reason?: string }).reason === "invalid session")).toBe(true);
+  });
+
+  it("rejects FORCE_ADVANCE with a stale expectedCurrentStageId", async () => {
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await controller.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "talent", assistantId: "a1", expectedCurrentStageId: "intro" });
+    expect((await store.load("s1"))!.currentStageId).toBe("shape"); // unchanged
+  });
+});
+
+describe("ClassroomController — concurrency (no lost update)", () => {
+  class SlowStore extends InMemorySessionStore {
+    override async load(id: string) {
+      await new Promise((r) => setTimeout(r, 5));
+      return super.load(id);
+    }
+  }
+
+  it("serializes concurrent completions so neither student's output is lost", async () => {
+    const slow = new SlowStore();
+    await slow.save(seed("shape", { k1: freshStudent(), k2: freshStudent() }));
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), slow, emit, trace, clock);
+    await Promise.all([
+      c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } }),
+      c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k2", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u2" } }),
+    ]);
+    const s = await slow.load("s1");
+    expect(s!.students.k1!.outputs.avatarUrl).toBe("u1");
+    expect(s!.students.k2!.outputs.avatarUrl).toBe("u2");
+  });
 });
