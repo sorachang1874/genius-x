@@ -25,7 +25,7 @@ function seed(): ClassSession {
 
 function connect(url: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
-    const s = ioClient(url, { auth: { sessionId: "demo", studentId: "k1" }, transports: ["websocket"], forceNew: true });
+    const s = ioClient(url, { auth: { sessionId: "demo", studentId: "k1" }, transports: ["websocket"], forceNew: true, reconnection: false, timeout: 5000 });
     s.on("connect", () => resolve(s));
     s.on("connect_error", reject);
   });
@@ -49,7 +49,7 @@ let handle: ServerHandle;
 beforeAll(async () => {
   store = new InMemorySessionStore();
   await store.save(seed());
-  handle = await startClassroomServer({ port: 0, store, trace: { record: () => {} } });
+  handle = await startClassroomServer({ port: 0, host: "127.0.0.1", store, trace: { record: () => {} } });
 });
 afterAll(async () => {
   await handle.close();
@@ -57,11 +57,15 @@ afterAll(async () => {
 
 describe("E-M1 — Lesson 1 over the real socket", () => {
   it("walks intro→closure and resumes on reconnect", async () => {
-    const sock = await connect(handle.url);
+    let sock: Socket | undefined;
+    let sock2: Socket | undefined;
+    try {
+    sock = await connect(handle.url);
+    const socket = sock;
     const got: ServerMessage[] = [];
-    sock.on("server_message", (m: ServerMessage) => got.push(m));
+    socket.on("server_message", (m: ServerMessage) => got.push(m));
     const send = (m: ClientMessage): void => {
-      sock.emit("client_message", m);
+      socket.emit("client_message", m);
     };
     const unlocked = (stageId: string) => () => got.find((m) => m.type === "STAGE_UNLOCK" && m.stageId === stageId);
 
@@ -89,13 +93,17 @@ describe("E-M1 — Lesson 1 over the real socket", () => {
     expect((await store.load("demo"))!.currentStageId).toBe("closure");
 
     // reconnect → RESUME_STATE reflects the authoritative closure state
-    sock.disconnect();
-    const sock2 = await connect(handle.url);
+    socket.disconnect();
+    sock2 = await connect(handle.url);
+    const socket2 = sock2;
     const got2: ServerMessage[] = [];
-    sock2.on("server_message", (m: ServerMessage) => got2.push(m));
-    sock2.emit("client_message", { type: "HELLO", studentId: "k1" } satisfies ClientMessage);
+    socket2.on("server_message", (m: ServerMessage) => got2.push(m));
+    socket2.emit("client_message", { type: "HELLO", studentId: "k1" } satisfies ClientMessage);
     const resume = await waitFor(() => got2.find((m) => m.type === "RESUME_STATE"));
     expect(resume.type === "RESUME_STATE" && resume.currentStageId).toBe("closure");
-    sock2.disconnect();
+    } finally {
+      sock?.disconnect();
+      sock2?.disconnect();
+    }
   }, 20000);
 });

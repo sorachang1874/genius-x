@@ -14,6 +14,8 @@ import { buildHttp } from "./http";
 
 export interface ServerOptions {
   port?: number;
+  /** Bind host. Defaults to 0.0.0.0 (externally reachable, for production). Tests pass 127.0.0.1. */
+  host?: string;
   store?: SessionStore;
   lesson?: LessonConfig;
   trace?: TraceSink;
@@ -46,13 +48,15 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
   const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock);
   attachSocket(io, controller);
 
+  const host = opts.host ?? "0.0.0.0";
   await app.ready();
-  await app.listen({ port: opts.port ?? 0, host: "127.0.0.1" });
+  await app.listen({ port: opts.port ?? 0, host });
   const addr = app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : (opts.port ?? 0);
+  const urlHost = host === "0.0.0.0" ? "localhost" : host;
 
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://${urlHost}:${port}`,
     port,
     close: async () => {
       await io.close();

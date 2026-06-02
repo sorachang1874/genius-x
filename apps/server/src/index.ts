@@ -14,7 +14,11 @@ async function main(): Promise<void> {
     ? new RedisSessionStore(new Redis(config.redisUrl!))
     : new InMemorySessionStore();
 
-  const handle = await startClassroomServer({ port: Number(process.env.PORT ?? 3000), store });
+  const handle = await startClassroomServer({
+    port: Number(process.env.PORT ?? 3000),
+    host: process.env.HOST ?? "0.0.0.0",
+    store,
+  });
   console.log(`genius-x server (mode=${config.mode}) listening on ${handle.url}`);
 }
 
