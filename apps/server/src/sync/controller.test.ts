@@ -4,9 +4,13 @@ import { lesson001 } from "@genius-x/course-config";
 import { makeReducer } from "../engine";
 import { InMemorySessionStore } from "../session/store";
 import { ClassroomController, type Emitter, type TraceSink, type Clock } from "./controller";
+import { AiGateway, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
 
 const NOW = "2026-06-03T00:00:00.000Z";
 const clock: Clock = { now: () => NOW };
+function makeGateway(trace: TraceSink): AiGateway {
+  return new AiGateway({ provider: new FakeProvider(), safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW });
+}
 
 class FakeEmitter implements Emitter {
   session: { sessionId: string; msg: ServerMessage }[] = [];
@@ -20,7 +24,7 @@ class FakeTrace implements TraceSink {
 }
 
 function freshStudent(over: Partial<StudentRuntimeState> = {}): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, outputs: {}, ...over };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, ...over };
 }
 
 function seed(currentStageId: string, students: Record<string, StudentRuntimeState>): ClassSession {
@@ -39,7 +43,7 @@ beforeEach(() => {
   store = new InMemorySessionStore();
   emit = new FakeEmitter();
   trace = new FakeTrace();
-  controller = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock);
+  controller = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace));
 });
 
 describe("ClassroomController", () => {
@@ -99,7 +103,38 @@ describe("ClassroomController", () => {
     await controller.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "talent", assistantId: "a1", expectedCurrentStageId: "intro" });
     expect((await store.load("s1"))!.currentStageId).toBe("shape"); // unchanged
   });
+
+  it("INTERACT drives the gateway → AI_OUTPUT to the student + counts the interaction", async () => {
+    await store.save(seed("talent", { k1: freshStudent() }));
+    await controller.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } });
+    // runInteraction is fire-and-forget (calls the async gateway, then INTERACTION_DONE) — poll for it
+    await waitUntil(async () => ((await store.load("s1"))!.students.k1!.interactionCounts.talent ?? 0) >= 1);
+    expect(emit.student.some((s) => s.msg.type === "AI_OUTPUT")).toBe(true);
+    expect((await store.load("s1"))!.students.k1!.completedInteractionIds).toContain("i1");
+  });
+
+  it("does NOT deliver AI_OUTPUT for a stale interaction (class advanced mid-call)", async () => {
+    const slow = new AiGateway({ provider: new FakeProvider({ llm: { latencyMs: 40 } }), safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW });
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, slow);
+    await store.save(seed("talent", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } });
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" }); // advance while gateway is mid-call
+    await new Promise((r) => setTimeout(r, 120));
+    expect(emit.student.some((s) => s.msg.type === "AI_OUTPUT")).toBe(false);
+    const loaded = (await store.load("s1"))!;
+    expect(loaded.students.k1!.interactionCounts.talent ?? 0).toBe(0);
+    expect(loaded.students.k1!.pending.i1).toBeUndefined(); // stale pending cleared
+    expect(trace.events.some((e) => (e.payload as { reason?: string }).reason === "stale_interaction")).toBe(true);
+  });
 });
+
+async function waitUntil(check: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!(await check())) {
+    if (Date.now() - start > timeoutMs) throw new Error("waitUntil timeout");
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
 
 describe("ClassroomController — concurrency (no lost update)", () => {
   class SlowStore extends InMemorySessionStore {
@@ -112,7 +147,7 @@ describe("ClassroomController — concurrency (no lost update)", () => {
   it("serializes concurrent completions so neither student's output is lost", async () => {
     const slow = new SlowStore();
     await slow.save(seed("shape", { k1: freshStudent(), k2: freshStudent() }));
-    const c = new ClassroomController(lesson001, makeReducer(lesson001), slow, emit, trace, clock);
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), slow, emit, trace, clock, makeGateway(trace));
     await Promise.all([
       c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } }),
       c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k2", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u2" } }),

@@ -12,6 +12,7 @@ function student(): StudentRuntimeState {
     interactionCounts: {},
     completedInteractionIds: [],
     selectedVariant: {},
+    pending: {},
     outputs: {},
   };
 }
@@ -84,12 +85,31 @@ describe("reducer — student state", () => {
     expect(r.state.students.k1!.selectedVariant.shape).toBe("drawing");
   });
 
-  it("INTERACTION_DONE increments the per-stage count", () => {
+  it("INTERACT→INTERACTION_DONE increments the per-stage count", () => {
     let s = session("talent", ["k1"]);
-    s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW).state;
-    s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i2", degraded: true }, NOW).state;
+    for (const id of ["i1", "i2"]) {
+      s = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: id, input: { kind: "talentOption", option: "sing" } }, NOW).state;
+      s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: id, degraded: false }, NOW).state;
+    }
     expect(s.students.k1!.interactionCounts.talent).toBe(2);
     expect(s.students.k1!.completedInteractionIds).toEqual(["i1", "i2"]);
+  });
+
+  it("drops a duplicate INTERACT (no second pending / no second CALL_INTERACTION)", () => {
+    const s = session("talent", ["k1"]);
+    const first = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(first.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(true);
+    const dup = reducer(first.state, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(dup.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(false);
+    expect(dup.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ dropped: true }) }) });
+  });
+
+  it("drops an INTERACT whose id was already completed", () => {
+    let s = session("talent", ["k1"]);
+    s = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW).state;
+    s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW).state;
+    const again = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(again.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(false);
   });
 
   it("GLOBAL sets class state and broadcasts", () => {
@@ -127,15 +147,18 @@ describe("reducer — safety guards", () => {
     expect(r.state.students.k1!.selectedVariant.shape).toBeUndefined();
   });
 
-  it("INTERACTION_DONE is idempotent on a duplicate id", () => {
+  it("INTERACTION_DONE is idempotent (only a pending id counts)", () => {
     let s = session("talent", ["k1"]);
+    s = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW).state;
     s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW).state;
-    const r = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW);
+    const r = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW); // not pending now
     expect(r.state.students.k1!.interactionCounts.talent).toBe(1); // not 2
   });
 
   it("emits a fallback trace for a degraded interaction", () => {
-    const r = reducer(session("talent", ["k1"]), { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: true }, NOW);
+    let s = session("talent", ["k1"]);
+    s = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW).state;
+    const r = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: true }, NOW);
     expect(r.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ kind: "fallback", payload: expect.objectContaining({ degraded: true }) }) });
   });
 
@@ -160,15 +183,18 @@ describe("reducer — full Lesson 1 walk", () => {
     step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "a2" } });
     step({ type: "UNLOCK", role: "assistant", stageId: "talent" });
     expect(s.currentStageId).toBe("talent");
-    // talent→birth gate: 2 interactions each
+    // talent→birth gate: 2 interactions each (INTERACT sets pending, INTERACTION_DONE counts)
     for (const [k, ids] of [["k1", ["a", "b"]], ["k2", ["c", "d"]]] as const) {
-      for (const id of ids) step({ type: "INTERACTION_DONE", studentId: k, stageId: "talent", interactionId: id, degraded: false });
+      for (const id of ids) {
+        step({ type: "INTERACT", studentId: k, stageId: "talent", interactionId: id, input: { kind: "talentOption", option: "sing" } });
+        step({ type: "INTERACTION_DONE", studentId: k, stageId: "talent", interactionId: id, degraded: false });
+      }
     }
     step({ type: "UNLOCK", role: "assistant", stageId: "birth" });
     expect(s.currentStageId).toBe("birth");
     // birth→closure gate: all students completed
-    step({ type: "STUDENT_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "interaction", interactionId: "b1" } });
-    step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "birth", payload: { kind: "interaction", interactionId: "b2" } });
+    step({ type: "STUDENT_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "done" } });
+    step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "birth", payload: { kind: "done" } });
     step({ type: "UNLOCK", role: "teacher", stageId: "closure" });
     expect(s.currentStageId).toBe("closure");
   });

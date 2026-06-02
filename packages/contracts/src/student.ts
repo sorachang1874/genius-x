@@ -84,6 +84,8 @@ export interface StudentRuntimeState {
   interactionCounts: Record<StageId, number>;
   completedInteractionIds: string[];
   selectedVariant: Record<StageId, string>; // stageId → variantId
+  /** In-flight interactions (interactionId → stage) — for idempotent, stage-checked completion. */
+  pending: Record<string, { stageId: StageId }>;
   /** Config-declared outputs (e.g. "avatarUrl"). Keys must be in lesson.declaredOutputs. */
   outputs: Record<OutputKey, RuntimeValue>;
 }

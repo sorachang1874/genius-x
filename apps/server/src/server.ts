@@ -4,6 +4,7 @@
  */
 import { Server } from "socket.io";
 import type { LessonConfig } from "@genius-x/contracts";
+import { AiGateway, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
 import { lesson001 } from "@genius-x/course-config";
 import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
@@ -43,9 +44,16 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
   const clock = opts.clock ?? { now: () => new Date().toISOString() };
   const firstStageId = lesson.stages[0]!.stageId;
 
+  const gateway = new AiGateway({
+    provider: new FakeProvider(),
+    safety: new KeywordSafetyFilter(),
+    fallback: new PresetFallbackLibrary(),
+    trace,
+    now: () => clock.now(),
+  });
   const app = buildHttp(store, lesson.lessonId, lesson.lessonConfigVersion, firstStageId);
   const io = new Server(app.server, { cors: { origin: "*" } });
-  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock);
+  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway);
   attachSocket(io, controller);
 
   const host = opts.host ?? "0.0.0.0";
