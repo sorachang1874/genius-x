@@ -7,6 +7,7 @@
 export * from "./enums.js";
 export * from "./course-config.js";
 export * from "./ws-events.js";
+export * from "./api.js";
 export * from "./ai-response.js";
 export * from "./student.js";
 export * from "./errors.js";

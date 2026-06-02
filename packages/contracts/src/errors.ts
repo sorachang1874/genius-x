@@ -8,9 +8,10 @@ export type ErrorCode =
   | "AI_FILTERED" // safety pipeline blocked output → fallback
   | "AI_PROVIDER_ERROR" // provider call failed → route/fallback
   | "BUDGET_EXCEEDED" // token/cost ceiling hit → truncate/fallback
-  | "INVALID_LESSON_CONFIG" // lesson JSON failed schema validation → fail closed
+  | "INVALID_LESSON_CONFIG" // lesson config failed schema/reference validation → fail closed
   | "CONTRACT_VIOLATION" // AI output failed its schema → fallback
   | "SESSION_NOT_FOUND"
+  | "RESUME_VERSION_MISMATCH" // session lessonConfigVersion != loaded config → fail closed
   | "STAGE_TRANSITION_DENIED"; // illegal stage transition attempted
 
 export interface ErrorInfo {

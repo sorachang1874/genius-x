@@ -24,10 +24,10 @@ the engine's vocabulary:
 | --- | --- | --- |
 | intro | teacher | `immediate` |
 | icebreak | assistant | `immediate` |
-| shape | assistant | `allStudents{ fieldSet:"avatarUrl" }` |
-| talent | assistant | `countStudents{ min:N, of: minInteractions{2} }` |
-| birth | assistant | `allStudents{ status:"completed" }` |
-| closure | teacher | — |
+| shape | assistant | `allStudents{ outputSet:"avatarUrl" }` (variants: drawing/dialogue) |
+| talent | assistant | `allStudents{ minInteractions:2 }` |
+| birth | assistant | `allStudents{ stageStatus:"completed" }` |
+| closure | teacher | `immediate` |
 
 `FORCE_ADVANCE` (assistant override, logged) prevents a straggler freezing the class.
 

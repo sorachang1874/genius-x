@@ -63,7 +63,14 @@ export interface SafetyResult {
  */
 export interface TraceEvent {
   at: string; // ISO timestamp (passed in; not generated in pure contract code)
-  kind: "ai_request" | "ai_response" | "safety" | "fallback" | "interaction";
+  kind:
+    | "ai_request"
+    | "ai_response"
+    | "safety"
+    | "fallback"
+    | "interaction"
+    | "stage_transition"
+    | "force_advance"; // operator-visible audit of an assistant override
   studentId?: string;
   stageId?: string;
   promptVersion?: string;

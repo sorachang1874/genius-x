@@ -75,6 +75,11 @@ Track temporary fallbacks/bridges so they don't become silent normal paths.
 
 Changes to frozen `contracts-v0` must go through the lead, then re-tag (v0.1, …).
 
+contracts evolved **v0 → v1** (tag `contracts-v1`) after two independent reviews (Claude +
+Codex): opaque stage/memory/artifact/output ids, composable+scoped advance conditions,
+generic per-student variants, typed runtime state, FORCE_ADVANCE on the wire, ref-typed
+`STAGE_COMPLETE` payloads (privacy), full `ClassSession`, reducer effect-commands.
+
 | # | Amendment | Why | When | Status |
 | --- | --- | --- | --- | --- |
-| C1 | Shape stage: per-variant interaction (A-line `image_gen` + B-line `structured_qa`) | v0 `StageConfig.aiInteraction` holds one interaction; the shape stage needs one per variant. lesson-001 ships A-line only for now (D2 primary path). | before B-line (M3+) | open |
+| C1 | Shape stage: per-variant interaction (A-line + B-line) | needed a per-variant interaction shape | contracts-v1 | **resolved** — generic `StageVariant` model; lesson-001 ships both A/B |

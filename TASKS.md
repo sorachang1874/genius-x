@@ -13,7 +13,7 @@ XState stage machine + Socket.IO classroom sync + reconnect/resume, driven by `l
 
 | ID | Task | Owner | Paths | Depends on | Parallel-safe |
 | --- | --- | --- | --- | --- | --- |
-| LEAD-A1 | Contracts amendment: session join req/resp types (→ re-tag `contracts-v0.1`) | Lead/E | `packages/contracts` | — | serialize first |
+| LEAD-A1 | ✅ DONE — folded into **contracts-v1** (session join types added; full generic engine contract applied + tagged) | Lead/E | `packages/contracts` | — | done |
 | C-M1a | XState stage machine (states=stages, guards from per-student status), consumes `lesson001` | C | `apps/server/src/engine` | contracts v0 | yes |
 | C-M1b | Socket.IO sync + authoritative session state (HELLO/RESUME_STATE, ASSISTANT_UNLOCK→STAGE_UNLOCK, STAGE_COMPLETE, GLOBAL_STATE) | C | `apps/server/src/sync`, `.../session` | C-M1a, LEAD-A1 | no |
 | C-M1c | Reconnect/resume + Redis session persistence + crash recovery | C | `apps/server/src/session` | C-M1b | no |

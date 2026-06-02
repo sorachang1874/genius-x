@@ -1,11 +1,19 @@
 /**
- * Student data model — contracts v0 (frozen v0).
- * Source: PRD §6, §7.5. Privacy/retention rules: docs/contracts/data-and-privacy.md.
+ * Student data model — contracts v1. Source: PRD §6, §7.5. Privacy/retention:
+ * docs/contracts/data-and-privacy.md.
+ *
+ * KEY CHANGE (post review): runtime state splits **engine-owned typed fields** from
+ * **config-declared opaque outputs** — so a new lesson's outputs never force a contract
+ * migration. Stage/memory/artifact ids are opaque (validated against the loaded lesson).
  */
 import type {
   StageId,
   ArtifactType,
   MemoryKey,
+  OutputKey,
+  RuntimeValue,
+  StageStatus,
+  GlobalState,
 } from "./enums.js";
 
 export interface StudentProfile {
@@ -21,31 +29,31 @@ export interface StudentProfile {
 }
 
 export interface GeniusX {
-  name?: string; // confirmed in Lesson 2 (D1) — stays optional in Lesson 1
-  avatarUrl?: string; // chosen in shape stage
-  personalityTag?: string; // extracted in talent
-  backgroundSetting?: string; // from shape choices
+  name?: string; // confirmed in Lesson 2 (D1) — optional in Lesson 1
+  avatarUrl?: string;
+  personalityTag?: string;
+  backgroundSetting?: string;
   memories: Memory[];
   birthdaySpeech?: string;
 }
 
 export interface Memory {
-  key: MemoryKey;
+  key: MemoryKey; // opaque, config-declared
   value: string;
-  collectedAt: string; // source stage id
+  collectedAt: StageId; // source stage id
   lessonId: number;
 }
 
 export interface Progress {
   currentLesson: number;
   currentPhase: number;
-  completedStages: StageId[];
+  completedStageIds: StageId[]; // opaque ids
   badges: string[];
 }
 
 export interface Artifact {
   id: string;
-  type: ArtifactType;
+  type: ArtifactType; // opaque, config-declared
   contentUrl?: string;
   contentText?: string;
   lessonId: number;
@@ -60,24 +68,34 @@ export interface BirthCertificate {
   avatarUrl: string;
   personalityTag: string;
   backgroundSetting: string;
-  memories: { label: string; value: string }[]; // up to 3 shown
-  birthdaySpeech: string; // TTS audio URL or text
+  memories: { label: string; value: string }[];
+  birthdaySpeech: string;
   generatedAt: string; // ISO
   lessonId: number;
 }
 
-/** Live class session — Redis during class, archived to Postgres after (PRD §6.2). */
+// --- Live runtime state (Redis during class, archived to Postgres after) ---
+
+/** Per-student state the engine reduces + guards read. Engine fields are typed; lesson
+ *  outputs are opaque (config-declared) so new lessons add outputs without a contract change. */
+export interface StudentRuntimeState {
+  /** Engine-owned, typed. */
+  stageStatus: Record<StageId, StageStatus>;
+  interactionCounts: Record<StageId, number>;
+  completedInteractionIds: string[];
+  selectedVariant: Record<StageId, string>; // stageId → variantId
+  /** Config-declared outputs (e.g. "avatarUrl"). Keys must be in lesson.declaredOutputs. */
+  outputs: Record<OutputKey, RuntimeValue>;
+}
+
 export interface ClassSession {
   sessionId: string;
   lessonId: string;
+  lessonConfigVersion: string; // resume only against a matching version (fail closed)
   classId: string;
-  currentStage: StageId; // authoritative class-wide state
+  currentStageId: StageId; // authoritative class-wide state
+  global: GlobalState;
   stageStartTime: string; // ISO
-  students: Record<string, StudentSessionState>;
+  students: Record<string, StudentRuntimeState>;
   assistants: string[];
-}
-
-export interface StudentSessionState {
-  stageStatus: "waiting" | "in_progress" | "completed";
-  stageData: Record<string, unknown>;
 }
