@@ -47,8 +47,8 @@ model** (on-VPS tasks). Protocol: `docs/agents/README.md`.
 | E | contracts, docs, **test harness** (`packages/contracts`, `docs/`) | Claude Code (lead) |
 | F | platform shadow (`apps/cms`, `packages/auth`, `tools/`) | Codex / Aider |
 
-> **Gate: contracts v0 must be frozen by the lead before B–F fan out.** Agent A (contracts)
-> runs first and alone; founder reviews → freezes → then parallel work begins.
+> **Gate: contracts v0 (authored by the lead / Agent E) must be frozen before the other
+> agents fan out.** Founder reviews → freezes → then A–D and F work in parallel.
 
 ## Milestones
 
