@@ -13,7 +13,7 @@ import { startClassroomServer, type ServerHandle } from "./server";
 const NOW = "2026-06-03T00:00:00.000Z";
 
 function fresh(): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, outputs: {} };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} };
 }
 function seed(): ClassSession {
   return {
@@ -86,7 +86,7 @@ describe("E-M1 — Lesson 1 over the real socket", () => {
     // force-advance for this M1 smoke
     send({ type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" });
     await waitFor(unlocked("birth"));
-    send({ type: "STAGE_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "interaction", interactionId: "b1" } });
+    send({ type: "STAGE_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "done" } });
     send({ type: "TEACHER_UNLOCK", stageId: "closure" });
     await waitFor(unlocked("closure"));
 

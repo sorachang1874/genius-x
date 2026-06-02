@@ -11,7 +11,7 @@ function session(): ClassSession {
     currentStageId: "intro",
     global: "active",
     stageStartTime: "2026-06-03T00:00:00.000Z",
-    students: { k1: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, outputs: {} } },
+    students: { k1: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} } },
     assistants: ["a1"],
   };
 }

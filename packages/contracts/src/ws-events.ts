@@ -13,19 +13,37 @@ export type AudioRef = string;
 export type ImageRef = string;
 export type DoodleRef = string;
 
-/** What a student submits to complete (part of) a stage. Typed — no raw audio, no `unknown`. */
+/** A student's interaction INPUT (drives an AI call). Typed — refs, never raw bytes. */
+export type InteractionInput =
+  | { kind: "voice"; audioRef: AudioRef } // icebreak, talent follow-up
+  | { kind: "doodle"; doodleRef: DoodleRef } // shape A-line
+  | { kind: "answers"; answersByQuestionId: Record<string, string> } // shape B-line dialogue
+  | { kind: "talentOption"; option: string } // talent pick
+  | { kind: "talentAnswer"; option?: string; audioRef: AudioRef }
+  | { kind: "playPrepared"; interactionId: string }; // birth: play pre-generated speech
+
+/** A student's CHOICE / finish (not an interaction). Source: D-M2 v2 (Codex #3). */
 export type StageCompletePayload =
-  | { kind: "voice"; audioRef: AudioRef }
-  | { kind: "doodle"; doodleRef: DoodleRef }
-  | { kind: "variantChoice"; variantId: string }
   | { kind: "selection"; output: OutputKey; value: RuntimeValue } // e.g. avatar chosen
-  | { kind: "interaction"; interactionId: string };
+  | { kind: "variantChoice"; variantId: string } // chose shape A vs B line
+  | { kind: "done" }; // finished this stage's required action
+
+/** Child-renderable AI output — NOT AiResult (meta stays server-side). Source: D-M2 v2 (Codex #4). */
+export type OutputKind = "text" | "audio" | "images";
+export interface ClientAiOutput {
+  text?: string;
+  audioUrl?: string;
+  imageUrls?: string[];
+}
 
 /** Server → client. */
 export type ServerMessage =
   | { type: "STAGE_UNLOCK"; stageId: StageId }
   | { type: "GLOBAL_STATE"; state: GlobalState }
-  | { type: "AI_READY"; studentId: string; stageId: StageId }
+  | { type: "AI_READY"; studentId: string; stageId: StageId; interactionId: string; outputKind: OutputKind }
+  | { type: "AI_OUTPUT"; studentId: string; stageId: StageId; interactionId: string; output: ClientAiOutput }
+  /** Project a child's renderable output to the teacher/big-screen audience (REQUEST_PROJECTION). */
+  | { type: "PROJECT"; studentId: string; output: ClientAiOutput }
   /** Full resume payload: enough to restore the client without inventing state. */
   | {
       type: "RESUME_STATE";
@@ -49,6 +67,15 @@ export type ClientMessage =
       assistantId: string;
       reason?: string;
       expectedCurrentStageId?: StageId;
+    }
+  /** An interaction input (triggers an AI call). interactionId makes the lifecycle idempotent. */
+  | {
+      type: "INTERACT";
+      studentId: string;
+      stageId: StageId;
+      interactionId: string;
+      variantId?: string;
+      input: InteractionInput;
     }
   | {
       type: "STAGE_COMPLETE";

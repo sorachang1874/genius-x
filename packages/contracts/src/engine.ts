@@ -5,21 +5,22 @@
  * agents inventing incompatible side-effect shapes. See docs/architecture/lesson-runtime.md.
  */
 import type { StageId, GlobalState, UnlockBy } from "./enums";
-import type { StageCompletePayload, ServerMessage } from "./ws-events";
+import type { StageCompletePayload, InteractionInput, ServerMessage } from "./ws-events";
 import type { TraceEvent } from "./ai-response";
 import type { ClassSession } from "./student";
 
 /** Inputs the reducer folds over. */
 export type EngineEvent =
   | { type: "UNLOCK"; role: UnlockBy; stageId: StageId; assistantId?: string }
+  | { type: "INTERACT"; studentId: string; stageId: StageId; interactionId: string; variantId?: string; input: InteractionInput }
   | { type: "STUDENT_COMPLETE"; studentId: string; stageId: StageId; payload: StageCompletePayload }
   | { type: "INTERACTION_DONE"; studentId: string; stageId: StageId; interactionId: string; degraded: boolean }
   | { type: "GLOBAL"; state: GlobalState }
-  | { type: "FORCE_ADVANCE"; stageId: StageId; assistantId: string; reason?: string };
+  | { type: "FORCE_ADVANCE"; stageId: StageId; assistantId: string; reason?: string; expectedCurrentStageId?: StageId };
 
 /** Effects the reducer emits (executed by the runtime, never inside reducer logic). */
 export type EngineCommand =
-  | { type: "CALL_INTERACTION"; studentId: string; stageId: StageId; variantId?: string }
+  | { type: "CALL_INTERACTION"; studentId: string; stageId: StageId; interactionId: string; variantId?: string; input: InteractionInput }
   | { type: "BROADCAST"; message: ServerMessage }
   | { type: "PERSIST" }
   | { type: "TRACE"; event: TraceEvent };

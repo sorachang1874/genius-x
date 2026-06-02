@@ -47,7 +47,10 @@ function reduce(
         forced: true,
         assistantId: event.assistantId,
         reason: event.reason,
+        expectedStageId: event.expectedCurrentStageId,
       });
+    case "INTERACT":
+      return onInteract(lesson, state, now, event);
     case "STUDENT_COMPLETE":
       return onStudentComplete(lesson, state, now, event);
     case "INTERACTION_DONE":
@@ -75,6 +78,7 @@ interface AdvanceArgs {
   forced: boolean;
   assistantId?: string | undefined;
   reason?: string | undefined;
+  expectedStageId?: string | undefined;
 }
 
 function tryAdvance(
@@ -94,6 +98,8 @@ function tryAdvance(
   if (args.forced) {
     if (args.assistantId === undefined || !state.assistants.includes(args.assistantId))
       return denied(state, now, `force-advance by unknown assistant ${String(args.assistantId)}`);
+    if (args.expectedStageId !== undefined && args.expectedStageId !== state.currentStageId)
+      return denied(state, now, `stale expectedCurrentStageId ${args.expectedStageId} != ${state.currentStageId}`);
   } else {
     if (args.role !== next.unlock)
       return denied(state, now, `role ${String(args.role)} cannot unlock ${nextId}`);
@@ -155,17 +161,20 @@ function onInteractionDone(
     return denied(state, now, `INTERACTION_DONE for ${event.stageId}, current is ${state.currentStageId}`);
   const s = state.students[event.studentId];
   if (!s) return denied(state, now, `unknown student ${event.studentId}`);
-  // idempotent: a duplicate interaction id must not inflate the count
-  if (s.completedInteractionIds.includes(event.interactionId)) {
+  // only a PENDING interaction counts — late/duplicate/stale completions are dropped (idempotent)
+  if (!s.pending[event.interactionId]) {
     return {
       state,
       commands: [
-        { type: "TRACE", event: mkTrace(now, "interaction", { duplicate: true, interactionId: event.interactionId, studentId: event.studentId }) },
+        { type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "not_pending", interactionId: event.interactionId, studentId: event.studentId }) },
       ],
     };
   }
+  const { [event.interactionId]: _cleared, ...pending } = s.pending;
+  void _cleared;
   const nextS: StudentRuntimeState = {
     ...s,
+    pending,
     interactionCounts: { ...s.interactionCounts, [event.stageId]: (s.interactionCounts[event.stageId] ?? 0) + 1 },
     completedInteractionIds: [...s.completedInteractionIds, event.interactionId],
   };
@@ -199,9 +208,7 @@ function payloadError(lesson: LessonConfig, stage: StageConfig, payload: StageCo
       return (stage.variants ?? []).some((v) => v.id === payload.variantId)
         ? null
         : `variant "${payload.variantId}" not in stage "${stage.stageId}"`;
-    case "voice":
-    case "doodle":
-    case "interaction":
+    case "done":
       return null;
     default: {
       const _exhaustive: never = payload;
@@ -239,15 +246,37 @@ function applyCompletion(s: StudentRuntimeState, stageId: StageId, payload: Stag
       return { ...base, outputs: { ...base.outputs, [payload.output]: payload.value } };
     case "variantChoice":
       return { ...base, selectedVariant: { ...base.selectedVariant, [stageId]: payload.variantId } };
-    case "voice":
-    case "doodle":
-    case "interaction":
+    case "done":
       return base;
     default: {
       const _exhaustive: never = payload;
       return _exhaustive;
     }
   }
+}
+
+/** Accept an interaction input: record it pending (idempotent/stage-checked) + emit CALL_INTERACTION. */
+function onInteract(
+  lesson: LessonConfig,
+  state: ClassSession,
+  now: string,
+  event: Extract<EngineEvent, { type: "INTERACT" }>,
+): EngineResult {
+  if (event.stageId !== state.currentStageId)
+    return denied(state, now, `INTERACT for ${event.stageId}, current is ${state.currentStageId}`);
+  if (!stageById(lesson, state.currentStageId)) return denied(state, now, `unknown stage ${state.currentStageId}`);
+  const s = state.students[event.studentId];
+  if (!s) return denied(state, now, `unknown student ${event.studentId}`);
+  const nextS: StudentRuntimeState = {
+    ...s,
+    pending: { ...s.pending, [event.interactionId]: { stageId: event.stageId } },
+  };
+  const nextState: ClassSession = { ...state, students: { ...state.students, [event.studentId]: nextS } };
+  const call: EngineCommand =
+    event.variantId !== undefined
+      ? { type: "CALL_INTERACTION", studentId: event.studentId, stageId: event.stageId, interactionId: event.interactionId, variantId: event.variantId, input: event.input }
+      : { type: "CALL_INTERACTION", studentId: event.studentId, stageId: event.stageId, interactionId: event.interactionId, input: event.input };
+  return { state: nextState, commands: [call, { type: "PERSIST" }] };
 }
 
 function mkTrace(now: string, kind: TraceEvent["kind"], payload: Record<string, unknown>, stageId?: StageId): TraceEvent {
