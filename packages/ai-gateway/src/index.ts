@@ -1,13 +1,16 @@
 /**
- * @genius-x/ai-gateway — single entry point for all AI calls. SKELETON.
- *
- * Planned internal layers (see docs/contracts/ai-gateway.md and PRD §5.2):
- *   request-builder → safety-filter (input) → token-budget → provider-router
- *     → safety-filter (output) → fallback (on fail/timeout/filtered) → audit-logger
- *
- * Capability surface to implement: llm(), tts(), asr(), imageGen() — each behind the
- * same safety/budget/routing/fallback pipeline, routing among `ProviderAdapter`s.
+ * @genius-x/ai-gateway — single entry point for all AI calls.
+ * M2a: gateway core (capabilities + safety + budget + routing + fallback + audit) on fake
+ * providers. Real Tencent adapters + 天御 moderation, and the interaction wiring (M2b), follow.
  */
+export { AiGateway } from "./gateway";
+export type { GatewayDeps, ExtractMemoryRequest } from "./gateway";
+export { KeywordSafetyFilter } from "./safety";
+export type { SafetyFilter } from "./safety";
+export { PresetFallbackLibrary } from "./fallback";
+export type { FallbackLibrary } from "./fallback";
+export { FakeProvider } from "./providers/fake";
+export type { FakeContent } from "./providers/fake";
 export type {
   ProviderAdapter,
   LlmRequest,
@@ -19,4 +22,3 @@ export type {
   FakeBehavior,
   FakeProviderConfig,
 } from "./providers/types";
-export { FakeProvider } from "./providers/fake";
