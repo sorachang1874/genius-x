@@ -1,13 +1,15 @@
 # Contract: Course Engine (stage state machine + classroom sync)
 
-> Status: **skeleton** — fill before implementing M1. Typed in `@genius-x/contracts`.
+> Owner: **Agent C** (`apps/server`). Boundary contract — frozen at the interface level
+> before fan-out; internal design via per-task design note (docs/agents). Types:
+> `@genius-x/contracts` (ws-events, enums, student). Built on XState + Socket.IO.
 
 ## Purpose
 
-Govern how a class progresses through lesson stages and how that state syncs across
-student iPads, the assistant, and the teacher screen over WebSocket.
+Drive one class through the lesson stage sequence and keep that state in sync across student
+iPads, the assistant, and the teacher screen. The server holds **authoritative** state.
 
-## Stages (PRD §4.1)
+## Stage machine (PRD §4.1)
 
 `standby → intro → icebreak → shape → talent → birth → closure`
 
@@ -20,20 +22,42 @@ student iPads, the assistant, and the teacher screen over WebSocket.
 | birth | assistant | all children done |
 | closure | teacher | — |
 
-## Owner matrix (fill in)
+## Public interface
 
-| Field | Owner | Source of truth | Allowed values | Derivation | Consumers | Fallback | Deletion condition | Preflight |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `currentStage` | course runtime | session state (Redis) | the 7 StageIds | reducer on unlock events | student UI, assistant UI | none | — | stage parity test |
-| `stageStatus` (per student) | course runtime | session state | waiting / in_progress / completed | set on stage events | assistant UI | none | — | — |
+**WebSocket** (Socket.IO; message types in `@genius-x/contracts` ws-events):
+- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
+- Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_READY`, `RESUME_STATE`
 
-## WebSocket messages (PRD §8.1) — define in @genius-x/contracts
+**HTTP** (typed via contracts):
+- `POST /session/join` → `{ studentId, sessionId }` (room-code/QR; no password — see client-server)
+- `GET /session/:id/state` → current `ClassSession` projection (read model; fail closed if absent)
 
-- Server → client: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_READY`
-- Client → server: `STAGE_COMPLETE`, `ASSISTANT_UNLOCK`, `REQUEST_PROJECTION`
+## Consumes / Produces
 
-## Failure behavior
+- **Consumes:** `@genius-x/course-config` (`lesson001`), `@genius-x/ai-gateway` (all AI),
+  `@genius-x/config` (mode), Redis (live `ClassSession`), Postgres (archive profiles/artifacts).
+- **Produces:** `ServerMessage` events; persisted `StudentProfile` + `Artifact`; AI calls to
+  the gateway. **Never calls a provider directly.**
 
-- Reconnect with exponential backoff; on reconnect, request current class state and resume.
-- The state machine must advance independently of AI success.
-- Profiles/artifacts persist after each interaction (no data loss on refresh).
+## SLOs
+
+| Metric | Target |
+| --- | --- |
+| WS state sync (unlock → student render) | ≤ 500 ms |
+| Concurrent students | ≥ 15 |
+| Crashes during class | 0 |
+| Persistence | profile/artifact written after each AI interaction |
+| Reconnect/resume | refreshed iPad resumes to current stage |
+
+## Acceptance criteria (testable on the harness)
+
+- Only legal transitions occur; illegal ones return `STAGE_TRANSITION_DENIED` (logged, not shown).
+- `ASSISTANT_UNLOCK` propagates `STAGE_UNLOCK` to all class students ≤ 500 ms.
+- After an iPad refresh, `HELLO` → `RESUME_STATE` restores the current stage + global state.
+- The machine advances **regardless of AI success** (gateway returns a fallback; class proceeds).
+- A simulated crash mid-class recovers current stage from persisted session state.
+
+## Failure mode
+
+**Primary path.** Reducers/command-owner generate downstream transitions — workers do not
+self-advance stages. Read models fail closed (return explicit readiness), never repair state.

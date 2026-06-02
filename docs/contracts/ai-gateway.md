@@ -1,45 +1,64 @@
 # Contract: AI Gateway
 
-> Status: **skeleton** — fill before implementing M2. Code: `packages/ai-gateway`.
+> Owner: **Agent D** (`packages/ai-gateway`). Boundary contract — public capability surface
+> frozen before fan-out; provider routing/internals via per-task design note. Types:
+> `@genius-x/contracts` (ai-response). Reuse: Vercel AI SDK + Zod, Tencent adapters, 天御.
 
 ## Purpose
 
-The single entry point for all AI calls (LLM / TTS / ASR / image gen). Business code never
-touches a provider SDK directly. The gateway owns safety, budget, routing, fallback, audit.
+The single entry point for all AI. Business code calls these capability methods; the gateway
+owns prompt building, input/output safety, budget, provider routing, fallback, and audit.
+Provider choice (D3) is internal and swappable.
 
-## Pipeline (PRD §5.2)
+## Public interface (what Agent C calls)
+
+| Method | Input | Output |
+| --- | --- | --- |
+| `llm(req)` | promptVersion + input | `LlmTextResult` |
+| `tts(req)` | text | `TtsResult` |
+| `asr(req)` | audio **ref** (not raw audio) | `AsrResult` |
+| `imageGen(req)` | img2img/text2img source + count | `ImageGenResult` (moderated) |
+| `extractMemory(input)` | child utterance | `MemoryExtraction` |
+| `birthSpeech(profile)` | name + memories + tag | `LlmTextResult` |
+
+Every result carries `AiMeta { source, degraded, promptVersion?, latencyMs? }`. **Methods
+never throw to the caller** — on any failure they return a fallback with `degraded: true`.
+
+## Internal pipeline (PRD §5.2)
 
 ```
-request-builder → safety-filter(input) → token-budget → provider-router
-  → safety-filter(output) → fallback(on fail/timeout/filtered) → audit-logger
+request-builder → safety(input) → token-budget → provider-router (ProviderAdapter)
+  → safety(output) → fallback(on fail/timeout/filtered/schema-miss) → audit (TraceSink)
 ```
 
-## Provider routing — intentionally NOT a frozen contract
+Provider routing is **not a frozen contract** (swappable). What IS contractual: the methods
+above and their output schemas (`@genius-x/contracts`).
 
-Routing is a flexible abstraction: primary/fallback providers are swappable by design.
-What IS contractual: the gateway's **public capability interface** and its **output
-schemas** (validated, in `@genius-x/contracts`) — callers depend on those, not on which
-provider answered.
+## Consumes / Produces
 
-## Fallback / degradation
+- **Consumes:** `ProviderAdapter` (fake in scripted mode / Tencent in live), git prompt
+  templates (versioned), 天御 moderation, `TraceSink` (shadow — fire-and-forget).
+- **Produces:** validated `AiResult` (always), `SafetyResult`, redacted trace events.
 
-- Preset fallback responses per stage (PRD §5.3.3). Used on timeout / failure / filtered.
-- **Invisible to the child; every use is logged + counted + surfaced in metrics**
-  (see `safety.md` and the degradation principle in `AGENTS.md`).
-- Switch policy: primary fails 3× → secondary; secondary fails → local fallback library.
+## SLOs (PRD §10.1)
 
-## Token / cost budget (PRD §5.4)
+| Capability | Budget | On breach |
+| --- | --- | --- |
+| `llm` | ≤ 8 s | fallback (`degraded:true`, logged) |
+| `tts` first packet | ≤ 2 s | fallback line |
+| `imageGen` | ≤ 15 s | preset illustration |
+| budget | input ≤500 / output ≤150 tok; ≤20k tok/student/class | truncate or fallback, never error |
 
-Per-request and per-student-per-class ceilings; on exceed → truncate or fallback, **never
-error to the child**. Treat budgets as tunable config, not a hard-frozen contract.
+## Acceptance criteria (testable on the harness)
 
-## Prompt templates
+- On provider error/timeout/filtered/schema-miss → a fallback is returned (`degraded:true`)
+  and the fallback is **counted/logged** (operator-visible degradation).
+- Filtered/unsafe output never reaches the caller.
+- `imageGen` output is moderated (天御 IMS) before return.
+- No raw child audio is persisted (asr takes a ref; data-and-privacy).
+- A `TraceSink` outage does not slow or break any call (shadow).
 
-Each template (`icebreak_v1`, ...) is a versioned contract — see the playbook
-`PROMPT_CONTRACT.template.md`: input vars, output schema, eval set, safety constraints,
-fallback responses. Versioned for audit, review, batch eval comparison, and rollback.
+## Failure mode
 
-## Audit
-
-Every request/response logged (redacted). Do not store raw child audio (PRD §10.3):
-discard audio immediately after ASR.
+**Primary** (the gateway + fallback library). Providers may fail → fallback. TraceSink is
+**shadow** (must not affect calls). Prompts load from git, not a runtime Langfuse dependency.

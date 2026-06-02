@@ -35,6 +35,11 @@ What must NOT change.
 - Libraries/patterns to use (e.g. XState, Socket.IO, Vercel AI SDK + Zod).
 - Patterns to borrow; pitfalls to avoid.
 
+## Design note (submit BEFORE coding — lead reviews & approves)
+
+Against the module's boundary contract, state: internal architecture, key modules/types,
+approach, alternatives considered, risks. Do not write code until the lead approves this.
+
 ## Validation (Definition of Done)
 
 ```sh

@@ -37,11 +37,16 @@ lead owns the merge.
    `docs/agents/_TASK_BRIEF.template.md`): goal, non-goals, owned paths, frozen-contract
    refs (read-only), context docs to read, validation commands, DoD checklist, do-not-touch
    list, anti-gaming rules, handoff format.
-4. **Fan out**: one **worktree + branch + PR** per task. Assign each worktree its own port
+4. **Design note + review (before coding).** The owning agent writes a short internal
+   design note (architecture, key types/modules, approach, risks) against the module's
+   boundary contract. **Lead reviews and approves before any code is written.** This is the
+   Layer-2 gate: boundary contracts are frozen up front; internal design is caught here, not
+   pre-frozen (avoids both integration drift and big-design-up-front waste).
+5. **Fan out**: one **worktree + branch + PR** per task. Assign each worktree its own port
    and test DB/schema. Gitignore the worktrees dir; use `.worktreeinclude` for `.env`.
-5. **DoD gate** (CI on the PR, in order): contract preflight → `tsc --noEmit` → lint →
+6. **DoD gate** (CI on the PR, in order): contract preflight → `tsc --noEmit` → lint →
    unit tests → scripted Lesson-1 smoke (fake providers). All green = mergeable, not merged.
-6. **Review**: lead/founder reads each PR's diff for *semantic* correctness and
+7. **Review**: lead/founder reads each PR's diff for *semantic* correctness and
    over-refactoring (CI already vouches for non-breakage). Merge to main manually.
 
 ## Definition of Done (anti-gaming)
