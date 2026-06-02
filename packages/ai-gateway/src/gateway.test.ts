@@ -155,4 +155,32 @@ describe("AiGateway — hardened boundary", () => {
     const r = await gw.llm({ promptVersion: "icebreak_v1", input: "你好" });
     expect(r.meta.degraded).toBe(true);
   });
+
+  it("tts/asr/imageGen fall back on a malformed provider result", async () => {
+    const bad = { capability: "x" } as never;
+    expect((await gatewayWith(stub({ tts: async () => bad })).gw.tts({ text: "h" })).meta.degraded).toBe(true);
+    expect((await gatewayWith(stub({ asr: async () => bad })).gw.asr({ audioRef: "r" })).meta.degraded).toBe(true);
+    expect((await gatewayWith(stub({ imagePoll: async () => bad })).gw.imageGen({ kind: "img2img", source: "r", count: 3 })).meta.degraded).toBe(true);
+  });
+
+  it("falls back on invalid AiMeta (bad source/degraded)", async () => {
+    const provider = stub({ llm: async () => ({ capability: "llm", text: "x", meta: { source: "bogus", degraded: "no" } } as unknown as Awaited<ReturnType<ProviderAdapter["llm"]>>) });
+    const r = await gatewayWith(provider).gw.llm({ promptVersion: "icebreak_v1", input: "你好" });
+    expect(r.meta.degraded).toBe(true);
+  });
+
+  it("imageGen falls back when a single poll never settles", async () => {
+    const provider = stub({ imagePoll: () => new Promise(() => {}) }); // never resolves
+    const { gw } = gatewayWith(provider, { image: 60 });
+    const img = await gw.imageGen({ kind: "img2img", source: "ref", count: 3 });
+    expect(img.meta.degraded).toBe(true);
+  });
+
+  it("falls back when an injected image moderator blocks the result", async () => {
+    const events: TraceEvent[] = [];
+    const deps: GatewayDeps = { provider: new FakeProvider(), safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace: { record: (e) => events.push(e) }, now: () => NOW, imageModerator: async () => ({ ok: false, reasons: ["nsfw"] }) };
+    const img = await new AiGateway(deps).imageGen({ kind: "img2img", source: "r", count: 3 });
+    expect(img.meta.degraded).toBe(true);
+    expect(events.some((e) => e.kind === "safety")).toBe(true);
+  });
 });

@@ -18,7 +18,7 @@ boundary (the gateway), not scattered across consumers.
 | --- | --- | --- |
 | Keyword pre-filter | in-process child-safety word list | replace with fallback |
 | 天御 TMS (text) | Tencent text moderation, minor-protection mode | block + fallback |
-| 天御 IMS (image) | moderate doodle input + every generated image before display | block + fallback |
+| 天御 IMS (image) | moderate doodle input + every generated image before display (gateway has an `imageModerator` seam; real IMS injected in M6) | block + fallback |
 | Length / format | output token cap (~150); detect broken JSON / code / URL / PII | truncate / fallback |
 
 ## Consumes / Produces

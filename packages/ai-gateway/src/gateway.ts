@@ -41,6 +41,8 @@ export interface GatewayDeps {
   now: () => string;
   /** Per-capability latency budgets (PRD §10.1). Defaults applied if omitted. */
   timeouts?: { llm?: number; tts?: number; asr?: number; image?: number };
+  /** Image moderation seam (天御 IMS in M6). If omitted, M2a traces that it is deferred. */
+  imageModerator?: (imageUrls: string[]) => Promise<{ ok: boolean; reasons: string[] }>;
 }
 
 const DEFAULT_TIMEOUTS = { llm: 8000, tts: 2000, asr: 8000, image: 15000 };
@@ -92,7 +94,16 @@ export class AiGateway {
       const job = await withTimeout(this.d.provider.imageSubmit(req), this.timeout("image"));
       const r = await this.pollImage(job, this.timeout("image"));
       assertImage(r);
-      // NOTE: image content moderation (天御 IMS, before display) is deferred to M6.
+      // Moderate before returning (天御 IMS). M2a: seam present; real moderator injected in M6.
+      if (this.d.imageModerator) {
+        const mod = await this.d.imageModerator(r.imageUrls);
+        if (!mod.ok) {
+          this.emit("safety", { capability: "image_gen", reasons: mod.reasons });
+          return this.d.fallback.imageGen(req.count);
+        }
+      } else {
+        this.emit("interaction", { capability: "image_gen", note: "moderation_deferred_m6" });
+      }
       this.emit("ai_response", { capability: "image_gen" });
       return r;
     } catch (e) {
@@ -134,10 +145,13 @@ export class AiGateway {
   private async pollImage(job: ImageJob, budgetMs: number): Promise<ImageGenResult> {
     const deadline = Date.now() + budgetMs;
     const step = Math.min(200, Math.max(10, Math.floor(budgetMs / 50)));
-    for (let attempts = 0; Date.now() < deadline && attempts < 200; attempts++) {
-      const r = await this.d.provider.imagePoll(job);
+    for (let attempts = 0; attempts < 200; attempts++) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      // bound EACH poll too, so a never-settling poll promise can't hang past the deadline
+      const r = await withTimeout(this.d.provider.imagePoll(job), remaining);
       if (!("status" in r)) return r;
-      await delay(step);
+      await delay(Math.min(step, Math.max(0, deadline - Date.now())));
     }
     throw new Error("image_poll_timeout");
   }
@@ -184,21 +198,37 @@ function reason(e: unknown): string {
 }
 
 // --- runtime output validators (provider schema-miss → throw → fallback) ---
+function validMeta(m: unknown): boolean {
+  const o = m as { source?: unknown; degraded?: unknown } | null;
+  return (
+    !!o &&
+    (o.source === "primary" || o.source === "fallback" || o.source === "library") &&
+    typeof o.degraded === "boolean"
+  );
+}
 function assertLlm(r: unknown): asserts r is LlmTextResult {
   const o = r as Partial<LlmTextResult> | null;
-  if (!o || o.capability !== "llm" || typeof o.text !== "string" || !o.meta) throw new Error("schema_miss:llm");
+  if (!o || o.capability !== "llm" || typeof o.text !== "string" || !validMeta(o.meta)) throw new Error("schema_miss:llm");
 }
 function assertTts(r: unknown): asserts r is TtsResult {
   const o = r as Partial<TtsResult> | null;
-  if (!o || o.capability !== "tts" || typeof o.audioUrl !== "string" || !o.meta) throw new Error("schema_miss:tts");
+  if (!o || o.capability !== "tts" || typeof o.audioUrl !== "string" || !validMeta(o.meta)) throw new Error("schema_miss:tts");
 }
 function assertAsr(r: unknown): asserts r is AsrResult {
   const o = r as Partial<AsrResult> | null;
-  if (!o || o.capability !== "asr" || typeof o.transcript !== "string" || !o.meta) throw new Error("schema_miss:asr");
+  if (!o || o.capability !== "asr" || typeof o.transcript !== "string" || !validMeta(o.meta)) throw new Error("schema_miss:asr");
 }
 function assertImage(r: unknown): asserts r is ImageGenResult {
   const o = r as Partial<ImageGenResult> | null;
-  if (!o || o.capability !== "image_gen" || !Array.isArray(o.imageUrls) || !o.meta) throw new Error("schema_miss:image");
+  if (
+    !o ||
+    o.capability !== "image_gen" ||
+    !Array.isArray(o.imageUrls) ||
+    !o.imageUrls.every((u) => typeof u === "string") ||
+    !validMeta(o.meta)
+  ) {
+    throw new Error("schema_miss:image");
+  }
 }
 
 /** Parse the memory JSON. null = schema miss (not valid {key:string,value:string} or {key:null}). */
