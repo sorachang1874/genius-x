@@ -34,6 +34,20 @@ The product rule "no failure state" and the engineering rule "no hidden fallback
 Never make a fallback a silent normal path. If the AI gateway serves a fallback, it
 records that it did so.
 
+## Shadow systems must not break the classroom
+
+Platform infrastructure (Payload CMS, Better Auth, Langfuse, promptfoo) is **pluggable, not
+required**. Lesson 1 must run end-to-end if any of them is absent or down:
+
+- Lessons load from git (`lesson-001.json`) by default; Payload is an alternate source.
+- Students join via room-code/QR by default; full Better Auth RBAC is additive.
+- Tracing emits to a `TraceSink` fire-and-forget (async, timeout, errors swallowed); the
+  default sink is no-op/console. Langfuse down ⇒ classroom unaffected.
+- Prompts live in git (versioned files + `PROMPT_CONTRACT`); runtime prompt-fetch from
+  Langfuse is a later enhancement, not an MVP dependency.
+
+Each shadow system's contract doc must state `failure mode = does not affect the classroom`.
+
 ## Working rules
 
 Before changing files:
@@ -71,10 +85,33 @@ Define the contract in `docs/contracts/` **before** relying on the field.
 | B | Student classroom flow | `apps/web/src/student` |
 | C | Course runtime (state machine, WS, API) | `apps/server` |
 | D | AI gateway (safety, budget, routing, fallback) | `packages/ai-gateway` |
-| E | Contracts, schema, docs, tests | `packages/contracts`, `docs/contracts` |
+| E | Contracts, schema, docs, **test harness** | `packages/contracts`, `docs/`, smoke harness |
+| F | Platform shadow (CMS, auth, Langfuse, promptfoo) — pluggable | `apps/cms`, `packages/auth`, `tools/` |
 
 Avoid two agents editing the same contract or schema unless one lead owns the merge.
 Each handoff: changed files, what was validated, residual risk, next step.
+
+## Parallel and autonomous work
+
+Full protocol: `docs/agents/README.md`. Hard rules:
+
+1. **Contracts freeze before fan-out.** `@genius-x/contracts` + `docs/contracts/` are
+   authored/frozen by the lead before parallel work; workers import them **read-only**. A
+   contract change is re-serialized through the lead, never edited in a worker branch.
+2. **One owner-bounded task per agent**, on its own **worktree + branch + PR**. Assign each
+   worktree its own port and test DB. Never edit another agent's owned paths.
+3. **Never auto-merge to main.** CI (DoD gate) must be green; a human merges after review.
+4. **Definition of Done = evidence, not compilation.** Gate order: contract preflight →
+   typecheck → lint → unit → scripted Lesson-1 smoke (fake providers). No `--no-verify`,
+   `as any`, `.skip()`, or no-op stubs. The verifier is not the generator.
+5. **Author offshore, run in China.** Do not run foreign-model coding agents (esp. Claude
+   Code) on the Tencent VPS; they are IP-restricted in mainland China.
+
+## Single source of truth
+
+This file is read natively by Codex/Cursor/Gemini/Aider. Claude Code reads it via the
+`CLAUDE.md` → `@AGENTS.md` shim. Aider: launch with `--read AGENTS.md`. Do not maintain
+parallel rule files.
 
 ## Commands
 
