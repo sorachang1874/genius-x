@@ -17,7 +17,7 @@ Provider choice (D3) is internal and swappable.
 | `llm(req)` | promptVersion + input | `LlmTextResult` |
 | `tts(req)` | text | `TtsResult` |
 | `asr(req)` | audio **ref** (not raw audio) | `AsrResult` |
-| `imageGen(req)` | img2img/text2img source + count | `ImageGenResult` (moderated) |
+| `imageGen(req)` | img2img/text2img source + count | `ImageGenResult` (moderation seam; real 天御 IMS in M6) |
 | `extractMemory(input)` | child utterance | `MemoryExtraction` |
 | `birthSpeech(profile)` | name + memories + tag | `LlmTextResult` |
 

@@ -36,7 +36,8 @@ boundary (the gateway), not scattered across consumers.
 ## Acceptance criteria
 
 - Unsafe text/image never reaches a client (substituted by a fallback).
-- Generated images pass IMS **before** display; child input screened before prompting.
+- Generated images pass the gateway **moderation seam before return** (real 天御 IMS injected
+  in M6); child input screened before prompting.
 - Every block/fallback is recorded with cause; child sees only a positive output.
 - System-prompt constraints (PRD §5.3.1: role lock, simple/warm tone, no-go topics, identity
   boundary, on-topic, no code/URL/PII) are present in each prompt contract.

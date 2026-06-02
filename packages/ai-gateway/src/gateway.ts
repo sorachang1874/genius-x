@@ -90,13 +90,16 @@ export class AiGateway {
   }
 
   async imageGen(req: ImageGenRequest): Promise<ImageGenResult> {
+    // ONE end-to-end deadline for the whole capability (submit + poll + moderate) ≤ budget.
+    const deadline = Date.now() + this.timeout("image");
+    const remaining = (): number => Math.max(0, deadline - Date.now());
     try {
-      const job = await withTimeout(this.d.provider.imageSubmit(req), this.timeout("image"));
-      const r = await this.pollImage(job, this.timeout("image"));
+      const job = await withTimeout(this.d.provider.imageSubmit(req), remaining());
+      const r = await this.pollImage(job, deadline);
       assertImage(r);
       // Moderate before returning (天御 IMS). M2a: seam present; real moderator injected in M6.
       if (this.d.imageModerator) {
-        const mod = await this.d.imageModerator(r.imageUrls);
+        const mod = await withTimeout(this.d.imageModerator(r.imageUrls), remaining());
         if (!mod.ok) {
           this.emit("safety", { capability: "image_gen", reasons: mod.reasons });
           return this.d.fallback.imageGen(req.count);
@@ -141,10 +144,9 @@ export class AiGateway {
     }
   }
 
-  /** Poll for an image result, bounded by a deadline + max attempts (never spins forever). */
-  private async pollImage(job: ImageJob, budgetMs: number): Promise<ImageGenResult> {
-    const deadline = Date.now() + budgetMs;
-    const step = Math.min(200, Math.max(10, Math.floor(budgetMs / 50)));
+  /** Poll for an image result up to an absolute deadline (never spins forever; each poll bounded). */
+  private async pollImage(job: ImageJob, deadline: number): Promise<ImageGenResult> {
+    const step = Math.min(200, Math.max(10, Math.floor(this.timeout("image") / 50)));
     for (let attempts = 0; attempts < 200; attempts++) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
