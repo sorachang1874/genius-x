@@ -1,5 +1,10 @@
 # Design Note: C-M1 — Course Engine
 
+> ⚠️ **§2 SUPERSEDED** by `docs/architecture/lesson-runtime.md` — the engine is a **generic
+> config interpreter**, not a Lesson-1-hardcoded statechart. This note will be revised after
+> the generic runtime + LessonConfig v1 are approved. The sync/persistence/resume parts
+> (§3-§5) still stand.
+>
 > Status: **proposed, pending lead/founder approval** (Layer-2 gate). No code until approved.
 > Against boundary contracts: `course-engine.md`, `client-server.md`. Owner: Agent C.
 
