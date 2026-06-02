@@ -55,13 +55,14 @@ model** (on-VPS tasks). Protocol: `docs/agents/README.md`.
 | Phase | Goal | Status |
 | --- | --- | --- |
 | P0 | Scaffolding, env, docs, multi-agent protocol, GitHub remote | `done` |
-| P0.5 | **contracts v0 frozen** (`contracts-v0` tag) + typecheck-all + contract preflight (lesson-001 typed) + docker-compose (PG/Redis) + runtime config/modes + CI gate. *Remaining: fake-provider simulation harness + Lesson-1 smoke (lands with M2 — needs gateway).* | `in_progress` |
-| M1 | Course engine: XState stage machine + Socket.IO sync + reconnect/resume | `open` |
-| M2 | AI gateway: adapter interface + safety (天御) + budget + fallback library, on fake providers | `open` |
-| M3 | Stages 1-2: voice icebreak + image gen (A-line primary) + avatar select | `open` |
-| M4 | Stages 3-4: talent + memory extraction + birth certificate + TTS | `open` |
-| M5 | Closure + parent H5 + report | `open` |
-| M6 | Harden: full-flow + content-safety + real classroom rehearsal; swap in real Tencent providers | `open` |
+| P0.5 | contracts (→ `contracts-v1.1`) + typecheck-all + preflight + docker-compose + runtime modes + CI gate | `done` |
+| M1 | Course engine: generic reducer + guards + Zod validator + Socket.IO sync + persistence + resume (PR #1, #2) | `done` |
+| E-M1 | End-to-end smoke: drive Lesson 1 through the real socket/http with fake providers; assert flow + SLOs | `open` (next) |
+| M2 | AI gateway: adapter interface + safety (天御) + budget + fallback library + fake-provider simulation harness; wire `CALL_INTERACTION` | `open` |
+| M3 | Frontend (`apps/web`): Vite+React PWA; student stages 1-2 (voice icebreak + image gen, A-line) + assistant unlock panel + Socket.IO client | `open` |
+| M4 | Frontend+AI: talent + memory extraction + birth certificate + TTS; closure | `open` |
+| M5 | Parent H5 + report | `open` |
+| M6 | Harden: full-flow + content-safety + classroom rehearsal; swap in real Tencent providers | `open` |
 
 ## Deletion gates
 

@@ -6,40 +6,34 @@
 
 ## Current state
 
-Planning + foundation **complete**. **contracts-v1.1 frozen (GO)** — passed cross-model
-independent review (Claude + Codex/gpt-5.5). Engine = generic config-driven reducer. No
-business code yet. Ready for M1 (first code).
+**M1 complete.** Backend course engine works end-to-end in logic: generic config-driven
+reducer + guards + Zod validator (PR #1) + Socket.IO classroom sync + atomic session store +
+resume (PR #2). 42/42 server tests green on main. Contracts at `contracts-v1.1` (+`v1.2`
+TEACHER_UNLOCK). No frontend and no AI content yet.
 
-Done:
+Done: scaffolding · playbook · build-vs-reuse · multi-agent protocol + standing Codex review
+gate · GitHub remote + CI (typecheck+tests) · contracts v1.1 · docker-compose · runtime
+config · fake-provider harness skeleton · **M1 engine (reducer/guards/validator/sync/store/resume)**.
 
-- Scaffolding: pnpm monorepo, Python tools `.venv`, product docs in `docs/product/`.
-- Playbook optimized locally (`~/projects/ai-assisted-engineering-playbook`, not pushed).
-- Build-vs-reuse infra map; multi-agent collaboration protocol (`docs/agents/`) with a
-  standing **independent-review gate** (Codex CLI wired: `codex exec`, gpt-5.5).
-- GitHub private remote + CI (typecheck/preflight) merge gate.
-- **contracts-v1.1**: generic engine contract — opaque ids, composable+scoped advance
-  conditions, generic variants, typed `StudentRuntimeState`, `EngineEvent/Command/Result`,
-  ref-typed `STAGE_COMPLETE` (privacy), full `ClassSession` + resume. Tags: contracts-v0,
-  v1, v1.1.
-- `pnpm typecheck` green across 5 packages; `lesson-001` typed = contract preflight.
-- docker-compose (PG/Redis); `@genius-x/config` runtime modes; fake-provider harness skeleton.
-- M1 design artifacts: `TASKS.md`, Agent C brief, C-M1 design note (generic reducer).
+Process note: every contract + code change went through Claude+Codex cross-model review
+(NO-GO→GO loops). It repeatedly caught real bugs (privacy hole, enum leaks, write races,
+broadcast-before-persist). Keep using it.
 
-## Recent decisions
+## Next
 
-- D1 name in Lesson 2 · D2 both A/B lines (A primary; both now in lesson-001) · D3 provider-agnostic.
-- Engine = pure generic reducer over config (not XState). Primary vs shadow path.
-- Independent review gate is standing (different-model, Codex/gpt-5.5).
+E-M1 (end-to-end smoke with fake providers) → M2 (AI gateway + fakes wired to
+`CALL_INTERACTION`) → M3/M4 (frontend `apps/web` + AI content) = the path to a demo.
 
-## Open risks
+## Open risks / deferred
 
-- Fake-provider simulation harness runtime + Lesson-1 smoke still to build (M2 — needs gateway).
-- China: do not run Claude Code on the Tencent VPS (author offshore, run in China).
+- `apps/web` is empty — the frontend is the largest gap to a visual demo.
+- `CALL_INTERACTION` is a no-op until M2 — no AI content is produced yet.
+- In-process session mutex = single-instance only (multi-instance → Redis lock later).
+- Real Tencent providers deferred (D3); demo uses fakes. China: author offshore, run in China.
 
-## Handoff — next agent starts here (M1, Agent C, Claude Code)
+## Handoff — next agent starts here (E-M1, Agent E)
 
-1. Read: `AGENTS.md`, `docs/agents/README.md` + `briefs/C-M1-course-engine.md` +
-   `designs/C-M1-course-engine.md`, `docs/architecture/lesson-runtime.md`, `docs/contracts/`.
-2. Run: `pnpm install && pnpm typecheck`; `docker compose up -d` (PG/Redis).
-3. Build C-M1a (reducer + guard registry + Zod validator) on branch `c-m1-course-engine`;
-   design note already approved direction — implement, PR, independent review, never auto-merge.
+1. Read: `docs/agents/README.md`, `docs/architecture/lesson-runtime.md`, `apps/server/src/*`.
+2. Build a scripted end-to-end smoke: boot the server (in-memory store), a Socket.IO test
+   client + HTTP join, drive Lesson 1 intro→closure via the wire, assert sync + resume.
+3. Branch + PR + Codex review; never auto-merge.
