@@ -1,5 +1,5 @@
 /**
- * AI gateway response + safety + trace contracts — v0 (DRAFT, pending freeze).
+ * AI gateway response + safety + trace contracts — v0 (frozen v0).
  * Every AI result is validated at the gateway boundary before reaching a client.
  * Source: PRD §5. Reuse: Vercel AI SDK + Zod (Zod schemas back these types — added in
  * the gateway implementation, not here).

@@ -1,5 +1,5 @@
 /**
- * WebSocket classroom-sync messages — contracts v0 (DRAFT, pending freeze).
+ * WebSocket classroom-sync messages — contracts v0 (frozen v0).
  * Source: PRD §8.1. Carried over Socket.IO; the server holds authoritative state and
  * clients resume from it on reconnect (PRD §8.2).
  */

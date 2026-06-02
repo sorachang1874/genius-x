@@ -1,5 +1,5 @@
 /**
- * Stable error code registry — contracts v0 (DRAFT, pending freeze).
+ * Stable error code registry — contracts v0 (frozen v0).
  * Internal codes for logs/audit. NEVER surfaced to a child (no failure state, PRD §0):
  * the UI maps any error to a positive fallback, while ops sees the real code.
  */

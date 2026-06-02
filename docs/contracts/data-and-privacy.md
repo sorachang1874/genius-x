@@ -1,6 +1,6 @@
 # Contract: Data Asset & Privacy
 
-> Status: **v0 draft, pending freeze**. First-class, safety/legal-critical contract.
+> Status: **frozen v0** (2026-06-02). First-class, safety/legal-critical contract.
 > Reconciles two duties: **treat compliant interaction data as an asset** (so the product is
 > observable, verifiable, and improvable) **and** protect children rigorously.
 

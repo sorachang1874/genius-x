@@ -1,5 +1,5 @@
 /**
- * Student data model — contracts v0 (DRAFT, pending freeze).
+ * Student data model — contracts v0 (frozen v0).
  * Source: PRD §6, §7.5. Privacy/retention rules: docs/contracts/data-and-privacy.md.
  */
 import type {

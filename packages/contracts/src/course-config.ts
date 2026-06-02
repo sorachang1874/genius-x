@@ -1,5 +1,5 @@
 /**
- * Lesson configuration schema — contracts v0 (DRAFT, pending freeze).
+ * Lesson configuration schema — contracts v0 (frozen v0).
  * New lessons are data, not code (PRD §4.2). Both git JSON and (later) Payload CMS
  * exports MUST conform to this shape.
  */

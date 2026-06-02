@@ -1,5 +1,5 @@
 /**
- * Shared enums — contracts v0 (DRAFT, pending freeze).
+ * Shared enums — contracts v0 (frozen v0).
  * Source: genius-x-mvp-prd.md §4.1, §6, §7.
  */
 
