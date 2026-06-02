@@ -1,9 +1,9 @@
 /**
  * AiGateway — the single entry point for AI. Each capability runs:
- *   input safety → provider call (timeout-bounded) → output safety → fallback on any
- *   fail/timeout/filtered (meta.degraded=true) → audit (TraceSink).
- * It NEVER throws to the caller; the classroom always gets a result. AiMeta stays here +
- * in traces (not shipped to the child — see D-M2 design / data-and-privacy).
+ *   input safety → timeout-bounded provider call → output schema-validation → output safety
+ *   → fallback on ANY fail/timeout/filtered/schema-miss (meta.degraded, audited).
+ * It NEVER throws to the caller (incl. if the TraceSink throws — trace is shadow). AiMeta
+ * stays here + in traces (not shipped to the child). See D-M2 design / data-and-privacy.
  */
 import type {
   LlmTextResult,
@@ -20,6 +20,7 @@ import type {
   TtsRequest,
   AsrRequest,
   ImageGenRequest,
+  ImageJob,
 } from "./providers/types";
 import type { SafetyFilter } from "./safety";
 import type { FallbackLibrary } from "./fallback";
@@ -52,6 +53,7 @@ export class AiGateway {
     if (!input.ok) return this.llmFallback(req.promptVersion, "input_filtered", input.reasons);
     try {
       const r = await withTimeout(this.d.provider.llm(req), this.timeout("llm"));
+      assertLlm(r);
       const out = this.d.safety.reviewOutput(r.text);
       if (!out.ok) return this.llmFallback(req.promptVersion, "output_filtered", out.reasons);
       this.emit("ai_response", { capability: "llm", promptVersion: req.promptVersion });
@@ -63,7 +65,10 @@ export class AiGateway {
 
   async tts(req: TtsRequest): Promise<TtsResult> {
     try {
-      return await withTimeout(this.d.provider.tts(req), this.timeout("tts"));
+      const r = await withTimeout(this.d.provider.tts(req), this.timeout("tts"));
+      assertTts(r);
+      this.emit("ai_response", { capability: "tts" });
+      return r;
     } catch (e) {
       this.emit("fallback", { capability: "tts", reason: reason(e) });
       return this.d.fallback.tts();
@@ -72,7 +77,10 @@ export class AiGateway {
 
   async asr(req: AsrRequest): Promise<AsrResult> {
     try {
-      return await withTimeout(this.d.provider.asr(req), this.timeout("asr"));
+      const r = await withTimeout(this.d.provider.asr(req), this.timeout("asr"));
+      assertAsr(r);
+      this.emit("ai_response", { capability: "asr" });
+      return r;
     } catch (e) {
       this.emit("fallback", { capability: "asr", reason: reason(e) });
       return this.d.fallback.asr();
@@ -82,24 +90,35 @@ export class AiGateway {
   async imageGen(req: ImageGenRequest): Promise<ImageGenResult> {
     try {
       const job = await withTimeout(this.d.provider.imageSubmit(req), this.timeout("image"));
-      const result = await withTimeout(this.pollUntilDone(job), this.timeout("image"));
-      // NOTE: image content moderation (天御 IMS, before display) lands in M6.
+      const r = await this.pollImage(job, this.timeout("image"));
+      assertImage(r);
+      // NOTE: image content moderation (天御 IMS, before display) is deferred to M6.
       this.emit("ai_response", { capability: "image_gen" });
-      return result;
+      return r;
     } catch (e) {
       this.emit("fallback", { capability: "image_gen", reason: reason(e) });
       return this.d.fallback.imageGen(req.count);
     }
   }
 
-  /** Extract a memory point; the returned key MUST be one the lesson declared, else null. */
+  /** Extract a memory point. Input-safety the transcript first; key MUST be lesson-declared. */
   async extractMemory(req: ExtractMemoryRequest): Promise<MemoryExtraction> {
+    const input = this.d.safety.reviewInput(req.transcript);
+    if (!input.ok) {
+      this.emit("safety", { capability: "extract_memory", reasons: input.reasons });
+      return { key: null, value: null };
+    }
     try {
       const r = await withTimeout(
         this.d.provider.llm({ promptVersion: req.promptVersion, input: req.transcript }),
         this.timeout("llm"),
       );
+      assertLlm(r);
       const parsed = parseMemory(r.text);
+      if (parsed === null) {
+        this.emit("interaction", { reason: "memory_schema_miss" });
+        return { key: null, value: null };
+      }
       if (parsed.key !== null && !req.allowedKeys.includes(parsed.key)) {
         this.emit("interaction", { reason: "memory_key_not_allowed", key: parsed.key });
         return { key: null, value: null };
@@ -111,12 +130,16 @@ export class AiGateway {
     }
   }
 
-  private async pollUntilDone(job: { jobId: string }): Promise<ImageGenResult> {
-    // bounded by the outer withTimeout; providers settle quickly in scripted mode
-    for (;;) {
+  /** Poll for an image result, bounded by a deadline + max attempts (never spins forever). */
+  private async pollImage(job: ImageJob, budgetMs: number): Promise<ImageGenResult> {
+    const deadline = Date.now() + budgetMs;
+    const step = Math.min(200, Math.max(10, Math.floor(budgetMs / 50)));
+    for (let attempts = 0; Date.now() < deadline && attempts < 200; attempts++) {
       const r = await this.d.provider.imagePoll(job);
       if (!("status" in r)) return r;
+      await delay(step);
     }
+    throw new Error("image_poll_timeout");
   }
 
   private llmFallback(promptVersion: string, why: string, reasons: string[]): LlmTextResult {
@@ -128,8 +151,13 @@ export class AiGateway {
     return this.d.timeouts?.[cap] ?? DEFAULT_TIMEOUTS[cap];
   }
 
+  /** Audit. Trace is a SHADOW sink — a throwing/broken sink must never break the classroom. */
   private emit(kind: TraceEvent["kind"], payload: Record<string, unknown>): void {
-    this.d.trace.record({ at: this.d.now(), kind, payload });
+    try {
+      this.d.trace.record({ at: this.d.now(), kind, payload });
+    } catch {
+      // swallow: trace failures must not surface to the caller
+    }
   }
 }
 
@@ -144,16 +172,43 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => {
+    const t = setTimeout(r, ms);
+    t.unref?.();
+  });
+}
+
 function reason(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function parseMemory(text: string): MemoryExtraction {
+// --- runtime output validators (provider schema-miss → throw → fallback) ---
+function assertLlm(r: unknown): asserts r is LlmTextResult {
+  const o = r as Partial<LlmTextResult> | null;
+  if (!o || o.capability !== "llm" || typeof o.text !== "string" || !o.meta) throw new Error("schema_miss:llm");
+}
+function assertTts(r: unknown): asserts r is TtsResult {
+  const o = r as Partial<TtsResult> | null;
+  if (!o || o.capability !== "tts" || typeof o.audioUrl !== "string" || !o.meta) throw new Error("schema_miss:tts");
+}
+function assertAsr(r: unknown): asserts r is AsrResult {
+  const o = r as Partial<AsrResult> | null;
+  if (!o || o.capability !== "asr" || typeof o.transcript !== "string" || !o.meta) throw new Error("schema_miss:asr");
+}
+function assertImage(r: unknown): asserts r is ImageGenResult {
+  const o = r as Partial<ImageGenResult> | null;
+  if (!o || o.capability !== "image_gen" || !Array.isArray(o.imageUrls) || !o.meta) throw new Error("schema_miss:image");
+}
+
+/** Parse the memory JSON. null = schema miss (not valid {key:string,value:string} or {key:null}). */
+function parseMemory(text: string): MemoryExtraction | null {
   try {
     const o = JSON.parse(text) as { key?: unknown; value?: unknown };
     if (typeof o.key === "string" && typeof o.value === "string") return { key: o.key, value: o.value };
+    if (o.key === null) return { key: null, value: null };
   } catch {
-    // not JSON → no memory
+    // not JSON
   }
-  return { key: null, value: null };
+  return null;
 }

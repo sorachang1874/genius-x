@@ -4,7 +4,7 @@ import { AiGateway, type GatewayDeps } from "./gateway";
 import { KeywordSafetyFilter } from "./safety";
 import { PresetFallbackLibrary } from "./fallback";
 import { FakeProvider, type FakeContent } from "./providers/fake";
-import type { FakeProviderConfig } from "./providers/types";
+import type { FakeProviderConfig, ProviderAdapter } from "./providers/types";
 
 const NOW = "2026-06-03T00:00:00.000Z";
 
@@ -93,5 +93,66 @@ describe("AiGateway.extractMemory", () => {
     const { gw } = makeGateway({}, { llmText: "不是 JSON" });
     const m = await gw.extractMemory({ transcript: "...", allowedKeys: ["favorite_toy"], promptVersion: "memory_v1" });
     expect(m).toEqual({ key: null, value: null });
+  });
+
+  it("skips the provider and returns null when the transcript is unsafe", async () => {
+    let called = false;
+    const provider = stub({ llm: async (r) => { called = true; return { capability: "llm", text: r.input, meta: { source: "primary", degraded: false } }; } });
+    const { gw, events } = gatewayWith(provider);
+    const m = await gw.extractMemory({ transcript: "讲点暴力的", allowedKeys: ["favorite_toy"], promptVersion: "memory_v1" });
+    expect(m).toEqual({ key: null, value: null });
+    expect(called).toBe(false);
+    expect(events.some((e) => e.kind === "safety")).toBe(true);
+  });
+});
+
+// --- hardened-boundary tests (Codex M2a findings 1,2,3,5) ---
+
+function stub(over: Partial<ProviderAdapter>): ProviderAdapter {
+  return {
+    llm: async () => ({ capability: "llm", text: "ok", meta: { source: "primary", degraded: false } }),
+    tts: async () => ({ capability: "tts", audioUrl: "u", meta: { source: "primary", degraded: false } }),
+    asr: async () => ({ capability: "asr", transcript: "t", meta: { source: "primary", degraded: false } }),
+    imageSubmit: async () => ({ jobId: "j" }),
+    imagePoll: async () => ({ capability: "image_gen", imageUrls: ["a"], meta: { source: "primary", degraded: false } }),
+    ...over,
+  };
+}
+
+function gatewayWith(provider: ProviderAdapter, timeouts?: GatewayDeps["timeouts"]) {
+  const events: TraceEvent[] = [];
+  const trace: TraceSink = { record: (e) => events.push(e) };
+  const deps: GatewayDeps = { provider, safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW, ...(timeouts ? { timeouts } : {}) };
+  return { gw: new AiGateway(deps), events };
+}
+
+describe("AiGateway — hardened boundary", () => {
+  it("never throws even when the TraceSink throws (trace is shadow)", async () => {
+    const trace: TraceSink = { record: () => { throw new Error("sink down"); } };
+    const deps: GatewayDeps = { provider: new FakeProvider({ llm: { fail: true } }), safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW };
+    const gw = new AiGateway(deps);
+    const r = await gw.llm({ promptVersion: "icebreak_v1", input: "你好" }); // hits fallback → emits trace (throws) → must still return
+    expect(r.meta.degraded).toBe(true);
+  });
+
+  it("tts and asr fall back on provider failure", async () => {
+    const { gw: g1 } = makeGateway({ tts: { fail: true } });
+    expect((await g1.tts({ text: "hi" })).meta.degraded).toBe(true);
+    const { gw: g2 } = makeGateway({ asr: { fail: true } });
+    expect((await g2.asr({ audioRef: "ref" })).meta.degraded).toBe(true);
+  });
+
+  it("imageGen falls back when polling never completes (always pending)", async () => {
+    const provider = stub({ imagePoll: async () => ({ status: "pending" }) });
+    const { gw } = gatewayWith(provider, { image: 60 });
+    const img = await gw.imageGen({ kind: "img2img", source: "ref", count: 3 });
+    expect(img.meta.degraded).toBe(true);
+  });
+
+  it("falls back on a malformed provider result (schema miss)", async () => {
+    const provider = stub({ llm: async () => ({ capability: "nope" } as unknown as Awaited<ReturnType<ProviderAdapter["llm"]>>) });
+    const { gw } = gatewayWith(provider);
+    const r = await gw.llm({ promptVersion: "icebreak_v1", input: "你好" });
+    expect(r.meta.degraded).toBe(true);
   });
 });
