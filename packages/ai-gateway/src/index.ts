@@ -6,6 +6,17 @@
  *     → safety-filter (output) → fallback (on fail/timeout/filtered) → audit-logger
  *
  * Capability surface to implement: llm(), tts(), asr(), imageGen() — each behind the
- * same safety/budget/routing/fallback pipeline.
+ * same safety/budget/routing/fallback pipeline, routing among `ProviderAdapter`s.
  */
-export {};
+export type {
+  ProviderAdapter,
+  LlmRequest,
+  TtsRequest,
+  AsrRequest,
+  ImageGenRequest,
+  ImageJob,
+  ImagePollResult,
+  FakeBehavior,
+  FakeProviderConfig,
+} from "./providers/types.js";
+export { FakeProvider } from "./providers/fake.js";
