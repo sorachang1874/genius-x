@@ -34,8 +34,12 @@ the engine's vocabulary:
 ## Public interface
 
 **WebSocket** (Socket.IO; message types in `@genius-x/contracts` ws-events):
-- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
-- Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_READY`, `RESUME_STATE`
+- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `FORCE_ADVANCE`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
+- Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_READY`, `RESUME_STATE` (full per-student state + `lessonConfigVersion`)
+
+Engine events/commands are typed in `@genius-x/contracts` (`engine.ts`: `EngineEvent`,
+`EngineCommand`) — the reducer maps `ClientMessage` → `EngineEvent`, and `EngineCommand`
+(`BROADCAST`/`CALL_INTERACTION`/`PERSIST`/`TRACE`) → effects.
 
 **HTTP** (typed via contracts):
 - `POST /session/join` → `{ studentId, sessionId }` (room-code/QR; no password — see client-server)

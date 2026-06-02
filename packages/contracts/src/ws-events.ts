@@ -6,6 +6,7 @@
  * raw child audio crosses this boundary. `STAGE_COMPLETE` is a typed union, not `unknown`.
  */
 import type { StageId, OutputKey, RuntimeValue, GlobalState } from "./enums.js";
+import type { StudentRuntimeState } from "./student.js";
 
 /** Opaque storage references — NOT raw media bytes. */
 export type AudioRef = string;
@@ -25,7 +26,14 @@ export type ServerMessage =
   | { type: "STAGE_UNLOCK"; stageId: StageId }
   | { type: "GLOBAL_STATE"; state: GlobalState }
   | { type: "AI_READY"; studentId: string; stageId: StageId }
-  | { type: "RESUME_STATE"; currentStageId: StageId; global: GlobalState };
+  /** Full resume payload: enough to restore the client without inventing state. */
+  | {
+      type: "RESUME_STATE";
+      currentStageId: StageId;
+      global: GlobalState;
+      lessonConfigVersion: string;
+      you: StudentRuntimeState;
+    };
 
 /** Client → server. */
 export type ClientMessage =

@@ -21,8 +21,9 @@ export type RuntimeValue = string | number | boolean | string[];
 // --- Engine-owned (typed; the engine controls these, not lesson config) ---
 export type StageStatus = "waiting" | "in_progress" | "completed";
 
-/** Whole-class sync state (generalized from v0's "closure"|"standby"). */
-export type GlobalState = "active" | "synced_intro" | "synced_closure" | "standby";
+/** Whole-class sync state — generic: `synced` = teacher holds the class on a global moment
+ *  (which one is given by `currentStageId`), `active` = normal stage flow. Not lesson-specific. */
+export type GlobalState = "standby" | "active" | "synced";
 
 export type Role = "student" | "assistant" | "teacher" | "parent" | "admin";
 export type UnlockBy = "teacher" | "assistant";

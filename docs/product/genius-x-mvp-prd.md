@@ -342,6 +342,11 @@ AI 网关（AI Gateway Service）
 
 ## 6. 学员数据模型
 
+> **注（2026-06-03）**：权威的类型定义已迁移到 `@genius-x/contracts`（tag `contracts-v1`）与
+> `docs/contracts/`、`docs/architecture/lesson-runtime.md`。本节及 §8 内联的 TypeScript 是最初
+> 草稿，凡与契约不一致处以契约为准（如：opaque id、类型化 `STAGE_COMPLETE` payload、`ClassSession`
+> v1、`completedStageIds`）。本节保留作产品意图与背景。
+
 ### 6.1 学员档案（Student Profile）
 
 ```typescript

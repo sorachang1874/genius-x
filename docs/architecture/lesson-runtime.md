@@ -18,9 +18,10 @@ lesson's `declared*` lists. Lesson-1 unions survive only as documentation/test a
 
 ## Engine
 
-- **Pure reducer** `(state, event) => { state, commands }`. It emits **effect-commands**
-  (`CALL_INTERACTION`, `BROADCAST`, `PERSIST`, `TRACE`) — AI calls / sockets / DB never leak
-  into reducer logic. (Not XState: the chart is runtime data, not a static statechart.)
+- **Pure reducer** `(state, EngineEvent) => { state, EngineCommand[] }`. Events + effect-
+  commands (`CALL_INTERACTION`, `BROADCAST`, `PERSIST`, `TRACE`) are **typed in
+  `@genius-x/contracts` (`engine.ts`)** — AI calls / sockets / DB never leak into reducer
+  logic, and agents can't invent incompatible shapes. (Not XState: the chart is runtime data.)
 - Events: `UNLOCK{role}`, `STUDENT_COMPLETE`, `INTERACTION_DONE{degraded}`, `GLOBAL`,
   `FORCE_ADVANCE` (assistant override — on the wire + audited via TraceSink).
 - Guard evaluator: `(ctx) => boolean`, `ctx = { state, stage, now, events }` (struct → additive).
@@ -51,7 +52,9 @@ selectedVariant, outputs: Record<OutputKey, RuntimeValue> }`. Engine fields are 
 ## Persistence / resume
 
 `ClassSession` persists `currentStageId` (string) + `lessonConfigVersion` + `global` +
-`students` (full runtime state). Resume fails closed on version mismatch
+`students` (full runtime state). `RESUME_STATE` carries `currentStageId`, `global`,
+`lessonConfigVersion`, and the student's full `StudentRuntimeState` — enough to restore the
+client without inventing state. Resume fails closed on version mismatch
 (`RESUME_VERSION_MISMATCH`). No index-based cursor (CMS may reorder stages).
 
 ## Privacy at the wire

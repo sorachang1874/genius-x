@@ -41,7 +41,7 @@ export interface Memory {
   key: MemoryKey; // opaque, config-declared
   value: string;
   collectedAt: StageId; // source stage id
-  lessonId: number;
+  lessonId: string; // the LessonConfig.lessonId (e.g. "lesson-001")
 }
 
 export interface Progress {
@@ -56,7 +56,7 @@ export interface Artifact {
   type: ArtifactType; // opaque, config-declared
   contentUrl?: string;
   contentText?: string;
-  lessonId: number;
+  lessonId: string; // the LessonConfig.lessonId (e.g. "lesson-001")
   stageId: StageId;
   createdAt: string; // ISO
 }
@@ -71,7 +71,7 @@ export interface BirthCertificate {
   memories: { label: string; value: string }[];
   birthdaySpeech: string;
   generatedAt: string; // ISO
-  lessonId: number;
+  lessonId: string; // the LessonConfig.lessonId (e.g. "lesson-001")
 }
 
 // --- Live runtime state (Redis during class, archived to Postgres after) ---
