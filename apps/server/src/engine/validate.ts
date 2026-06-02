@@ -20,8 +20,8 @@ const advanceCondition: z.ZodType<AdvanceCondition> = z.lazy(() =>
     z.object({ type: z.literal("immediate") }),
     z.object({ type: z.literal("allStudents"), of: studentPredicate }),
     z.object({ type: z.literal("countStudents"), min: z.number().int().positive(), of: studentPredicate }),
-    z.object({ type: z.literal("all"), conditions: z.array(advanceCondition) }),
-    z.object({ type: z.literal("any"), conditions: z.array(advanceCondition) }),
+    z.object({ type: z.literal("all"), conditions: z.array(advanceCondition).min(1) }),
+    z.object({ type: z.literal("any"), conditions: z.array(advanceCondition).min(1) }),
   ]),
 );
 
@@ -63,7 +63,7 @@ const stageConfig = z.object({
   duration: z.number().nonnegative(),
   unlock: z.enum(["teacher", "assistant"]),
   advanceCondition,
-  variants: z.array(stageVariant).optional(),
+  variants: z.array(stageVariant).min(1).optional(),
   interaction: aiInteraction.optional(),
   appState: z
     .object({
@@ -137,10 +137,15 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
     if (st.output !== undefined && !artifacts.has(st.output)) {
       errors.push(`stage "${st.stageId}" output "${st.output}" not in declaredArtifactTypes`);
     }
-    if (!st.variants && !st.interaction && st.appState === undefined) {
-      errors.push(`stage "${st.stageId}" has no interaction, variants, or appState`);
+    const hasVariants = (st.variants?.length ?? 0) > 0;
+    const hasAppState = st.appState !== undefined && Object.keys(st.appState).length > 0;
+    if (!hasVariants && !st.interaction && !hasAppState) {
+      errors.push(`stage "${st.stageId}" is a no-op (no interaction, variants, or appState)`);
     }
   }
 
+  // NOTE: session-level checks (currentStageId ∈ lesson, lessonConfigVersion match) belong to
+  // resume (C-M1c, validateClassSessionForLesson). Unreachable-stage is moot for a linear
+  // sequence; it returns when stage graphs land (out of scope v1).
   return errors.length > 0 ? { ok: false, errors } : { ok: true, lesson: lesson as LessonConfig };
 }

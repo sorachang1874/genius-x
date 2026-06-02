@@ -31,4 +31,22 @@ describe("validateLessonConfig", () => {
     delete bad.lessonConfigVersion;
     expect(validateLessonConfig(bad).ok).toBe(false);
   });
+
+  it("rejects an empty all/any combinator (would advance vacuously)", () => {
+    const bad = clone(lesson001);
+    bad.stages[1]!.advanceCondition = { type: "all", conditions: [] };
+    expect(validateLessonConfig(bad).ok).toBe(false);
+  });
+
+  it("rejects an empty variants array", () => {
+    const bad = clone(lesson001);
+    bad.stages[2]!.variants = [];
+    expect(validateLessonConfig(bad).ok).toBe(false);
+  });
+
+  it("rejects a no-op stage (empty appState, no interaction/variants)", () => {
+    const bad = clone(lesson001);
+    bad.stages[0] = { stageId: "x", name: "x", duration: 1, unlock: "teacher", advanceCondition: { type: "immediate" }, appState: {} };
+    expect(validateLessonConfig(bad).ok).toBe(false);
+  });
 });

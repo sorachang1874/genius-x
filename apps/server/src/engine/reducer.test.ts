@@ -103,3 +103,67 @@ describe("reducer — student state", () => {
     expect(r.state.students.ghost).toBeUndefined();
   });
 });
+
+describe("reducer — safety guards", () => {
+  it("denies a STUDENT_COMPLETE for a non-current stage (stale/foreign)", () => {
+    const r = reducer(session("intro", ["k1"]), { type: "STUDENT_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u" } }, NOW);
+    expect(r.state.students.k1!.outputs.avatarUrl).toBeUndefined();
+    expect(r.commands).toEqual([{ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ denied: true }) }) }]);
+  });
+
+  it("denies a selection with an undeclared output", () => {
+    const r = reducer(session("shape", ["k1"]), { type: "STUDENT_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "nope", value: "x" } }, NOW);
+    expect(r.state.students.k1!.outputs.nope).toBeUndefined();
+  });
+
+  it("denies a variantChoice not offered by the stage", () => {
+    const r = reducer(session("shape", ["k1"]), { type: "STUDENT_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "variantChoice", variantId: "xyz" } }, NOW);
+    expect(r.state.students.k1!.selectedVariant.shape).toBeUndefined();
+  });
+
+  it("INTERACTION_DONE is idempotent on a duplicate id", () => {
+    let s = session("talent", ["k1"]);
+    s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW).state;
+    const r = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW);
+    expect(r.state.students.k1!.interactionCounts.talent).toBe(1); // not 2
+  });
+
+  it("emits a fallback trace for a degraded interaction", () => {
+    const r = reducer(session("talent", ["k1"]), { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: true }, NOW);
+    expect(r.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ kind: "fallback", payload: expect.objectContaining({ degraded: true }) }) });
+  });
+
+  it("denies FORCE_ADVANCE from an unknown assistant", () => {
+    const r = reducer(session("shape", ["k1"]), { type: "FORCE_ADVANCE", stageId: "talent", assistantId: "ghost" }, NOW);
+    expect(r.state.currentStageId).toBe("shape"); // unchanged
+  });
+});
+
+describe("reducer — full Lesson 1 walk", () => {
+  it("advances intro→icebreak→shape→talent→birth→closure via config + guards", () => {
+    let s = session("intro", ["k1", "k2"]);
+    const step = (e: Parameters<typeof reducer>[1]) => {
+      s = reducer(s, e, NOW).state;
+    };
+    step({ type: "UNLOCK", role: "assistant", stageId: "icebreak" });
+    expect(s.currentStageId).toBe("icebreak");
+    step({ type: "UNLOCK", role: "assistant", stageId: "shape" });
+    expect(s.currentStageId).toBe("shape");
+    // shape→talent gate: both students pick an avatar
+    step({ type: "STUDENT_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "a1" } });
+    step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "a2" } });
+    step({ type: "UNLOCK", role: "assistant", stageId: "talent" });
+    expect(s.currentStageId).toBe("talent");
+    // talent→birth gate: 2 interactions each
+    for (const [k, ids] of [["k1", ["a", "b"]], ["k2", ["c", "d"]]] as const) {
+      for (const id of ids) step({ type: "INTERACTION_DONE", studentId: k, stageId: "talent", interactionId: id, degraded: false });
+    }
+    step({ type: "UNLOCK", role: "assistant", stageId: "birth" });
+    expect(s.currentStageId).toBe("birth");
+    // birth→closure gate: all students completed
+    step({ type: "STUDENT_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "interaction", interactionId: "b1" } });
+    step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "birth", payload: { kind: "interaction", interactionId: "b2" } });
+    step({ type: "UNLOCK", role: "teacher", stageId: "closure" });
+    expect(s.currentStageId).toBe("closure");
+  });
+});

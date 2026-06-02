@@ -2,9 +2,14 @@
  * Generic lesson reducer — `(state, EngineEvent, now) => EngineResult`. Pure: emits
  * EngineCommands (effects) rather than performing them; no stage name is hardcoded; advances
  * by config + guards. See docs/architecture/lesson-runtime.md, docs/contracts/course-engine.md.
+ *
+ * Safety: student events are accepted only for the CURRENT stage and validated against the
+ * lesson's declarations; interactions are idempotent by id; FORCE_ADVANCE requires a known
+ * assistant. Illegal events leave state unchanged and emit an operator-visible TRACE.
  */
 import type {
   LessonConfig,
+  StageConfig,
   ClassSession,
   StudentRuntimeState,
   EngineEvent,
@@ -44,18 +49,9 @@ function reduce(
         reason: event.reason,
       });
     case "STUDENT_COMPLETE":
-      return updateStudent(state, event.studentId, now, (s) =>
-        applyCompletion(s, event.stageId, event.payload),
-      );
+      return onStudentComplete(lesson, state, now, event);
     case "INTERACTION_DONE":
-      return updateStudent(state, event.studentId, now, (s) => ({
-        ...s,
-        interactionCounts: {
-          ...s.interactionCounts,
-          [event.stageId]: (s.interactionCounts[event.stageId] ?? 0) + 1,
-        },
-        completedInteractionIds: [...s.completedInteractionIds, event.interactionId],
-      }));
+      return onInteractionDone(state, now, event);
     case "GLOBAL": {
       const next: ClassSession = { ...state, global: event.state };
       return {
@@ -95,7 +91,10 @@ function tryAdvance(
   if (args.targetStageId !== nextId)
     return denied(state, now, `target ${args.targetStageId} != next ${nextId}`);
 
-  if (!args.forced) {
+  if (args.forced) {
+    if (args.assistantId === undefined || !state.assistants.includes(args.assistantId))
+      return denied(state, now, `force-advance by unknown assistant ${String(args.assistantId)}`);
+  } else {
     if (args.role !== next.unlock)
       return denied(state, now, `role ${String(args.role)} cannot unlock ${nextId}`);
     if (!evalAdvanceCondition(current.advanceCondition, state, state.currentStageId))
@@ -114,14 +113,14 @@ function tryAdvance(
     global: "active",
     students,
   };
-  const trace: TraceEvent = {
-    at: now,
-    kind: args.forced ? "force_advance" : "stage_transition",
-    stageId: nextId,
-    payload: args.forced
+  const trace = mkTrace(
+    now,
+    args.forced ? "force_advance" : "stage_transition",
+    args.forced
       ? { from: state.currentStageId, assistantId: args.assistantId, reason: args.reason }
       : { from: state.currentStageId },
-  };
+    nextId,
+  );
   const commands: EngineCommand[] = [
     { type: "BROADCAST", message: { type: "STAGE_UNLOCK", stageId: nextId } },
     { type: "PERSIST" },
@@ -130,15 +129,85 @@ function tryAdvance(
   return { state: nextState, commands };
 }
 
-/** Illegal/blocked transition: state unchanged, logged for operators, never shown to a child. */
-function denied(state: ClassSession, now: string, reason: string): EngineResult {
-  const trace: TraceEvent = {
-    at: now,
-    kind: "stage_transition",
-    stageId: state.currentStageId,
-    payload: { denied: true, code: "STAGE_TRANSITION_DENIED", reason },
+function onStudentComplete(
+  lesson: LessonConfig,
+  state: ClassSession,
+  now: string,
+  event: Extract<EngineEvent, { type: "STUDENT_COMPLETE" }>,
+): EngineResult {
+  if (event.stageId !== state.currentStageId)
+    return denied(state, now, `STUDENT_COMPLETE for ${event.stageId}, current is ${state.currentStageId}`);
+  const stage = stageById(lesson, state.currentStageId);
+  if (!stage) return denied(state, now, `unknown stage ${state.currentStageId}`);
+  const payloadErr = payloadError(lesson, stage, event.payload);
+  if (payloadErr) return denied(state, now, payloadErr);
+  return updateStudent(state, event.studentId, now, (s) =>
+    applyCompletion(s, event.stageId, event.payload),
+  );
+}
+
+function onInteractionDone(
+  state: ClassSession,
+  now: string,
+  event: Extract<EngineEvent, { type: "INTERACTION_DONE" }>,
+): EngineResult {
+  if (event.stageId !== state.currentStageId)
+    return denied(state, now, `INTERACTION_DONE for ${event.stageId}, current is ${state.currentStageId}`);
+  const s = state.students[event.studentId];
+  if (!s) return denied(state, now, `unknown student ${event.studentId}`);
+  // idempotent: a duplicate interaction id must not inflate the count
+  if (s.completedInteractionIds.includes(event.interactionId)) {
+    return {
+      state,
+      commands: [
+        { type: "TRACE", event: mkTrace(now, "interaction", { duplicate: true, interactionId: event.interactionId, studentId: event.studentId }) },
+      ],
+    };
+  }
+  const nextS: StudentRuntimeState = {
+    ...s,
+    interactionCounts: { ...s.interactionCounts, [event.stageId]: (s.interactionCounts[event.stageId] ?? 0) + 1 },
+    completedInteractionIds: [...s.completedInteractionIds, event.interactionId],
   };
-  return { state, commands: [{ type: "TRACE", event: trace }] };
+  const nextState: ClassSession = { ...state, students: { ...state.students, [event.studentId]: nextS } };
+  const commands: EngineCommand[] = [{ type: "PERSIST" }];
+  if (event.degraded) {
+    // operator-visible degradation (AGENTS.md): the child saw a graceful fallback
+    commands.push({ type: "TRACE", event: mkTrace(now, "fallback", { degraded: true, interactionId: event.interactionId, studentId: event.studentId }, event.stageId) });
+  }
+  return { state: nextState, commands };
+}
+
+/** Validate a completion payload against the current stage + lesson declarations. */
+function payloadError(lesson: LessonConfig, stage: StageConfig, payload: StageCompletePayload): string | null {
+  switch (payload.kind) {
+    case "selection":
+      return lesson.declaredOutputs.includes(payload.output)
+        ? null
+        : `output "${payload.output}" not in declaredOutputs`;
+    case "variantChoice":
+      return (stage.variants ?? []).some((v) => v.id === payload.variantId)
+        ? null
+        : `variant "${payload.variantId}" not in stage "${stage.stageId}"`;
+    case "voice":
+    case "doodle":
+    case "interaction":
+      return null;
+    default: {
+      const _exhaustive: never = payload;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Illegal/blocked event: state unchanged, logged for operators, never shown to a child. */
+function denied(state: ClassSession, now: string, reason: string): EngineResult {
+  return {
+    state,
+    commands: [
+      { type: "TRACE", event: mkTrace(now, "stage_transition", { denied: true, code: "STAGE_TRANSITION_DENIED", reason }, state.currentStageId) },
+    ],
+  };
 }
 
 function updateStudent(
@@ -148,25 +217,13 @@ function updateStudent(
   fn: (s: StudentRuntimeState) => StudentRuntimeState,
 ): EngineResult {
   const s = state.students[studentId];
-  if (!s) {
-    return denied(state, now, `unknown student ${studentId}`);
-  }
-  const nextState: ClassSession = {
-    ...state,
-    students: { ...state.students, [studentId]: fn(s) },
-  };
+  if (!s) return denied(state, now, `unknown student ${studentId}`);
+  const nextState: ClassSession = { ...state, students: { ...state.students, [studentId]: fn(s) } };
   return { state: nextState, commands: [{ type: "PERSIST" }] };
 }
 
-function applyCompletion(
-  s: StudentRuntimeState,
-  stageId: StageId,
-  payload: StageCompletePayload,
-): StudentRuntimeState {
-  const base: StudentRuntimeState = {
-    ...s,
-    stageStatus: { ...s.stageStatus, [stageId]: "completed" },
-  };
+function applyCompletion(s: StudentRuntimeState, stageId: StageId, payload: StageCompletePayload): StudentRuntimeState {
+  const base: StudentRuntimeState = { ...s, stageStatus: { ...s.stageStatus, [stageId]: "completed" } };
   switch (payload.kind) {
     case "selection":
       return { ...base, outputs: { ...base.outputs, [payload.output]: payload.value } };
@@ -181,4 +238,8 @@ function applyCompletion(
       return _exhaustive;
     }
   }
+}
+
+function mkTrace(now: string, kind: TraceEvent["kind"], payload: Record<string, unknown>, stageId?: StageId): TraceEvent {
+  return stageId !== undefined ? { at: now, kind, stageId, payload } : { at: now, kind, payload };
 }
