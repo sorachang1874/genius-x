@@ -21,7 +21,7 @@ import type {
   ImageJob,
   ImagePollResult,
   FakeProviderConfig,
-} from "./types.js";
+} from "./types";
 
 export class FakeProvider implements ProviderAdapter {
   constructor(private readonly config: FakeProviderConfig = {}) {}

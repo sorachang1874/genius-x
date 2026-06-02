@@ -18,5 +18,5 @@ export type {
   ImagePollResult,
   FakeBehavior,
   FakeProviderConfig,
-} from "./providers/types.js";
-export { FakeProvider } from "./providers/fake.js";
+} from "./providers/types";
+export { FakeProvider } from "./providers/fake";

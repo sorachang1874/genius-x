@@ -5,8 +5,8 @@
  * PRIVACY (data-and-privacy contract): payloads carry **refs**, never raw bytes/base64 — no
  * raw child audio crosses this boundary. `STAGE_COMPLETE` is a typed union, not `unknown`.
  */
-import type { StageId, OutputKey, RuntimeValue, GlobalState } from "./enums.js";
-import type { StudentRuntimeState } from "./student.js";
+import type { StageId, OutputKey, RuntimeValue, GlobalState } from "./enums";
+import type { StudentRuntimeState } from "./student";
 
 /** Opaque storage references — NOT raw media bytes. */
 export type AudioRef = string;

@@ -12,7 +12,7 @@ import type {
   MemoryKey,
   ArtifactType,
   StageStatus,
-} from "./enums.js";
+} from "./enums";
 
 export interface LessonConfig {
   lessonId: string;

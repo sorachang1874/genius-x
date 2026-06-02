@@ -4,10 +4,10 @@
  * effect-commands keeps AI calls / sockets / DB writes OUT of reducer logic, and stops
  * agents inventing incompatible side-effect shapes. See docs/architecture/lesson-runtime.md.
  */
-import type { StageId, GlobalState, UnlockBy } from "./enums.js";
-import type { StageCompletePayload, ServerMessage } from "./ws-events.js";
-import type { TraceEvent } from "./ai-response.js";
-import type { ClassSession } from "./student.js";
+import type { StageId, GlobalState, UnlockBy } from "./enums";
+import type { StageCompletePayload, ServerMessage } from "./ws-events";
+import type { TraceEvent } from "./ai-response";
+import type { ClassSession } from "./student";
 
 /** Inputs the reducer folds over. */
 export type EngineEvent =

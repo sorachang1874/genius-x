@@ -4,11 +4,11 @@
  * lead re-serialization + independent review (see AGENTS.md, docs/agents/README.md).
  * docs/contracts/ holds the prose contracts; docs/architecture/lesson-runtime.md the engine.
  */
-export * from "./enums.js";
-export * from "./course-config.js";
-export * from "./ws-events.js";
-export * from "./api.js";
-export * from "./engine.js";
-export * from "./ai-response.js";
-export * from "./student.js";
-export * from "./errors.js";
+export * from "./enums";
+export * from "./course-config";
+export * from "./ws-events";
+export * from "./api";
+export * from "./engine";
+export * from "./ai-response";
+export * from "./student";
+export * from "./errors";

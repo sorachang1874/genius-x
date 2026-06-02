@@ -14,7 +14,7 @@ import type {
   RuntimeValue,
   StageStatus,
   GlobalState,
-} from "./enums.js";
+} from "./enums";
 
 export interface StudentProfile {
   id: string; // UUID

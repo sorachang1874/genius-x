@@ -4,7 +4,7 @@
  * Source: PRD §5. Reuse: Vercel AI SDK + Zod (Zod schemas back these types — added in
  * the gateway implementation, not here).
  */
-import type { MemoryKey } from "./enums.js";
+import type { MemoryKey } from "./enums";
 
 /** Where a result came from — enforces operator-visible degradation (AGENTS.md). */
 export type AiSource = "primary" | "fallback" | "library";

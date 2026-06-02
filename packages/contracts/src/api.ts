@@ -2,7 +2,7 @@
  * HTTP API types — contracts v1. The non-WS client↔server surface (client-server contract).
  * Students join with a room code/QR — no password (Better Auth is shadow). See PRD §2.
  */
-import type { Role } from "./enums.js";
+import type { Role } from "./enums";
 
 export interface SessionJoinRequest {
   roomCode: string;
