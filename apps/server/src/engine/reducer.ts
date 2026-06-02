@@ -178,13 +178,23 @@ function onInteractionDone(
   return { state: nextState, commands };
 }
 
-/** Validate a completion payload against the current stage + lesson declarations. */
+/** Outputs the given stage is allowed to write (union of its variants' writesOutputs). */
+function stageWritableOutputs(stage: StageConfig): Set<string> {
+  const out = new Set<string>();
+  for (const v of stage.variants ?? []) for (const o of v.writesOutputs ?? []) out.add(o);
+  return out;
+}
+
+/** Validate a completion payload against the CURRENT stage + lesson declarations. */
 function payloadError(lesson: LessonConfig, stage: StageConfig, payload: StageCompletePayload): string | null {
   switch (payload.kind) {
     case "selection":
-      return lesson.declaredOutputs.includes(payload.output)
+      // must be globally declared AND writable by this stage (stops e.g. intro writing avatarUrl)
+      if (!lesson.declaredOutputs.includes(payload.output))
+        return `output "${payload.output}" not in declaredOutputs`;
+      return stageWritableOutputs(stage).has(payload.output)
         ? null
-        : `output "${payload.output}" not in declaredOutputs`;
+        : `output "${payload.output}" not writable by stage "${stage.stageId}"`;
     case "variantChoice":
       return (stage.variants ?? []).some((v) => v.id === payload.variantId)
         ? null

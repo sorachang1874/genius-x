@@ -116,6 +116,12 @@ describe("reducer — safety guards", () => {
     expect(r.state.students.k1!.outputs.nope).toBeUndefined();
   });
 
+  it("denies a selection the current stage does not write (intro cannot set avatarUrl)", () => {
+    const r = reducer(session("intro", ["k1"]), { type: "STUDENT_COMPLETE", studentId: "k1", stageId: "intro", payload: { kind: "selection", output: "avatarUrl", value: "x" } }, NOW);
+    expect(r.state.students.k1!.outputs.avatarUrl).toBeUndefined();
+    expect(r.state.students.k1!.stageStatus.intro).not.toBe("completed");
+  });
+
   it("denies a variantChoice not offered by the stage", () => {
     const r = reducer(session("shape", ["k1"]), { type: "STUDENT_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "variantChoice", variantId: "xyz" } }, NOW);
     expect(r.state.students.k1!.selectedVariant.shape).toBeUndefined();
