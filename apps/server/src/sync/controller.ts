@@ -139,7 +139,15 @@ export class ClassroomController {
       const student = s.students[studentId];
       const valid = !!student && !!student.pending[interactionId] && s.currentStageId === stageId;
       if (!valid) {
-        return { out: { ok: false, traces: [this.mkTrace("interaction", { dropped: true, reason: "stale_interaction", interactionId, studentId })] } };
+        const trace = this.mkTrace("interaction", { dropped: true, reason: "stale_interaction", interactionId, studentId });
+        // clear the now-stale pending entry so it doesn't leak
+        if (student && student.pending[interactionId]) {
+          const { [interactionId]: _stale, ...pending } = student.pending;
+          void _stale;
+          const cleared: ClassSession = { ...s, students: { ...s.students, [studentId]: { ...student, pending } } };
+          return { next: cleared, out: { ok: false, traces: [trace] } };
+        }
+        return { out: { ok: false, traces: [trace] } };
       }
       const result = this.reducer(s, { type: "INTERACTION_DONE", studentId, stageId, interactionId, degraded }, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");

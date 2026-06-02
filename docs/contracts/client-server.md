@@ -15,8 +15,9 @@ drift. The client is a thin view of the server's authoritative state.
 1. Client joins: `POST /session/join` (room-code/QR) → `{ studentId, sessionId }`.
 2. Client opens WS, sends `HELLO { studentId }`.
 3. Server replies `RESUME_STATE { currentStage, global }` → client renders that stage.
-4. Steady state: server pushes `STAGE_UNLOCK` / `GLOBAL_STATE` / `AI_READY`; client sends
-   `STAGE_COMPLETE` / (assistant) `ASSISTANT_UNLOCK` / `REQUEST_PROJECTION`.
+4. Steady state: client sends `INTERACT` (interaction input) / `STAGE_COMPLETE` (choice/finish)
+   / (assistant) `ASSISTANT_UNLOCK` / `REQUEST_PROJECTION`; server pushes `STAGE_UNLOCK` /
+   `GLOBAL_STATE` / `AI_OUTPUT` (per-student renderable result) / `PROJECT`. (`AI_READY` is M4.)
 
 **Reconnect:** exponential backoff (max 5); on reconnect re-send `HELLO` → `RESUME_STATE`
 (PRD §8.2). The client never invents stage state — it always reconciles to the server.

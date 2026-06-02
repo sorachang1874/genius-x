@@ -104,6 +104,14 @@ describe("reducer — student state", () => {
     expect(dup.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ dropped: true }) }) });
   });
 
+  it("drops an INTERACT whose id was already completed", () => {
+    let s = session("talent", ["k1"]);
+    s = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW).state;
+    s = reducer(s, { type: "INTERACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", degraded: false }, NOW).state;
+    const again = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(again.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(false);
+  });
+
   it("GLOBAL sets class state and broadcasts", () => {
     const r = reducer(session("closure", ["k1"]), { type: "GLOBAL", state: "synced" }, NOW);
     expect(r.state.global).toBe("synced");

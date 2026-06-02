@@ -121,7 +121,10 @@ describe("ClassroomController", () => {
     await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" }); // advance while gateway is mid-call
     await new Promise((r) => setTimeout(r, 120));
     expect(emit.student.some((s) => s.msg.type === "AI_OUTPUT")).toBe(false);
-    expect((await store.load("s1"))!.students.k1!.interactionCounts.talent ?? 0).toBe(0);
+    const loaded = (await store.load("s1"))!;
+    expect(loaded.students.k1!.interactionCounts.talent ?? 0).toBe(0);
+    expect(loaded.students.k1!.pending.i1).toBeUndefined(); // stale pending cleared
+    expect(trace.events.some((e) => (e.payload as { reason?: string }).reason === "stale_interaction")).toBe(true);
   });
 });
 
