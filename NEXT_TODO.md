@@ -1,40 +1,72 @@
 # NEXT_TODO
 
+Single source of plan truth. Product soul: `docs/product/genius-x-manifesto.md`.
+Spec: `docs/product/genius-x-mvp-prd.md`. Infra rationale: `docs/architecture/build-vs-reuse.md`.
+
 ## Current objective
 
-MVP (V0.5): run **Lesson 1** (认识我的 AI 好朋友, 60 min) end-to-end for one class.
-See `docs/product/genius-x-mvp-prd.md` §1.
+MVP (V0.5): run **Lesson 1** (认识我的 AI 好朋友, 60 min) end-to-end for one class on ~15 iPads.
 
-## Phase status
+## Decisions log
 
-Milestones from PRD §11. Status: `open` / `in_progress` / `blocked` / `done`.
-
-| Phase | Goal | Status | Next step |
+| # | Question | Decision | Date |
 | --- | --- | --- | --- |
-| P0 | Scaffolding: repo, monorepo skeleton, env (.venv/pnpm), docs/contracts skeletons | `in_progress` | finish contract skeletons + first preflight |
-| M1 | Course engine: state machine + WebSocket + stage unlock | `open` | model stages in `@genius-x/contracts` first |
-| M2 | AI gateway: provider adapter + safety filter + token budget + fallback library | `open` | write `docs/contracts/ai-gateway.md` owner matrix first |
-| M3 | Stages 1-2: voice icebreak + image gen (A-line first) + avatar select | `open` | depends on D2/D3 decisions |
-| M4 | Stages 3-4: talent interaction + memory extraction + birth certificate + TTS | `open` | — |
-| M5 | Closure + parent: class closure + birth-cert static page + parent report | `open` | — |
-| M6 | Test + harden: full-flow load test + content-safety test + real classroom rehearsal | `open` | — |
+| Stack | Main language | Node/TS main app; Python only for offline tools (`tools/`) | 2026-05-31 |
+| Structure | Repo layout | pnpm monorepo + `@genius-x/contracts` single source of truth | 2026-05-31 |
+| D1 | Name the companion: Lesson 1 or 2? | **Lesson 2** — L1 builds the bond (shape+memories), L2 names it. L1 ends on a naming cliffhanger; `geniusXName` stays optional | 2026-06-02 |
+| D2 | A-line + B-line both in MVP? | **Both** — but **A-line (doodle) is the primary path that must run**; B-line (dialogue) built in parallel, L1 can open without it | 2026-06-02 |
+| D3 | Image provider? | **Provider-agnostic** behind the gateway; build on fake providers, evaluate latency/quality later when keys arrive | 2026-06-02 |
+| D4 | Mic: external vs iPad + denoise? | open (P1) | — |
+| D5 | Parent report: WeChat msg vs H5? | **WeChat-optimized H5** (later, M5) | 2026-06-02 |
+| D6 | Lighthouse spec? | open (P1) | — |
 
-## Open product decisions (block design — from PRD Appendix D)
+## Primary path vs shadow path
 
-| # | Question | Affects | Priority | Recommendation | Decision |
-| --- | --- | --- | --- | --- | --- |
-| D1 | Naming the companion: Lesson 1 or Lesson 2? | birth cert, profile | P0 | Lesson 2 (Lesson 1 is heavy enough) | — |
-| D2 | Build both A-line (doodle) and B-line (dialogue) in MVP, or one first? | Stage 2 (shape) | P0 | A-line first, B-line fast-follow | — |
-| D3 | Which image-gen provider? | AI gateway, cost | P0 | evaluate Tencent first; Replicate as fallback | — |
-| D4 | External mic vs iPad mic + denoise? | Stages 1/3 | P1 | — | — |
-| D5 | Parent report via WeChat message or H5 link? | parent end | P1 | — | — |
-| D6 | Tencent Lighthouse spec (CPU/mem/bandwidth)? | deploy | P1 | — | — |
+**Primary path** (Lesson 1 depends on these — keep minimal, controllable, reversible):
+`@genius-x/contracts` · XState course state machine · Socket.IO classroom sync ·
+`lesson-001.json` (git) · AI Gateway + Vercel AI SDK + Zod output validation · Tencent
+LLM/TTS/ASR/img2img adapters + **天御 moderation** · fallback-response library ·
+**fake-provider simulation harness** · basic PWA precache.
+
+**Shadow path** (build in parallel, pluggable, must NOT gate Lesson 1):
+Payload CMS · Better Auth RBAC · Langfuse (async TraceSink) · promptfoo · parent H5 ·
+course editor. Rule: connectable / demonstrable, never the sole entry point. Each carries
+`failure mode = does not affect the classroom`.
+
+## Agent roster & ownership
+
+Roster: **Claude Code** (lead/architect) · **Codex** (UI/tests/PR review) · **Aider + China
+model** (on-VPS tasks). Protocol: `docs/agents/README.md`.
+
+| Agent | Owns | Coding agent |
+| --- | --- | --- |
+| A | assistant control surface (`apps/web/src/assistant`) | Codex |
+| B | student classroom (`apps/web/src/student`) | Codex |
+| C | course runtime: XState + Socket.IO + API (`apps/server`) | Claude Code |
+| D | AI gateway + Tencent adapters + fallback (`packages/ai-gateway`) | Claude Code |
+| E | contracts, docs, **test harness** (`packages/contracts`, `docs/`) | Claude Code (lead) |
+| F | platform shadow (`apps/cms`, `packages/auth`, `tools/`) | Codex / Aider |
+
+> **Gate: contracts v0 must be frozen by the lead before B–F fan out.** Agent A (contracts)
+> runs first and alone; founder reviews → freezes → then parallel work begins.
+
+## Milestones
+
+| Phase | Goal | Status |
+| --- | --- | --- |
+| P0 | Scaffolding, env, docs, multi-agent protocol, GitHub remote | `done` |
+| P0.5 | **contracts v0** (types + data/privacy) + validation harness (typecheck, contract preflight, fake-provider Lesson-1 smoke) + docker-compose (PG/Redis) + runtime modes | `in_progress` |
+| M1 | Course engine: XState stage machine + Socket.IO sync + reconnect/resume | `open` |
+| M2 | AI gateway: adapter interface + safety (天御) + budget + fallback library, on fake providers | `open` |
+| M3 | Stages 1-2: voice icebreak + image gen (A-line primary) + avatar select | `open` |
+| M4 | Stages 3-4: talent + memory extraction + birth certificate + TTS | `open` |
+| M5 | Closure + parent H5 + report | `open` |
+| M6 | Harden: full-flow + content-safety + real classroom rehearsal; swap in real Tencent providers | `open` |
 
 ## Deletion gates
 
-Track migration bridges / temporary fallbacks that must be removed before they become
-silent normal paths. (None yet — add as they appear.)
+Track temporary fallbacks/bridges so they don't become silent normal paths.
 
 | Old path | Replacement | Normal-path blocked? | Deletion condition | Owner |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | — |
+| fake providers | real Tencent adapters | no (scripted mode only) | M6, after live eval | D |
