@@ -55,7 +55,7 @@ model** (on-VPS tasks). Protocol: `docs/agents/README.md`.
 | Phase | Goal | Status |
 | --- | --- | --- |
 | P0 | Scaffolding, env, docs, multi-agent protocol, GitHub remote | `done` |
-| P0.5 | **contracts v0** (types + data/privacy) + validation harness (typecheck, contract preflight, fake-provider Lesson-1 smoke) + docker-compose (PG/Redis) + runtime modes | `in_progress` |
+| P0.5 | **contracts v0 frozen** (`contracts-v0` tag) + typecheck-all + contract preflight (lesson-001 typed) + docker-compose (PG/Redis) + runtime config/modes + CI gate. *Remaining: fake-provider simulation harness + Lesson-1 smoke (lands with M2 — needs gateway).* | `in_progress` |
 | M1 | Course engine: XState stage machine + Socket.IO sync + reconnect/resume | `open` |
 | M2 | AI gateway: adapter interface + safety (天御) + budget + fallback library, on fake providers | `open` |
 | M3 | Stages 1-2: voice icebreak + image gen (A-line primary) + avatar select | `open` |
@@ -70,3 +70,11 @@ Track temporary fallbacks/bridges so they don't become silent normal paths.
 | Old path | Replacement | Normal-path blocked? | Deletion condition | Owner |
 | --- | --- | --- | --- | --- |
 | fake providers | real Tencent adapters | no (scripted mode only) | M6, after live eval | D |
+
+## Tracked contract amendments (post-freeze, via lead re-serialization)
+
+Changes to frozen `contracts-v0` must go through the lead, then re-tag (v0.1, …).
+
+| # | Amendment | Why | When | Status |
+| --- | --- | --- | --- | --- |
+| C1 | Shape stage: per-variant interaction (A-line `image_gen` + B-line `structured_qa`) | v0 `StageConfig.aiInteraction` holds one interaction; the shape stage needs one per variant. lesson-001 ships A-line only for now (D2 primary path). | before B-line (M3+) | open |

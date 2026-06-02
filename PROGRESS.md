@@ -2,37 +2,38 @@
 
 ## Last updated
 
-2026-05-31
+2026-06-02
 
 ## Current state
 
-Project scaffolding (P0). No business logic yet — this is environment + structure + docs.
+Planning + foundation. **contracts v0 is frozen** (`contracts-v0` tag). No business logic yet.
 
 Done:
 
-- `git init` (branch `main`), `.gitignore`, `.nvmrc` (Node 22).
-- pnpm enabled via corepack (11.5.0); `pnpm-workspace.yaml`, root `package.json`, `tsconfig.base.json`.
-- Monorepo skeleton: `apps/web`, `apps/server`, `packages/{contracts,ai-gateway,course-config}`, `tools/`, `docs/`.
-- Per-package README + minimal package.json + placeholder src (no framework deps installed yet).
-- Product docs relocated to `docs/product/` (manifesto, PRD, lesson-1 rundown, course design).
-- Python offline layer: `tools/.venv` (3.12), `tools/pyproject.toml`, subdirs.
-- Engineering docs: `README.md`, `AGENTS.md`, `NEXT_TODO.md`, this file; contract skeletons in `docs/contracts/`.
+- Scaffolding: pnpm monorepo, Python tools `.venv`, product docs in `docs/product/`.
+- Playbook optimized locally (`~/projects/ai-assisted-engineering-playbook`, not pushed).
+- Build-vs-reuse infra map + multi-agent collaboration protocol (`docs/agents/`).
+- GitHub private remote `sorachang1874/genius-x`; PR + CI review flow.
+- **contracts v0** frozen & tagged: enums, course-config, ws-events, ai-response
+  (AiMeta source/degraded, SafetyResult, TraceSink), student model, errors + data/privacy.
+- P0.5: `pnpm typecheck` green across 5 packages; `lesson-001.ts` typed = contract
+  preflight; `docker-compose` (PG/Redis); `@genius-x/config` runtime modes; CI gate.
 
 ## Recent decisions
 
-- Stack: Node/TS main app; Python only for the offline/experiment layer (`tools/`).
-- Structure: monorepo with a dedicated `@genius-x/contracts` source-of-truth package
-  (avoids cross-repo drift while keeping clean per-agent directory boundaries).
-- Student + assistant: one web app, role-separated internally (per PRD), splittable later.
+- D1 name in Lesson 2 · D2 both A/B lines (A-line primary) · D3 provider-agnostic, eval later.
+- Primary path (Lesson 1 must-haves) vs shadow path (pluggable, can't break class).
+- Roster: Claude Code (lead/contracts/runtime/gateway) · Codex (UI/tests/PR review) · Aider+China model (on-VPS).
 
 ## Open risks
 
-- No framework chosen/installed yet (Vite/React for web, Fastify for server are recommendations).
-- Product decisions D1-D3 (NEXT_TODO) gate Stage-2 implementation.
+- Fake-provider simulation harness + Lesson-1 smoke still to build (lands with M2 — needs gateway).
+- Contract amendment C1 (shape per-variant interaction) pending before B-line (NEXT_TODO).
+- China access: do not run Claude Code on the Tencent VPS (author offshore, run in China).
 
 ## Handoff — next agent starts here
 
-1. Read: `AGENTS.md`, `docs/contracts/`, `docs/product/genius-x-mvp-prd.md`.
-2. Decide D1-D3 (NEXT_TODO open decisions) with the founder.
-3. Fill `@genius-x/contracts` for the course state machine + WebSocket events (M1), contract-first.
-4. Validate: `pnpm install` then `pnpm typecheck`.
+1. Read: `AGENTS.md`, `docs/agents/README.md`, `docs/contracts/`, `NEXT_TODO.md`.
+2. Run: `pnpm install && pnpm typecheck`; `docker compose up -d` for PG/Redis.
+3. M1 (Agent C, Claude Code): XState stage machine consuming `lesson001` + Socket.IO sync
+   using `@genius-x/contracts` ws-events + reconnect/resume. Branch + PR, never auto-merge.

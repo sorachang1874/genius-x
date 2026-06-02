@@ -17,6 +17,9 @@ importers:
       '@genius-x/ai-gateway':
         specifier: workspace:*
         version: link:../../packages/ai-gateway
+      '@genius-x/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@genius-x/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -31,6 +34,12 @@ importers:
         version: link:../../packages/contracts
 
   packages/ai-gateway:
+    dependencies:
+      '@genius-x/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/config:
     dependencies:
       '@genius-x/contracts':
         specifier: workspace:*

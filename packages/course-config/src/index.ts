@@ -1,8 +1,7 @@
 /**
- * @genius-x/course-config — lesson loader + validation. SKELETON.
+ * @genius-x/course-config — lessons as data + validation. SKELETON.
  *
- * Implement: loadLesson(id) → parse lessons/<id>.json → validate against the
- * course-config schema in @genius-x/contracts → return typed config (fail closed on
- * invalid config; never silently default).
+ * `lesson001` is typed against the frozen LessonConfig contract (compile-time preflight).
+ * Runtime validation (Zod) + a generic loadLesson(id) come with M1.
  */
-export {};
+export { lesson001 } from "./lesson-001.js";

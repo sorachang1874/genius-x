@@ -1,8 +1,8 @@
 {
-  "name": "@genius-x/course-config",
+  "name": "@genius-x/config",
   "version": "0.0.0",
   "private": true,
-  "description": "Lesson JSON configs + validation. New lessons are added as config, not code.",
+  "description": "Central runtime config + mode selection. Mode is never inferred from ad-hoc env vars.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
