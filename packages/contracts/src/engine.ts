@@ -7,6 +7,7 @@
 import type { StageId, GlobalState, UnlockBy } from "./enums.js";
 import type { StageCompletePayload, ServerMessage } from "./ws-events.js";
 import type { TraceEvent } from "./ai-response.js";
+import type { ClassSession } from "./student.js";
 
 /** Inputs the reducer folds over. */
 export type EngineEvent =
@@ -22,3 +23,9 @@ export type EngineCommand =
   | { type: "BROADCAST"; message: ServerMessage }
   | { type: "PERSIST" }
   | { type: "TRACE"; event: TraceEvent };
+
+/** The reducer's typed return: next authoritative state + effects to execute. */
+export interface EngineResult {
+  state: ClassSession;
+  commands: EngineCommand[];
+}
