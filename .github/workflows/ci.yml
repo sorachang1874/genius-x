@@ -21,3 +21,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Typecheck (contract preflight — lesson-001 conforms to frozen LessonConfig)
         run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm -r run test

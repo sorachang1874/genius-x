@@ -5,12 +5,17 @@
   "description": "Course engine (stage state machine) + WebSocket classroom sync + API. Calls AI only through @genius-x/ai-gateway.",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@genius-x/contracts": "workspace:*",
     "@genius-x/ai-gateway": "workspace:*",
+    "@genius-x/config": "workspace:*",
+    "@genius-x/contracts": "workspace:*",
     "@genius-x/course-config": "workspace:*",
-    "@genius-x/config": "workspace:*"
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
   }
 }

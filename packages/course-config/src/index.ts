@@ -4,4 +4,4 @@
  * `lesson001` is typed against the frozen LessonConfig contract (compile-time preflight).
  * Runtime validation (Zod) + a generic loadLesson(id) come with M1.
  */
-export { lesson001 } from "./lesson-001.js";
+export { lesson001 } from "./lesson-001";
