@@ -32,6 +32,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-4 | Role entry | placeholder | `?role=assistant` / selector | Better Auth role (DF-8) | demo convenience |
 | DF-M3-5 | PWA / offline | deferred-feature | none (plain SPA) | vite-plugin-pwa service worker | add when classroom-offline reliability matters |
 | DF-M3-6 | Clay figure + visual assets | placeholder | static placeholder art in `public/` (魔法泥人, candidate avatars) | final illustrated assets ready | B-level polish pass |
+| DF-M3-7 | M3 UI/UX as a whole | half-built | functional-first interim: minimal native `<canvas>` doodle, placeholder avatars, plain visual style | **needs a full UX + visual design pass** | before any real classroom/B-level demo |
 
 ## Review log
 

@@ -102,11 +102,13 @@ Better Auth (DF-8). Documented as a demo convenience (DF-M3-4).
 DF-M3-1 TTS via SpeechSynthesis · DF-M3-2 mic placeholder audioRef · DF-M3-3 bundled candidate
 images · DF-M3-4 role via query param · DF-M3-5 no PWA SW. Each with its replace trigger.
 
-## Open decisions to confirm
+## Confirmed — but INTERIM (current state only; full design later)
 
-1. Canvas: a minimal `<canvas>` freehand (no library) for the doodle — OK for M3?
-2. Bundled placeholder avatars: a few cute preset PNGs in `public/` — acceptable stand-in?
-3. Visual style: plain/functional for M3 (B-level polish later) — confirm.
+These are accepted **for M3 functional-first**, and are explicitly the current state pending a
+**full UX + visual design pass** (tracked as DF-M3-6/DF-M3-7):
+1. Doodle = minimal native `<canvas>` freehand (no library).
+2. Candidate avatars = a few preset placeholder PNGs in `public/`.
+3. Visual style = plain/functional; B-level polish later.
 
 ## Out of scope (M4+)
 
