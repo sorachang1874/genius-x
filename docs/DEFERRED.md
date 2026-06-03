@@ -31,6 +31,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-3 | Candidate images | placeholder | `FakeProvider` returns bundled/`public` renderable URLs | real image provider returns real URLs (DF-1/M6) ⇒ **automatic** | client renders `imageUrls` as-is |
 | DF-M3-4 | Role entry | placeholder | `?role=assistant` / selector | Better Auth role (DF-8) | demo convenience |
 | DF-M3-5 | PWA / offline | deferred-feature | none (plain SPA) | vite-plugin-pwa service worker | add when classroom-offline reliability matters |
+| DF-M3-6 | Clay figure + visual assets | placeholder | static placeholder art in `public/` (魔法泥人, candidate avatars) | final illustrated assets ready | B-level polish pass |
 
 ## Review log
 
