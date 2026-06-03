@@ -54,6 +54,9 @@ importers:
       '@genius-x/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@genius-x/course-config':
+        specifier: workspace:*
+        version: link:../../packages/course-config
       react:
         specifier: ^19.2.0
         version: 19.2.7

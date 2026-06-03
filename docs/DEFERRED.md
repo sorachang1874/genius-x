@@ -27,12 +27,13 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | ID | Item | Kind | What we do now | Replace trigger | Notes |
 | --- | --- | --- | --- | --- | --- |
 | DF-M3-1 | TTS playback | placeholder | client speaks `AiOutput.text` via Web Speech API **only when `audioUrl` is absent/placeholder**; plays `audioUrl` when present | real TTS provides a real `audioUrl` (DF-1/M6) ⇒ **automatic** (client prefers audioUrl) | swap is server-side only; client already consumes `ClientAiOutput` |
-| DF-M3-2 | Voice capture | placeholder | `MediaRecorder` UX, but `INTERACT(voice)` sends a placeholder `audioRef` (no upload) | real audio upload → COS + ref | wire upload when storage lands |
+| DF-M3-2 | Voice + doodle capture | placeholder | `getUserMedia`/`MediaRecorder` mic UX and native-canvas doodle, but `INTERACT(voice)`/`INTERACT(doodle)` send a **placeholder `audioRef`/`doodleRef`** (no upload — privacy contract: refs, never bytes) | real audio/image upload → COS + ref | wire upload when storage lands |
 | DF-M3-3 | Candidate images | placeholder | `FakeProvider` returns bundled/`public` renderable URLs | real image provider returns real URLs (DF-1/M6) ⇒ **automatic** | client renders `imageUrls` as-is |
 | DF-M3-4 | Role entry | placeholder | `?role=assistant` / selector | Better Auth role (DF-8) | demo convenience |
 | DF-M3-5 | PWA / offline | deferred-feature | none (plain SPA) | vite-plugin-pwa service worker | add when classroom-offline reliability matters |
 | DF-M3-6 | Clay figure + visual assets | placeholder | static placeholder art in `public/` (魔法泥人, candidate avatars) | final illustrated assets ready | B-level polish pass |
 | DF-M3-7 | M3 UI/UX as a whole | half-built | functional-first interim: minimal native `<canvas>` doodle, placeholder avatars, plain visual style | **needs a full UX + visual design pass** | before any real classroom/B-level demo |
+| DF-M3-8 | Assistant advance controls | partial | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); **`FORCE_ADVANCE` not surfaced** — the engine requires `assistantId ∈ session.assistants`, which `/session/join` does not populate yet | register assistants on join (or an assistant-join endpoint) + add the override button | one straggler can't yet be force-advanced from the UI |
 
 ## Review log
 

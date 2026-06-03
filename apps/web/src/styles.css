@@ -1,0 +1,192 @@
+/*
+ * Interim, functional styling only (DF-M3-6 / DF-M3-7). A full UX + visual design pass lands
+ * later; this is just enough to run Lesson 1 stages 1–2 legibly on an iPad browser.
+ */
+:root {
+  --bg: #fdf7ff;
+  --ink: #2b2350;
+  --magic: #5b3fff;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.classroom,
+.stage,
+.join-screen,
+.assistant-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  min-height: 100vh;
+  text-align: center;
+}
+
+.clay {
+  font-size: 96px;
+}
+
+.stage__title {
+  font-size: 1.6rem;
+}
+
+.mic,
+.btn,
+.candidate,
+.assistant-app__controls button,
+.join-screen button,
+.assistant-connect button {
+  font-size: 1.2rem;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 16px;
+  background: var(--magic);
+  color: #fff;
+  cursor: pointer;
+  touch-action: none;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mic--on {
+  background: #ff5b8a;
+}
+
+.thinking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking__sparkles span {
+  font-size: 2rem;
+  animation: pulse 1s infinite ease-in-out;
+}
+
+.thinking__sparkles span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.thinking__sparkles span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+}
+
+.bubble {
+  background: #fff;
+  border-radius: 16px;
+  padding: 12px 18px;
+  max-width: 80%;
+  box-shadow: 0 2px 8px rgba(91, 63, 255, 0.15);
+}
+
+.doodle-canvas {
+  background: #fff;
+  border: 3px dashed var(--magic);
+  border-radius: 16px;
+  touch-action: none;
+}
+
+.candidates {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.candidate {
+  width: 140px;
+  height: 140px;
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 2px solid var(--magic);
+}
+
+.candidate img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.candidate__placeholder {
+  font-size: 48px;
+}
+
+.avatar--chosen {
+  width: 220px;
+  height: 220px;
+  border-radius: 24px;
+  object-fit: cover;
+}
+
+.reconnect-hint {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  background: #fff3c4;
+  text-align: center;
+}
+
+.join-screen label,
+.assistant-connect label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.join-screen input,
+.assistant-connect input {
+  font-size: 1.2rem;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid var(--magic);
+}
+
+.assistant-app {
+  padding: 24px;
+}
+
+.assistant-app__bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.assistant-app__stage {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
