@@ -15,6 +15,13 @@ export interface VoiceCaptureDeps {
   getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
   /** Placeholder ref minter (DF-M3-2). */
   mkRef?: () => AudioRef;
+  /** Operator-visible degradation sink (mic denial is invisible to the child, NOT to operators). */
+  onDegraded?: (info: { reason: string }) => void;
+}
+
+function defaultOnDegraded(info: { reason: string }): void {
+  // eslint-disable-next-line no-console
+  console.warn("[client-degraded] voice", info.reason);
 }
 
 export interface VoiceCapture {
@@ -36,6 +43,7 @@ function defaultMkRef(): AudioRef {
 /** Imperative capture controller (used by the hook; unit-testable without React). */
 export function createVoiceCapture(deps: VoiceCaptureDeps = {}): VoiceCapture {
   const mkRef = deps.mkRef ?? defaultMkRef;
+  const onDegraded = deps.onDegraded ?? defaultOnDegraded;
   const getUserMedia =
     deps.getUserMedia ??
     ((constraints: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(constraints));
@@ -49,9 +57,11 @@ export function createVoiceCapture(deps: VoiceCaptureDeps = {}): VoiceCapture {
       try {
         stream = await getUserMedia({ audio: true });
       } catch (err) {
-        // degrade: no stream, but capture still "works" — stop() returns a ref anyway
+        // degrade: no stream, but capture still "works" — stop() returns a ref anyway. Invisible
+        // to the child (still a positive output), surfaced to operators (degradation principle).
         stream = null;
         lastError = err instanceof Error ? err.name || err.message : String(err);
+        onDegraded({ reason: `mic_unavailable:${lastError}` });
       }
     },
     async stop(): Promise<AudioRef> {

@@ -9,13 +9,14 @@
  */
 import { useMemo, useRef, useState } from "react";
 import type { StageId } from "@genius-x/contracts";
+import { lesson001 } from "@genius-x/course-config";
 import { useSession } from "../../shared/session";
 import { Thinking } from "../../shared/thinking";
 import { createAiOutputPlayer, type AiOutputPlayer } from "../../shared/ai-output";
 
 export interface ShapeProps {
   stageId: StageId;
-  /** A-line variant id from the lesson config (shape → "drawing"). */
+  /** Override the A-line variant id (default: read from the lesson config for this stage). */
   variantId?: string;
   player?: AiOutputPlayer;
 }
@@ -25,14 +26,22 @@ function newDoodleRef(): string {
   return `placeholder-doodle://${id}`;
 }
 
-export function Shape({ stageId, variantId = "drawing", player }: ShapeProps): React.JSX.Element {
-  const { pendingInteractionId, lastOutput, you, interact, complete } = useSession();
+export function Shape({ stageId, variantId, player }: ShapeProps): React.JSX.Element {
+  const { pendingInteractionId, lastOutput, you, localSelection, interact, complete } = useSession();
   const aiPlayer = useMemo(() => player ?? createAiOutputPlayer(), [player]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  const chosenAvatar = you.outputs.avatarUrl;
+  // resolve the A-line variant + output slot from the lesson config — not hardcoded ids.
+  const aLine = lesson001.stages.find((s) => s.stageId === stageId)?.variants?.[0];
+  const resolvedVariant = variantId ?? aLine?.id;
+  const outputKey = aLine?.writesOutputs?.[0] ?? "avatarUrl";
+
+  // chosen = authoritative output if present, else the positive local transient (not yet acked).
+  const authoritative = you.outputs[outputKey];
+  const chosenAvatar =
+    authoritative ?? (localSelection?.output === outputKey ? localSelection.value : undefined);
   const thinking = pendingInteractionId !== undefined;
   const candidates = lastOutput ? aiPlayer.imageUrls(lastOutput.output) : [];
 
@@ -66,10 +75,10 @@ export function Shape({ stageId, variantId = "drawing", player }: ShapeProps): R
   };
 
   const transform = (): void => {
-    interact(stageId, { kind: "doodle", doodleRef: newDoodleRef() }, variantId);
+    interact(stageId, { kind: "doodle", doodleRef: newDoodleRef() }, resolvedVariant);
   };
   const pick = (avatarUrl: string): void => {
-    complete(stageId, { kind: "selection", output: "avatarUrl", value: avatarUrl });
+    complete(stageId, { kind: "selection", output: outputKey, value: avatarUrl });
   };
 
   // 1) already chosen → the friend is born

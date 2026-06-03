@@ -42,6 +42,10 @@ function StudentClassroom(): React.JSX.Element {
 }
 
 function StageView({ stageId }: { stageId?: string | undefined }): React.JSX.Element {
+  // Presentation mapping only: each stage has a bespoke child experience (a voice break-the-ice
+  // vs a doodle canvas are different UIs), so the FRONTEND picks a component per stage id. This is
+  // not engine logic — no stage semantics/advance rules live here (the server stays config-driven).
+  // Unmapped stages fall through to a safe standby placeholder (talent/birth/closure → M4).
   switch (stageId) {
     case "icebreak":
       return <Icebreak stageId={stageId} />;

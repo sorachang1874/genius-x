@@ -37,7 +37,9 @@ function AssistantPanel(): React.JSX.Element {
   }
 
   const current = STAGES.find((s) => s.stageId === session.currentStageId);
-  const next = nextStage(session.currentStageId);
+  // only offer "unlock next" once the class actually exists (a student has joined → currentStageId
+  // is known). Before that, unlocking would target intro and be denied as "unknown session".
+  const next = session.currentStageId ? nextStage(session.currentStageId) : undefined;
   const assistantId = session.assistantId ?? "assistant-1";
 
   const unlock = (): void => {
@@ -68,8 +70,10 @@ function AssistantPanel(): React.JSX.Element {
             解锁下一环节：{next.name}
             <small>（{next.unlock === "assistant" ? "助教" : "老师"}解锁）</small>
           </button>
-        ) : (
+        ) : session.currentStageId ? (
           <p>已经是最后一个环节啦 🎉</p>
+        ) : (
+          <p>等待第一位同学进入教室……</p>
         )}
       </section>
     </div>

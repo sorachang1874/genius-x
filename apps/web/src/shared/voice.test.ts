@@ -23,7 +23,8 @@ describe("createVoiceCapture", () => {
     expect(capture.active).toBe(false);
   });
 
-  it("degrades gracefully when the mic is denied (still returns a ref)", async () => {
+  it("degrades gracefully when the mic is denied (still returns a ref; operator-visible)", async () => {
+    const onDegraded = vi.fn();
     const capture = createVoiceCapture({
       getUserMedia: async () => {
         const err = new Error("denied");
@@ -31,10 +32,12 @@ describe("createVoiceCapture", () => {
         throw err;
       },
       mkRef: () => "ref-degraded",
+      onDegraded,
     });
     await capture.start();
     expect(capture.active).toBe(false);
     expect(capture.lastError).toBe("NotAllowedError");
+    expect(onDegraded).toHaveBeenCalledOnce(); // not silent — operators see the mic denial
     await expect(capture.stop()).resolves.toBe("ref-degraded");
   });
 });

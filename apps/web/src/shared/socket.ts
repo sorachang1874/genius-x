@@ -71,6 +71,10 @@ export function connectSocket(opts: ConnectOptions): ClassroomSocket {
     },
     onConnect: (handler) => {
       socket.on("connect", handler);
+      // close the race: the socket auto-connects when io() is called above, which can fire
+      // "connect" BEFORE the session attaches this handler. If we're already connected, the
+      // event was missed — invoke immediately so HELLO/resume still happens.
+      if (socket.connected) handler();
       return () => socket.off("connect", handler);
     },
     onStatus: (handler) => {

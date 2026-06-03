@@ -24,6 +24,14 @@ export interface AiOutputPlayer {
 export interface AiOutputPlayerDeps {
   makeAudio?: (url: string) => AudioLike;
   speak?: (text: string) => void;
+  /** Operator-visible degradation sink (degradation principle: invisible to the child, NOT
+   *  silent to operators). Defaults to a console marker; swap for real client telemetry later. */
+  onDegraded?: (info: { reason: string }) => void;
+}
+
+function defaultOnDegraded(info: { reason: string }): void {
+  // eslint-disable-next-line no-console
+  console.warn("[client-degraded] ai-output", info.reason);
 }
 
 function defaultSpeak(text: string): void {
@@ -41,6 +49,7 @@ function defaultSpeak(text: string): void {
 export function createAiOutputPlayer(deps: AiOutputPlayerDeps = {}): AiOutputPlayer {
   const makeAudio = deps.makeAudio ?? ((url: string) => new Audio(url));
   const speak = deps.speak ?? defaultSpeak;
+  const onDegraded = deps.onDegraded ?? defaultOnDegraded;
 
   return {
     async play(output: ClientAiOutput): Promise<void> {
@@ -49,7 +58,9 @@ export function createAiOutputPlayer(deps: AiOutputPlayerDeps = {}): AiOutputPla
           await makeAudio(output.audioUrl).play();
           return;
         } catch {
-          // audio failed to load/play — fall through to spoken text; the child sees no error
+          // audio failed to load/play — fall through to spoken text; the child sees no error,
+          // but operators do (degradation principle: not a silent normal path).
+          onDegraded({ reason: "audio_play_failed_fell_back_to_speech" });
         }
       }
       if (output.text) speak(output.text);

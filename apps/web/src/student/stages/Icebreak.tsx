@@ -23,6 +23,9 @@ export function Icebreak({ stageId, player, voiceDeps }: IcebreakProps): React.J
   const aiPlayer = useMemo(() => player ?? createAiOutputPlayer(), [player]);
   const voice = useVoiceCapture(voiceDeps);
   const playedRef = useRef<string | null>(null);
+  // synchronous press latch — pointerUp AND pointerLeave both call onPressEnd; without this
+  // a quick release could fire two voice.end()s (recording state updates async) → double INTERACT.
+  const pressed = useRef(false);
 
   // play the friend's reply exactly once per interaction (audio-or-spoken)
   useEffect(() => {
@@ -35,10 +38,13 @@ export function Icebreak({ stageId, player, voiceDeps }: IcebreakProps): React.J
   const thinking = pendingInteractionId !== undefined;
 
   const onPressStart = (): void => {
+    if (pressed.current) return;
+    pressed.current = true;
     void voice.begin();
   };
   const onPressEnd = (): void => {
-    if (!voice.recording) return;
+    if (!pressed.current) return;
+    pressed.current = false;
     void voice.end().then((audioRef) => {
       interact(stageId, { kind: "voice", audioRef });
     });

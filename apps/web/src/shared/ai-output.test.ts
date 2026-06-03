@@ -15,14 +15,16 @@ describe("createAiOutputPlayer", () => {
     expect(speak).not.toHaveBeenCalled();
   });
 
-  it("falls back to speak(text) when audio play rejects (no error surfaced)", async () => {
+  it("falls back to speak(text) when audio play rejects (no child error, but operator-visible)", async () => {
     const play = vi.fn(async () => {
       throw new Error("decode failed");
     });
     const speak = vi.fn();
-    const player = createAiOutputPlayer({ makeAudio: () => ({ play }), speak });
+    const onDegraded = vi.fn();
+    const player = createAiOutputPlayer({ makeAudio: () => ({ play }), speak, onDegraded });
     await expect(player.play({ text: "你好呀", audioUrl: "u://bad.mp3" })).resolves.toBeUndefined();
     expect(speak).toHaveBeenCalledWith("你好呀");
+    expect(onDegraded).toHaveBeenCalledOnce(); // degradation is surfaced to operators, not silent
   });
 
   it("speaks text when there is no audioUrl", async () => {

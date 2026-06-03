@@ -34,6 +34,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-6 | Clay figure + visual assets | placeholder | static placeholder art in `public/` (魔法泥人, candidate avatars) | final illustrated assets ready | B-level polish pass |
 | DF-M3-7 | M3 UI/UX as a whole | half-built | functional-first interim: minimal native `<canvas>` doodle, placeholder avatars, plain visual style | **needs a full UX + visual design pass** | before any real classroom/B-level demo |
 | DF-M3-8 | Assistant advance controls | partial | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); **`FORCE_ADVANCE` not surfaced** — the engine requires `assistantId ∈ session.assistants`, which `/session/join` does not populate yet | register assistants on join (or an assistant-join endpoint) + add the override button | one straggler can't yet be force-advanced from the UI |
+| DF-M3-9 | Client-side degradation telemetry | placeholder | client degradations (audio→speech fallback, mic-denied) call an `onDegraded` seam → default `console.warn("[client-degraded] …")` (operator-visible, greppable) | real client telemetry sink (post to a `/client-trace` endpoint / Langfuse) | keeps the degradation principle honest on the client until a real sink lands |
 
 ## Review log
 

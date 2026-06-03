@@ -50,6 +50,7 @@ function Probe(): React.JSX.Element {
       <span data-testid="global">{s.global}</span>
       <span data-testid="version">{s.lessonConfigVersion ?? ""}</span>
       <span data-testid="avatar">{String(s.you.outputs.avatarUrl ?? "")}</span>
+      <span data-testid="chosen">{String(s.localSelection?.output === "avatarUrl" ? s.localSelection.value : (s.you.outputs.avatarUrl ?? ""))}</span>
       <span data-testid="pending">{s.pendingInteractionId ?? ""}</span>
       <button onClick={() => s.join("room-1")}>join</button>
       <button onClick={() => s.interact("icebreak", { kind: "voice", audioRef: "a1" })}>interact</button>
@@ -127,7 +128,7 @@ describe("session context (fake socket)", () => {
     expect(screen.getByTestId("pending").textContent).toBe("");
   });
 
-  it("emits an exact STAGE_COMPLETE selection and optimistically reflects the avatar", async () => {
+  it("emits an exact STAGE_COMPLETE selection; shows it as a local transient WITHOUT mutating authoritative you", async () => {
     const { fake } = await setupLiveStudent();
     fireEvent.click(screen.getByText("complete"));
     expect(fake.sent).toContainEqual({
@@ -136,7 +137,22 @@ describe("session context (fake socket)", () => {
       stageId: "shape",
       payload: { kind: "selection", output: "avatarUrl", value: "u1" },
     });
-    expect(screen.getByTestId("avatar").textContent).toBe("u1");
+    // local transient reflects the choice immediately (positive output)...
+    expect(screen.getByTestId("chosen").textContent).toBe("u1");
+    // ...but authoritative you.outputs is NOT invented locally (only RESUME_STATE sets it).
+    expect(screen.getByTestId("avatar").textContent).toBe("");
+  });
+
+  it("keeps showing thinking on resume when the server still has a pending interaction", async () => {
+    const { fake } = await setupLiveStudent();
+    await fake.emit({
+      type: "RESUME_STATE",
+      currentStageId: "icebreak",
+      global: "active",
+      lessonConfigVersion: "1.0.0",
+      you: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: { "iid-live": { stageId: "icebreak" } }, outputs: {} },
+    });
+    expect(screen.getByTestId("pending").textContent).toBe("iid-live");
   });
 
   it("re-sends HELLO on a second connect (reconnect → resume)", async () => {

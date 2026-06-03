@@ -27,6 +27,8 @@ import type {
   ClientMessage,
   ServerMessage,
   StageId,
+  OutputKey,
+  RuntimeValue,
   GlobalState,
   StudentRuntimeState,
   ClientAiOutput,
@@ -71,12 +73,16 @@ export interface SessionState {
   currentStageId?: StageId | undefined;
   global: GlobalState;
   lessonConfigVersion?: string | undefined;
-  /** Authoritative per-student state (from RESUME_STATE), with optimistic local selection. */
+  /** Authoritative per-student state (from RESUME_STATE) — the client renders from this. */
   you: StudentRuntimeState;
-  /** In-flight interaction id — drives the "thinking" UI; cleared by AI_OUTPUT/stage change. */
+  /** In-flight interaction id — drives the "thinking" UI; cleared by AI_OUTPUT/stage change.
+   *  Re-derived from `you.pending` on resume so a reconnect mid-interaction keeps showing thinking. */
   pendingInteractionId?: string | undefined;
   /** Latest AI output for this student (e.g. shape candidate images). Transient. */
   lastOutput?: { interactionId: string; output: ClientAiOutput } | undefined;
+  /** A child's just-made choice, shown as a positive transient BEFORE the server acks it. NOT
+   *  authoritative — `you.outputs` (from RESUME_STATE) is. Cleared on the next RESUME_STATE. */
+  localSelection?: { output: OutputKey; value: RuntimeValue } | undefined;
 }
 
 type Action =
@@ -87,7 +93,7 @@ type Action =
   | { t: "CLASS_STATE"; currentStageId: StageId; global: GlobalState }
   | { t: "SERVER"; msg: ServerMessage }
   | { t: "INTERACT_SENT"; interactionId: string }
-  | { t: "LOCAL_SELECT"; output: string; value: StudentRuntimeState["outputs"][string] };
+  | { t: "LOCAL_SELECT"; output: OutputKey; value: RuntimeValue };
 
 function reduce(state: SessionState, action: Action): SessionState {
   switch (action.t) {
@@ -110,8 +116,8 @@ function reduce(state: SessionState, action: Action): SessionState {
     case "INTERACT_SENT":
       return { ...state, pendingInteractionId: action.interactionId };
     case "LOCAL_SELECT":
-      // optimistic: the child sees the avatar they chose immediately; resume reconciles it.
-      return { ...state, you: { ...state.you, outputs: { ...state.you.outputs, [action.output]: action.value } } };
+      // positive transient ONLY — does not touch authoritative `you`; RESUME_STATE reconciles.
+      return { ...state, localSelection: { output: action.output, value: action.value } };
     case "SERVER":
       return applyServer(state, action.msg);
     default: {
@@ -135,8 +141,11 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
         pendingInteractionId: state.pendingInteractionId === msg.interactionId ? undefined : state.pendingInteractionId,
         lastOutput: { interactionId: msg.interactionId, output: msg.output },
       };
-    case "RESUME_STATE":
-      // authoritative re-hydration — render from the server's `you`, not local state.
+    case "RESUME_STATE": {
+      // authoritative re-hydration — render from the server's `you`, not local state. If the
+      // server still has a pending interaction for the current stage, keep showing "thinking"
+      // (the AI_OUTPUT is still coming) instead of dropping to idle and inviting a duplicate.
+      const pendingHere = Object.entries(msg.you.pending).find(([, v]) => v.stageId === msg.currentStageId);
       return {
         ...state,
         phase: "live",
@@ -144,9 +153,11 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
         global: msg.global,
         lessonConfigVersion: msg.lessonConfigVersion,
         you: msg.you,
-        pendingInteractionId: undefined,
+        pendingInteractionId: pendingHere ? pendingHere[0] : undefined,
         lastOutput: undefined,
+        localSelection: undefined,
       };
+    }
     case "AI_READY": // M4 (prepared birth output)
     case "PROJECT": // M4 (teacher projection)
       return state;
@@ -256,9 +267,13 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
     socketRef.current?.send(msg);
   }, []);
 
+  const pendingInteractionId = state.pendingInteractionId;
   const interact = useCallback(
     (stageId: StageId, input: InteractionInput, variantId?: string): string | undefined => {
       if (!studentId) return undefined;
+      // one interaction in flight at a time — don't let an eager tap queue a duplicate while
+      // the friend is still "thinking" (the server would create a second pending + AI call).
+      if (pendingInteractionId) return undefined;
       const interactionId = newId();
       const msg: ClientMessage = variantId
         ? { type: "INTERACT", studentId, stageId, interactionId, variantId, input }
@@ -267,7 +282,7 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
       dispatch({ t: "INTERACT_SENT", interactionId });
       return interactionId;
     },
-    [studentId, send],
+    [studentId, send, pendingInteractionId],
   );
 
   const complete = useCallback(
