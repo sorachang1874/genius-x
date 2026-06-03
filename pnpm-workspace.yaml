@@ -1,6 +1,9 @@
 # pnpm workspace — TypeScript main application.
-# The Python offline tools layer (tools/) is intentionally NOT a workspace member;
-# it has its own .venv + pyproject.toml and is decoupled from the main pipeline.
+# The Python offline tools layer (tools/) is intentionally NOT a workspace member.
 packages:
   - "apps/*"
   - "packages/*"
+allowBuilds:
+  esbuild: set this to true or false
+onlyBuiltDependencies:
+  - esbuild
