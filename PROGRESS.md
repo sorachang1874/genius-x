@@ -31,16 +31,22 @@ model_reasoning_effort="xhigh" "<prompt starting with docs/agents/REVIEW_BRIEF.m
 For fast confirmations, tell codex "do NOT run any shell commands, just read + verdict"
 (~48s vs timing out). Never pipe through `tail`. See docs/agents/README.md.
 
-## Next: M3 — Frontend (`apps/web`) — the largest remaining gap to a demo
+## Next: M3 — Frontend (`apps/web`) — IN PROGRESS on branch `m3-frontend`
 
-Per `docs/architecture/build-vs-reuse.md`: Vite + React PWA. Owners A (assistant) / B (student).
+Design note `docs/agents/designs/A-M3-frontend.md` is written + Codex-reviewed (hardened).
 
-1. Start with a design note `docs/agents/designs/A-M3-frontend.md` (Vite+React PWA setup;
-   Socket.IO client; student stages 1-2 = voice icebreak + shape image-gen A-line; assistant
-   unlock panel; render `AI_OUTPUT`/`RESUME_STATE`/`STAGE_UNLOCK`). → Codex review → branch.
-2. The client consumes `@genius-x/contracts` (ws-events) — no local type redefs.
-3. Hard UI rules (REVIEW_BRIEF): no "Prompt/LLM/AI" wording to the child; no failure state;
-   latency dressed as "thinking".
+**Done (branch `m3-frontend`):** scaffolding — Vite+React+TS app builds, `pnpm typecheck`
+green across all 6 packages. `App.tsx` role entry (`?role=assistant`); student/assistant stubs.
+
+**Remaining M3 (do next):** `shared/socket.ts` (typed Socket.IO client over `@genius-x/contracts`)
+→ `shared/session.tsx` (React context: currentStageId/global/my StudentRuntimeState/last AI
+output, rendered from `RESUME_STATE.you`) → `shared/ai-output.ts` (play audioUrl-or-speak text;
+imageUrls) + `voice.ts` (mic→placeholder audioRef) → student stages standby/intro/icebreak/shape
+(A-line) → assistant unlock panel → component+socket unit tests (incl. banned-wording scan) →
+PR → Codex review → merge. Follow A-M3 design note exactly; consumes `@genius-x/contracts` (no redefs).
+
+> esbuild build-script: if `pnpm test`/`dev` errors on a missing esbuild binary, run
+> `pnpm approve-builds` and select esbuild (typecheck already works).
 
 Then M4 (talent/birth/memory + AI_READY{preparedId,outputKind} + playPrepared) → wire-up = B-level demo.
 
@@ -53,9 +59,12 @@ Then M4 (talent/birth/memory + AI_READY{preparedId,outputKind} + playPrepared) �
 - In-process session mutex = single-instance only (multi-instance → Redis lock).
 - China: author offshore, run in China; demo uses fakes.
 
-## Handoff — next session starts here (M3)
+## Handoff — next session starts here (M3 features, on branch `m3-frontend`)
 
-1. Read: `AGENTS.md`, `docs/agents/README.md` + `REVIEW_BRIEF.md`, `docs/architecture/`
-   (lesson-runtime, build-vs-reuse), `docs/contracts/` (client-server, course-engine).
-2. Run: `pnpm install && pnpm typecheck && pnpm -r test` (should be green).
-3. Write the A-M3 design note → Codex review → implement on a branch → PR → review → merge.
+1. `git checkout m3-frontend` (scaffolding already here, green).
+2. Read: `docs/agents/designs/A-M3-frontend.md` (the plan), `AGENTS.md`,
+   `docs/agents/README.md` + `REVIEW_BRIEF.md`, `docs/contracts/` (client-server, course-engine),
+   `packages/contracts/src/ws-events.ts` (the messages to consume), `docs/DEFERRED.md`.
+3. `pnpm install && pnpm typecheck` (green). `pnpm approve-builds` → esbuild if test/dev needs it.
+4. Implement remaining M3 (see "Next" above): socket → session → ports → stages → assistant →
+   tests → PR → Codex review (xhigh, `< /dev/null`) → merge. Then M4.
