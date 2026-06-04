@@ -53,6 +53,8 @@ function Probe(): React.JSX.Element {
       <span data-testid="chosen">{String(s.localSelection?.output === "avatarUrl" ? s.localSelection.value : (s.you.outputs.avatarUrl ?? ""))}</span>
       <span data-testid="pending">{s.pendingInteractionId ?? ""}</span>
       <span data-testid="ready">{s.readyPrepared?.preparedId ?? ""}</span>
+      <span data-testid="lastout">{s.lastOutput?.interactionId ?? ""}</span>
+      <span data-testid="toy">{String(s.you.memories.favorite_toy ?? "")}</span>
       <span data-testid="projected">{s.projected?.studentId ?? ""}</span>
       <button onClick={() => s.join("room-1")}>join</button>
       <button onClick={() => s.interact("icebreak", { kind: "voice", audioRef: "a1" })}>interact</button>
@@ -182,6 +184,26 @@ describe("session context (fake socket)", () => {
     const { fake } = await setupLiveStudent();
     await fake.emit({ type: "PROJECT", studentId: "k1", output: { text: "轩轩你好" } });
     expect(screen.getByTestId("projected").textContent).toBe("k1");
+  });
+
+  it("refreshes authoritative `you` after an AI_OUTPUT while PRESERVING lastOutput", async () => {
+    const fake = makeFakeSocket();
+    const updatedYou = { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: { favorite_toy: "奥特曼" }, pendingMemory: [], prepared: {} };
+    const deps = {
+      connect: () => fake.socket,
+      join: vi.fn(async () => ({ studentId: "k1", sessionId: "s1", role: "student" } as SessionJoinResponse)),
+      fetchState: vi.fn(async () => ({ sessionId: "s1", students: { k1: updatedYou } }) as unknown as import("@genius-x/contracts").ClassSession),
+      wsUrl: "ws://test",
+    };
+    render(<SessionProvider role="student" deps={deps}><Probe /></SessionProvider>);
+    fireEvent.click(screen.getByText("join"));
+    await waitFor(() => expect(screen.getByTestId("phase").textContent).toBe("live"));
+    await fake.fireConnect();
+    await fake.emit({ type: "AI_OUTPUT", studentId: "k1", stageId: "talent", interactionId: "ix", output: { text: "hi" } });
+    // the YOU_REFRESH effect pulls the read model → `you.memories` updates...
+    await waitFor(() => expect(screen.getByTestId("toy").textContent).toBe("奥特曼"));
+    // ...without dropping the transient lastOutput (so in-flight playback survives the refresh)
+    expect(screen.getByTestId("lastout").textContent).toBe("ix");
   });
 
   it("playPrepared is a no-op while an interaction is pending (no double-send)", async () => {
