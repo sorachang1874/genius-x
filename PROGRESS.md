@@ -118,6 +118,20 @@ Resolves DF-M3-8 / DF-M4-7 (assistant registration gap):
 and `requestedBy ∈ session.assistants` passes validation). The student-facing path (talent → birth →
 certificate → closure) and the teacher big-screen projection are both fully functional.
 
+## M4d (FORCE_ADVANCE UI) — COMPLETE (branch `m4d-force-advance`)
+
+Resolves DF-M3-8 (final piece — UI for force-advance):
+- AssistantApp: added "强制推进" button with confirmation flow (reason input + cancel/confirm actions)
+- Sends `FORCE_ADVANCE` with `stageId`, `assistantId`, optional `reason`, `expectedCurrentStageId` (prevents race)
+- Styles: orange button, confirmation form with styled input and action buttons
+- Tests: 3 new tests (show button, send message with reason, cancel without sending)
+- AssistantApp now accepts optional `deps` prop for testability
+- Tests green: ai-gateway 19, server 61, web 49 (incl. 3 new FORCE_ADVANCE tests); typecheck green.
+- DEFERRED.md: marked DF-M3-8 as **resolved (M4d)** — full feature complete.
+
+**Impact:** Assistants can now force-advance the class when conditions aren't met (e.g., some students stuck).
+The action is audited (reason logged, traced) and safe (expectedCurrentStageId prevents stale requests).
+
 ## Handoff — next session starts here
 
 1. `git checkout m4a-server` (M4a built + green; PR open). Or `main` after it merges.
