@@ -90,7 +90,14 @@ export class ClassroomController {
   ) {}
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
-    if (msg.type === "HELLO") return this.resume(sessionId, msg.studentId);
+    if (msg.type === "HELLO") {
+      if (msg.studentId) {
+        return this.resume(sessionId, msg.studentId);
+      } else if (msg.assistantId) {
+        return this.resumeAssistant(sessionId, msg.assistantId);
+      }
+      return;
+    }
     if (msg.type === "REQUEST_PROJECTION") return this.requestProjection(sessionId, msg);
     // playPrepared replays a stored output — handled out-of-band (no AI call, no reducer interaction).
     if (msg.type === "INTERACT" && msg.input.kind === "playPrepared")
@@ -348,6 +355,25 @@ export class ClassroomController {
     });
     if (result.trace) this.trace.record(result.trace);
     if (result.msg) this.emit.toStudent(sessionId, studentId, result.msg);
+  }
+
+  async resumeAssistant(sessionId: string, assistantId: string): Promise<void> {
+    const result = await this.store.update<{ msg?: ServerMessage; trace?: TraceEvent }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { trace: guard } };
+      const s = session as ClassSession;
+      // Assistants don't have personal state, just send the session state
+      const msg: ServerMessage = {
+        type: "RESUME_STATE",
+        currentStageId: s.currentStageId,
+        global: s.global,
+        lessonConfigVersion: s.lessonConfigVersion,
+        you: freshStudentState(), // Empty state for assistants
+      };
+      return { out: { msg } };
+    });
+    if (result.trace) this.trace.record(result.trace);
+    if (result.msg) this.emit.toSession(sessionId, result.msg);
   }
 
   private guardSession(session: ClassSession | null, sessionId: string): TraceEvent | null {

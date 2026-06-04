@@ -255,6 +255,7 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
       try {
         if (role === "student") {
           const res = await doJoin(roomCode, name);
+          if (!res.studentId) throw new Error("student join did not return studentId");
           dispatch({ t: "JOIN_OK", sessionId: res.sessionId, studentId: res.studentId });
         } else {
           // assistant joins via the same endpoint with role="assistant" to register in session.assistants

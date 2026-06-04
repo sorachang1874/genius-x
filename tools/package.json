@@ -1,0 +1,12 @@
+{
+  "name": "@genius-x/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "node demo-e2e-test.mjs"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

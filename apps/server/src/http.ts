@@ -20,8 +20,10 @@ export function buildHttp(
     const body = req.body as SessionJoinRequest;
     const sessionId = body.roomCode; // MVP: room code is the session id
     const role = body.role ?? "student";
-    const studentId = randomUUID();
+    const studentId = role === "student" ? randomUUID() : undefined;
     const assistantId = role === "assistant" ? randomUUID() : undefined;
+
+    console.log(`[HTTP] /session/join: role=${role}, studentId=${studentId}, assistantId=${assistantId}`);
 
     // atomic: create-if-absent + add this student/assistant, without racing concurrent joins
     await store.update(sessionId, async (current) => {
@@ -44,17 +46,20 @@ export function buildHttp(
         }
       } else {
         // student join logic
+        if (!studentId) throw new Error("studentId should be defined for student role");
         const student = freshStudentState();
         const name = body.name?.trim();
         if (name) student.displayName = name; // for the 伙伴出生证 (contracts-v1.4)
         session.students[studentId] = student;
+        console.log(`[HTTP] Added student ${studentId} to session. Total students: ${Object.keys(session.students).length}`);
       }
 
+      console.log(`[HTTP] Session students after update: ${JSON.stringify(Object.keys(session.students))}`);
       return { next: session, out: undefined };
     });
 
     const res: SessionJoinResponse = {
-      studentId,
+      ...(studentId && { studentId }),
       sessionId,
       role,
       ...(assistantId && { assistantId }),

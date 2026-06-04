@@ -31,8 +31,8 @@ export function attachSocket(io: Server, controller: ClassroomController): void 
 
     socket.on("client_message", (msg: ClientMessage) => {
       // join the per-student room on HELLO so RESUME_STATE reaches this socket even if
-      // studentId was not in the handshake
-      if (sessionId && msg.type === "HELLO") socket.join(studentRoom(sessionId, msg.studentId));
+      // studentId was not in the handshake (only for students, not assistants)
+      if (sessionId && msg.type === "HELLO" && msg.studentId) socket.join(studentRoom(sessionId, msg.studentId));
       controller.onMessage(sessionId, msg).catch((err: unknown) => console.error("[socket] onMessage failed", err));
     });
   });

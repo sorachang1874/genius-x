@@ -13,7 +13,8 @@ export interface SessionJoinRequest {
 }
 
 export interface SessionJoinResponse {
-  studentId: string;
+  /** Student ID returned when joining as student. */
+  studentId?: string;
   sessionId: string;
   role: Role;
   /** Assistant ID returned when joining as assistant. */

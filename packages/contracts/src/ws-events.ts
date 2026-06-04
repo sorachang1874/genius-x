@@ -56,7 +56,7 @@ export type ServerMessage =
 
 /** Client → server. */
 export type ClientMessage =
-  | { type: "HELLO"; studentId: string }
+  | { type: "HELLO"; studentId?: string; assistantId?: string }
   | { type: "ASSISTANT_UNLOCK"; stageId: StageId; assistantId: string }
   /** Teacher-gated advance (e.g. closure). In MVP the main teacher acts via the assistant
    *  device; the server should verify the connection's role when auth lands (currently trusted). */
