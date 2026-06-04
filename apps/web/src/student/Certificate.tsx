@@ -15,9 +15,12 @@ export interface CertificateProps {
 
 export function Certificate({ you, speechText }: CertificateProps): React.JSX.Element {
   const labels = lesson001.certificate?.memoryLabels ?? {};
-  const order = lesson001.certificate?.order ?? [];
-  // ordered declared memories first, then any remaining present memory (resilient to 1–3 of them)
-  const keys = [...order.filter((k) => you.memories[k] != null), ...Object.keys(you.memories).filter((k) => !order.includes(k))];
+  // render order: config `order`, then any other declared keys, then anything else present —
+  // so memories always appear in a stable, intended order (resilient to 1–3 of them).
+  const ranked = [...(lesson001.certificate?.order ?? []), ...lesson001.declaredMemoryKeys];
+  const present = Object.keys(you.memories).filter((k) => you.memories[k] != null);
+  const keys = [...new Set([...ranked, ...present])].filter((k) => present.includes(k));
+  const label = (k: string): string => labels[k] ?? "闪光记忆"; // neutral fallback — never a raw key
   const avatar = you.outputs.avatarUrl;
 
   return (
@@ -29,7 +32,7 @@ export function Certificate({ you, speechText }: CertificateProps): React.JSX.El
         <ul className="certificate__memories">
           {keys.map((k) => (
             <li key={k}>
-              <span className="certificate__label">{labels[k] ?? k}</span>：{you.memories[k]}
+              <span className="certificate__label">{label(k)}</span>：{you.memories[k]}
             </li>
           ))}
         </ul>

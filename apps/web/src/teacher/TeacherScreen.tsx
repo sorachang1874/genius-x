@@ -40,6 +40,14 @@ function TeacherPanel(): React.JSX.Element {
     void refresh();
   }, [refresh, session.projected, session.currentStageId]);
 
+  // poll while live: birth pre-generation readiness is broadcast only to the student room, so the
+  // big screen wouldn't otherwise learn when a child becomes projectable (DF-M4-4 thin version).
+  useEffect(() => {
+    if (session.phase !== "live") return;
+    const id = setInterval(() => void refresh(), 4000);
+    return () => clearInterval(id);
+  }, [session.phase, refresh]);
+
   // play the projected child's speech on the big screen.
   useEffect(() => {
     if (session.projected) void player.play(session.projected.output);

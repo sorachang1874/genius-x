@@ -102,7 +102,8 @@ type Action =
   | { t: "CLASS_STATE"; currentStageId: StageId; global: GlobalState }
   | { t: "SERVER"; msg: ServerMessage }
   | { t: "INTERACT_SENT"; interactionId: string }
-  | { t: "LOCAL_SELECT"; output: OutputKey; value: RuntimeValue };
+  | { t: "LOCAL_SELECT"; output: OutputKey; value: RuntimeValue }
+  | { t: "YOU_REFRESH"; you: StudentRuntimeState };
 
 function reduce(state: SessionState, action: Action): SessionState {
   switch (action.t) {
@@ -127,6 +128,15 @@ function reduce(state: SessionState, action: Action): SessionState {
     case "LOCAL_SELECT":
       // positive transient ONLY — does not touch authoritative `you`; RESUME_STATE reconciles.
       return { ...state, localSelection: { output: action.output, value: action.value } };
+    case "YOU_REFRESH":
+      // authoritative per-student state pulled from the read model — refresh `you` ONLY (keep the
+      // transient lastOutput/readyPrepared so in-flight playback isn't dropped). Drop a localSelection
+      // once the server confirms it (the chosen output is now authoritative).
+      return {
+        ...state,
+        you: action.you,
+        localSelection: state.localSelection && action.you.outputs[state.localSelection.output] !== undefined ? undefined : state.localSelection,
+      };
     case "SERVER":
       return applyServer(state, action.msg);
     default: {
@@ -222,8 +232,12 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
   const base = serverBaseUrl();
   const wsUrl = deps?.wsUrl ?? base;
   const connect = deps?.connect ?? connectSocket;
-  const doJoin = deps?.join ?? ((roomCode: string, name?: string) => joinSession(base, roomCode, name));
-  const doFetchState = deps?.fetchState ?? ((sessionId: string) => fetchSessionState(base, sessionId));
+  // Memoize the injectable seams so effects keyed on them don't re-run every render (the
+  // `you` self-refresh effect below depends on doFetchState).
+  const injJoin = deps?.join;
+  const injFetch = deps?.fetchState;
+  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string) => joinSession(base, roomCode, name)), [injJoin, base]);
+  const doFetchState = useMemo(() => injFetch ?? ((sessionId: string) => fetchSessionState(base, sessionId)), [injFetch, base]);
 
   const [state, dispatch] = useReducer(reduce, {
     role,
@@ -280,6 +294,24 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
     };
   }, [connect, wsUrl, sessionId, studentId, role]);
 
+  // Keep authoritative `you` fresh between resumes: the server delivers a renderable AI_OUTPUT but
+  // not the updated StudentRuntimeState, so after each AI_OUTPUT and each stage change we pull the
+  // read model and refresh `you` only (talent progress, memories, prepared, avatar). lastOutput is
+  // preserved (unlike a full HELLO/RESUME_STATE), so in-flight playback isn't dropped.
+  const lastOutputId = state.lastOutput?.interactionId;
+  const currentStageId = state.currentStageId;
+  useEffect(() => {
+    if (role !== "student" || !sessionId || !studentId) return;
+    let cancelled = false;
+    void doFetchState(sessionId).then((session) => {
+      const you = session?.students[studentId];
+      if (!cancelled && you) dispatch({ t: "YOU_REFRESH", you });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [role, sessionId, studentId, lastOutputId, currentStageId, doFetchState]);
+
   const send = useCallback((msg: ClientMessage): void => {
     socketRef.current?.send(msg);
   }, []);
@@ -313,13 +345,13 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
 
   const playPrepared = useCallback(
     (stageId: StageId, preparedId: string): void => {
-      if (!studentId) return;
+      if (!studentId || pendingInteractionId) return; // one in flight at a time (no double-send)
       // reuse preparedId as the client interactionId — the server answers AI_OUTPUT keyed by
       // preparedId, so the pending/thinking state clears when the stored speech arrives.
       send({ type: "INTERACT", studentId, stageId, interactionId: preparedId, input: { kind: "playPrepared", preparedId } } satisfies ClientMessage);
       dispatch({ t: "INTERACT_SENT", interactionId: preparedId });
     },
-    [studentId, send],
+    [studentId, send, pendingInteractionId],
   );
 
   const api = useMemo<SessionApi>(

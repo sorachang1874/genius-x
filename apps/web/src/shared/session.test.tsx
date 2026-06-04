@@ -183,4 +183,12 @@ describe("session context (fake socket)", () => {
     await fake.emit({ type: "PROJECT", studentId: "k1", output: { text: "轩轩你好" } });
     expect(screen.getByTestId("projected").textContent).toBe("k1");
   });
+
+  it("playPrepared is a no-op while an interaction is pending (no double-send)", async () => {
+    const { fake } = await setupLiveStudent();
+    fireEvent.click(screen.getByText("interact")); // sets pendingInteractionId
+    fake.sent.length = 0;
+    fireEvent.click(screen.getByText("play")); // guarded
+    expect(fake.sent.some((m) => m.type === "INTERACT" && m.input.kind === "playPrepared")).toBe(false);
+  });
 });

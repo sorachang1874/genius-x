@@ -53,6 +53,21 @@ describe("Birth", () => {
     expect(session.playPrepared).toHaveBeenCalledWith("birth", "p1");
   });
 
+  it("on reconnect after completion (authoritative stageStatus=completed) shows the cert, not the play button, and does NOT re-complete", () => {
+    const you = youWith({
+      stageStatus: { birth: "completed" },
+      outputs: { avatarUrl: "av" },
+      memories: { favorite_toy: "积木" },
+      displayName: "小明",
+      prepared: { p1: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "小明你好" }, degraded: false, preparedAt: "" } },
+    });
+    const session = fakeSession({ you });
+    renderWithSession(<Birth stageId="birth" player={noopPlayer} />, session);
+    expect(screen.getByText(/伙伴出生证/)).toBeTruthy();
+    expect(screen.queryByTestId("play-prepared")).toBeNull();
+    expect(session.complete).not.toHaveBeenCalled(); // already completed authoritatively
+  });
+
   it("after the speech plays, assembles the 伙伴出生证 from `you` and completes the stage", async () => {
     const session = fakeSession({
       readyPrepared: { stageId: "birth", preparedId: "p1", outputKind: "audio" },
