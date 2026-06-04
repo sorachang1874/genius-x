@@ -15,6 +15,7 @@ import type {
   StageStatus,
   GlobalState,
 } from "./enums";
+import type { ClientAiOutput, OutputKind } from "./ws-events";
 
 export interface StudentProfile {
   id: string; // UUID
@@ -76,6 +77,21 @@ export interface BirthCertificate {
 
 // --- Live runtime state (Redis during class, archived to Postgres after) ---
 
+// --- Pre-generated outputs (contracts-v1.4) — e.g. the birth 专属台词, generated before the
+//     child is on stage so the tap→play moment is instant. Server-minted, server-filled. ---
+
+/** Opaque, server-minted handle for a pre-generated output. Validated against `you.prepared`. */
+export type PreparedOutputId = string;
+
+export interface PreparedOutput {
+  stageId: StageId; // stage this was prepared for (e.g. birth)
+  outputKind: OutputKind; // server-owned (from config), NOT client-supplied
+  ready: boolean; // false = minted+generating (output is {}); true = filled — gates AI_READY/playPrepared
+  output: ClientAiOutput; // child-renderable; {} until ready (refs only, no raw bytes)
+  degraded: boolean; // operator-visible: was this a fallback line?
+  preparedAt: string; // ISO (passed in; not generated in pure contract code)
+}
+
 /** Per-student state the engine reduces + guards read. Engine fields are typed; lesson
  *  outputs are opaque (config-declared) so new lessons add outputs without a contract change. */
 export interface StudentRuntimeState {
@@ -88,6 +104,14 @@ export interface StudentRuntimeState {
   pending: Record<string, { stageId: StageId }>;
   /** Config-declared outputs (e.g. "avatarUrl"). Keys must be in lesson.declaredOutputs. */
   outputs: Record<OutputKey, RuntimeValue>;
+  /** Display name from /session/join (for the 伙伴出生证). Optional — assigned if absent. */
+  displayName?: string;
+  /** Invisibly collected in talent (contracts-v1.4). Keys ∈ lesson.declaredMemoryKeys. */
+  memories: Record<MemoryKey, string>;
+  /** interactionIds with an outstanding memory extraction; empty ⇒ memories settled (birth pre-gen gate). */
+  pendingMemory: string[];
+  /** Server pre-generated outputs (e.g. birth speech), keyed by PreparedOutputId. */
+  prepared: Record<PreparedOutputId, PreparedOutput>;
 }
 
 export interface ClassSession {

@@ -59,6 +59,9 @@ function freshStudentState(): StudentRuntimeState {
     selectedVariant: {},
     pending: {},
     outputs: {},
+    memories: {},
+    pendingMemory: [],
+    prepared: {},
   };
 }
 

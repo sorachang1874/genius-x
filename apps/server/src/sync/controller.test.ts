@@ -24,12 +24,12 @@ class FakeTrace implements TraceSink {
 }
 
 function freshStudent(over: Partial<StudentRuntimeState> = {}): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, ...over };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: {}, pendingMemory: [], prepared: {}, ...over };
 }
 
 function seed(currentStageId: string, students: Record<string, StudentRuntimeState>): ClassSession {
   return {
-    sessionId: "s1", lessonId: "lesson-001", lessonConfigVersion: "1.0.0", classId: "c1",
+    sessionId: "s1", lessonId: "lesson-001", lessonConfigVersion: "1.1.0", classId: "c1",
     currentStageId, global: "active", stageStartTime: NOW, students, assistants: ["a1"],
   };
 }
@@ -68,7 +68,7 @@ describe("ClassroomController", () => {
     expect(msg.type).toBe("RESUME_STATE");
     if (msg.type === "RESUME_STATE") {
       expect(msg.currentStageId).toBe("shape");
-      expect(msg.lessonConfigVersion).toBe("1.0.0");
+      expect(msg.lessonConfigVersion).toBe("1.1.0");
       expect(msg.you.outputs.avatarUrl).toBe("u1");
     }
   });

@@ -35,7 +35,7 @@ export interface Clock {
 }
 
 export function freshStudentState(): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: {}, pendingMemory: [], prepared: {} };
 }
 
 /** Wire → engine. Returns null for messages handled out-of-band (HELLO/REQUEST_PROJECTION). */
@@ -71,7 +71,12 @@ interface Effects {
   broadcasts: ServerMessage[];
   traces: TraceEvent[];
   calls: Extract<EngineCommand, { type: "CALL_INTERACTION" }>[];
+  prepares: Extract<EngineCommand, { type: "CALL_PREPARE" }>[];
 }
+
+/** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
+ *  (PRD §0). Child-safe: no AI/Prompt/LLM wording. Replaced by real content when providers land (DF-M4-1). */
+const BIRTH_FALLBACK_LINE = "我是你的好朋友呀，今天认识你真高兴，我们以后一起玩！";
 
 export class ClassroomController {
   constructor(
@@ -86,7 +91,10 @@ export class ClassroomController {
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
     if (msg.type === "HELLO") return this.resume(sessionId, msg.studentId);
-    if (msg.type === "REQUEST_PROJECTION") return; // teacher-screen projection wiring is a later step
+    if (msg.type === "REQUEST_PROJECTION") return this.requestProjection(sessionId, msg);
+    // playPrepared replays a stored output — handled out-of-band (no AI call, no reducer interaction).
+    if (msg.type === "INTERACT" && msg.input.kind === "playPrepared")
+      return this.playPrepared(sessionId, msg.studentId, msg.stageId, msg.input.preparedId);
     const event = mapToEvent(msg);
     if (event) await this.applyEvent(sessionId, event);
   }
@@ -95,18 +103,20 @@ export class ClassroomController {
   private async applyEvent(sessionId: string, event: EngineEvent): Promise<void> {
     const effects = await this.store.update<Effects>(sessionId, async (session) => {
       const guard = this.guardSession(session, sessionId);
-      if (guard) return { out: { broadcasts: [], traces: [guard], calls: [] } };
+      if (guard) return { out: { broadcasts: [], traces: [guard], calls: [], prepares: [] } };
       const result = this.reducer(session as ClassSession, event, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");
       const broadcasts: ServerMessage[] = [];
       const traces: TraceEvent[] = [];
       const calls: Effects["calls"] = [];
+      const prepares: Effects["prepares"] = [];
       for (const c of result.commands) {
         if (c.type === "BROADCAST") broadcasts.push(c.message);
         else if (c.type === "TRACE") traces.push(c.event);
         else if (c.type === "CALL_INTERACTION") calls.push(c);
+        else if (c.type === "CALL_PREPARE") prepares.push(c);
       }
-      return { next: persist ? result.state : undefined, out: { broadcasts, traces, calls } };
+      return { next: persist ? result.state : undefined, out: { broadcasts, traces, calls, prepares } };
     });
     for (const t of effects.traces) this.trace.record(t);
     for (const m of effects.broadcasts) this.emit.toSession(sessionId, m);
@@ -114,6 +124,11 @@ export class ClassroomController {
     for (const call of effects.calls)
       void this.runInteraction(sessionId, call).catch((err: unknown) =>
         this.trace.record(this.mkTrace("interaction", { reason: "run_interaction_failed", error: String(err), sessionId, interactionId: call.interactionId })),
+      );
+    // birth pre-generation, also outside the mutex (slow gateway → PREPARE_DONE → AI_READY)
+    for (const prep of effects.prepares)
+      void this.runPrepare(sessionId, prep).catch((err: unknown) =>
+        this.trace.record(this.mkTrace("interaction", { reason: "run_prepare_failed", error: String(err), sessionId, preparedId: prep.preparedId })),
       );
   }
 
@@ -123,8 +138,9 @@ export class ClassroomController {
     const { studentId, stageId, interactionId, input } = cmd;
     let output: ClientAiOutput;
     let degraded: boolean;
+    let transcript: string | undefined;
     try {
-      ({ output, degraded } = await this.callGateway(stageId, input));
+      ({ output, degraded, transcript } = await this.callGateway(stageId, input));
     } catch (err) {
       // gateway methods shouldn't throw, but be defensive — degrade + still complete
       this.trace.record(this.mkTrace("fallback", { reason: "gateway_threw", error: String(err), interactionId, studentId }));
@@ -156,10 +172,117 @@ export class ClassroomController {
     });
     for (const t of accepted.traces) this.trace.record(t);
     if (accepted.ok) this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId, output });
+
+    // Memory extraction (contracts-v1.4): for an extracting talent input, reuse the ASR transcript
+    // to mine one memory. Runs AFTER the reply (never blocks it) and ALWAYS feeds
+    // MEMORY_EXTRACTION_DONE — even if the reply was stale — so `pendingMemory` drains and birth
+    // pre-generation can proceed.
+    if (this.wantsMemory(stageId, input)) await this.runMemoryExtraction(sessionId, studentId, stageId, interactionId, transcript);
+  }
+
+  /** True when the reducer seeded `pendingMemory` for this input (must match the reducer's rule). */
+  private wantsMemory(stageId: string, input: Extract<EngineCommand, { type: "CALL_INTERACTION" }>["input"]): boolean {
+    const i = stageById(this.lesson, stageId)?.interaction;
+    if (!i || i.type !== "multimodal_talent" || !i.memoryExtraction) return false;
+    return input.kind === "voice" || input.kind === "talentAnswer";
+  }
+
+  /** Mine one memory from the transcript, then drain it (with/without a memory) via the reducer. */
+  private async runMemoryExtraction(sessionId: string, studentId: string, stageId: string, interactionId: string, transcript: string | undefined): Promise<void> {
+    let memory: { key: string; value: string } | undefined;
+    if (transcript) {
+      try {
+        const m = await this.gateway.extractMemory({ transcript, allowedKeys: this.lesson.declaredMemoryKeys, promptVersion: "memory_v1", studentId, stageId });
+        if (m.key && m.value) memory = { key: m.key, value: m.value };
+      } catch (err) {
+        this.trace.record(this.mkTrace("interaction", { reason: "extract_memory_threw", error: String(err), interactionId, studentId }));
+      }
+    }
+    await this.applyEvent(sessionId, memory
+      ? { type: "MEMORY_EXTRACTION_DONE", studentId, stageId, interactionId, memory }
+      : { type: "MEMORY_EXTRACTION_DONE", studentId, stageId, interactionId });
+  }
+
+  /** Resolve a CALL_PREPARE: build the speech from the student's settled memories, then ATOMICALLY
+   *  fill the prepared placeholder (PREPARE_DONE) and signal AI_READY. */
+  private async runPrepare(sessionId: string, cmd: Extract<EngineCommand, { type: "CALL_PREPARE" }>): Promise<void> {
+    const { studentId, stageId, preparedId, promptVersion, outputKind } = cmd;
+    let output: ClientAiOutput;
+    let degraded: boolean;
+    try {
+      const session = await this.store.load(sessionId);
+      const memories = session?.students[studentId]?.memories ?? {};
+      const llm = await this.gateway.llm({ promptVersion, input: JSON.stringify(memories) });
+      const tts = await this.gateway.tts({ text: llm.text });
+      output = { text: llm.text, audioUrl: tts.audioUrl };
+      degraded = llm.meta.degraded || tts.meta.degraded;
+    } catch (err) {
+      this.trace.record(this.mkTrace("fallback", { reason: "prepare_gateway_threw", error: String(err), preparedId, studentId }));
+      output = {};
+      degraded = true;
+    }
+    // the prepared output must be PLAYABLE — a child taps once and must hear something. If the
+    // gateway degraded to nothing, use a friendly preset台词 (invisible to the child, degraded for
+    // operators) so a `ready` entry is never empty (PRD §0 + the playPrepared ready-gate).
+    if (!output.text && !output.audioUrl && !(output.imageUrls && output.imageUrls.length)) {
+      output = { text: BIRTH_FALLBACK_LINE };
+      degraded = true;
+    }
+
+    const accepted = await this.store.update<{ ok: boolean; traces: TraceEvent[] }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { ok: false, traces: [guard] } };
+      const result = this.reducer(session as ClassSession, { type: "PREPARE_DONE", studentId, stageId, preparedId, output, outputKind, degraded }, this.clock.now());
+      const persist = result.commands.some((c) => c.type === "PERSIST");
+      const traces = result.commands.filter((c): c is Extract<EngineCommand, { type: "TRACE" }> => c.type === "TRACE").map((c) => c.event);
+      return { next: persist ? result.state : undefined, out: { ok: persist, traces } };
+    });
+    for (const t of accepted.traces) this.trace.record(t);
+    if (accepted.ok) this.emit.toStudent(sessionId, studentId, { type: "AI_READY", studentId, stageId, preparedId, outputKind });
+  }
+
+  /** Replay a pre-generated output — ONLY if it's the current stage and the entry is ready. Never
+   *  emits an empty output (so AI_READY is a real server gate, not just a UI hint). */
+  private async playPrepared(sessionId: string, studentId: string, stageId: string, preparedId: string): Promise<void> {
+    // Validate UNDER the session mutex (like resume/INTERACTION_DONE) so a concurrent stage
+    // transition can't slip between the read and the emit and let us replay a stale output.
+    const result = await this.store.update<{ output?: ClientAiOutput; trace?: TraceEvent }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { trace: guard } };
+      const s = session as ClassSession;
+      const prepared = s.students[studentId]?.prepared[preparedId];
+      if (s.currentStageId !== stageId || !prepared || prepared.stageId !== stageId || !prepared.ready) {
+        return { out: { trace: this.mkTrace("interaction", { dropped: true, reason: "play_not_ready_or_stale", preparedId, studentId, stageId }) } };
+      }
+      return { out: { output: prepared.output } }; // read-only: no `next` ⇒ no persist
+    });
+    if (result.trace) this.trace.record(result.trace);
+    if (result.output) this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId: preparedId, output: result.output });
+  }
+
+  /** Project a child's prepared output to the big screen — registered-assistant only, ready-gated.
+   *  Validated under the session mutex (no stale snapshot). */
+  private async requestProjection(sessionId: string, msg: Extract<ClientMessage, { type: "REQUEST_PROJECTION" }>): Promise<void> {
+    const result = await this.store.update<{ output?: ClientAiOutput; trace?: TraceEvent }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { trace: guard } };
+      const s = session as ClassSession;
+      const student = s.students[msg.studentId];
+      // requester must be a registered assistant (trusted-classroom MVP; cryptographic RBAC = Better
+      // Auth, DF-8). Same posture as FORCE_ADVANCE — needs assistant registration (DF-M4-7).
+      const isControlSurface = s.assistants.includes(msg.requestedBy);
+      const ready = student && Object.values(student.prepared).find((p) => p.ready && p.stageId === s.currentStageId);
+      if (!isControlSurface || !ready) {
+        return { out: { trace: this.mkTrace("interaction", { dropped: true, reason: "projection_denied_or_not_ready", studentId: msg.studentId, requestedBy: msg.requestedBy }) } };
+      }
+      return { out: { output: ready.output } }; // read-only: no `next` ⇒ no persist
+    });
+    if (result.trace) this.trace.record(result.trace);
+    if (result.output) this.emit.toSession(sessionId, { type: "PROJECT", studentId: msg.studentId, output: result.output });
   }
 
   /** Map an interaction input to gateway calls → a child-renderable output + degraded flag. */
-  private async callGateway(stageId: string, input: Extract<EngineCommand, { type: "CALL_INTERACTION" }>["input"]): Promise<{ output: ClientAiOutput; degraded: boolean }> {
+  private async callGateway(stageId: string, input: Extract<EngineCommand, { type: "CALL_INTERACTION" }>["input"]): Promise<{ output: ClientAiOutput; degraded: boolean; transcript?: string }> {
     const promptVersion = this.promptFor(stageId);
     let degraded = false;
     const mark = (m: { degraded: boolean }): void => { if (m.degraded) degraded = true; };
@@ -169,7 +292,7 @@ export class ClassroomController {
         const asr = await this.gateway.asr({ audioRef: input.audioRef }); mark(asr.meta);
         const llm = await this.gateway.llm({ promptVersion, input: asr.transcript }); mark(llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
-        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded };
+        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, transcript: asr.transcript };
       }
       case "talentOption": {
         const llm = await this.gateway.llm({ promptVersion, input: input.option }); mark(llm.meta);
@@ -184,6 +307,10 @@ export class ClassroomController {
         const img = await this.gateway.imageGen({ kind: "text2img", source: JSON.stringify(input.answersByQuestionId), count: 3 }); mark(img.meta);
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
+      case "playPrepared":
+        // never reached — playPrepared is intercepted in onMessage (replay of a stored output,
+        // not an AI call). Defensive: degrade rather than throw.
+        return { output: {}, degraded: true };
       default: {
         const _exhaustive: never = input;
         return _exhaustive;

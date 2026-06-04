@@ -26,6 +26,14 @@ describe("validateLessonConfig", () => {
     if (!r.ok) expect(r.errors.some((e) => e.includes("undeclared output"))).toBe(true);
   });
 
+  it("rejects a certificate label referencing an undeclared memory key (fails closed)", () => {
+    const bad = clone(lesson001);
+    bad.certificate = { memoryLabels: { not_a_declared_key: "标签" } };
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("undeclared memory key"))).toBe(true);
+  });
+
   it("rejects a malformed config (missing required field)", () => {
     const bad = clone(lesson001) as Partial<LessonConfig>;
     delete bad.lessonConfigVersion;

@@ -7,7 +7,7 @@ function session(over: Partial<ClassSession> = {}): ClassSession {
   return {
     sessionId: "s1",
     lessonId: "lesson-001",
-    lessonConfigVersion: "1.0.0",
+    lessonConfigVersion: "1.1.0",
     classId: "c1",
     currentStageId: "shape",
     global: "active",

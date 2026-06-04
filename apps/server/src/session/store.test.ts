@@ -6,12 +6,12 @@ function session(): ClassSession {
   return {
     sessionId: "s1",
     lessonId: "lesson-001",
-    lessonConfigVersion: "1.0.0",
+    lessonConfigVersion: "1.1.0",
     classId: "c1",
     currentStageId: "intro",
     global: "active",
     stageStartTime: "2026-06-03T00:00:00.000Z",
-    students: { k1: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} } },
+    students: { k1: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: {}, pendingMemory: [], prepared: {} } },
     assistants: ["a1"],
   };
 }

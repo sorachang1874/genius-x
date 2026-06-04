@@ -14,6 +14,9 @@ function student(): StudentRuntimeState {
     selectedVariant: {},
     pending: {},
     outputs: {},
+    memories: {},
+    pendingMemory: [],
+    prepared: {},
   };
 }
 
@@ -197,5 +200,105 @@ describe("reducer — full Lesson 1 walk", () => {
     step({ type: "STUDENT_COMPLETE", studentId: "k2", stageId: "birth", payload: { kind: "done" } });
     step({ type: "UNLOCK", role: "teacher", stageId: "closure" });
     expect(s.currentStageId).toBe("closure");
+  });
+});
+
+describe("reducer — memory + birth pre-generation (contracts-v1.4)", () => {
+  it("seeds pendingMemory on a talent voice/answer INTERACT and drains + writes a valid memory", () => {
+    const s = session("talent", ["k1"]);
+    const r1 = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentAnswer", audioRef: "ref" } }, NOW);
+    expect(r1.state.students.k1!.pendingMemory).toEqual(["i1"]);
+    expect(r1.commands.some((c) => c.type === "CALL_INTERACTION")).toBe(true);
+
+    const r2 = reducer(r1.state, { type: "MEMORY_EXTRACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", memory: { key: "favorite_toy", value: "奥特曼" } }, NOW);
+    expect(r2.state.students.k1!.pendingMemory).toEqual([]);
+    expect(r2.state.students.k1!.memories.favorite_toy).toBe("奥特曼");
+  });
+
+  it("does NOT seed pendingMemory for a talentOption (no audio to mine)", () => {
+    const s = session("talent", ["k1"]);
+    const r = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "i1", input: { kind: "talentOption", option: "sing" } }, NOW);
+    expect(r.state.students.k1!.pendingMemory).toEqual([]);
+  });
+
+  it("drops an undeclared memory key but still drains pendingMemory", () => {
+    let s = session("talent", ["k1"]);
+    s.students.k1!.pendingMemory = ["i1"];
+    const r = reducer(s, { type: "MEMORY_EXTRACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i1", memory: { key: "not_declared", value: "x" } }, NOW);
+    expect(r.state.students.k1!.pendingMemory).toEqual([]);
+    expect(r.state.students.k1!.memories).toEqual({});
+    expect(r.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ reason: "invalid_memory" }) }) });
+  });
+
+  it("birth-unlock with settled memories mints a ready:false placeholder + CALL_PREPARE", () => {
+    const s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 }; // meet talent→birth gate (minInteractions:2)
+    const r = reducer(s, { type: "UNLOCK", role: "assistant", stageId: "birth" }, NOW);
+    expect(r.state.currentStageId).toBe("birth");
+    const prep = r.commands.find((c) => c.type === "CALL_PREPARE");
+    expect(prep && prep.type === "CALL_PREPARE" && prep.outputKind).toBe("audio");
+    expect(prep && prep.type === "CALL_PREPARE" && prep.promptVersion).toBe("birth_speech_v1");
+    const preparedId = prep && prep.type === "CALL_PREPARE" ? prep.preparedId : "";
+    expect(r.state.students.k1!.prepared[preparedId]!.ready).toBe(false);
+    expect(r.state.students.k1!.prepared[preparedId]!.output).toEqual({});
+  });
+
+  it("birth-unlock with an in-flight memory defers CALL_PREPARE until it drains", () => {
+    const s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    s.students.k1!.pendingMemory = ["i9"];
+    const unlocked = reducer(s, { type: "UNLOCK", role: "assistant", stageId: "birth" }, NOW);
+    expect(unlocked.commands.some((c) => c.type === "CALL_PREPARE")).toBe(false);
+    expect(Object.keys(unlocked.state.students.k1!.prepared)).toEqual([]);
+
+    const drained = reducer(unlocked.state, { type: "MEMORY_EXTRACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "i9" }, NOW);
+    expect(drained.commands.some((c) => c.type === "CALL_PREPARE")).toBe(true);
+  });
+
+  it("PREPARE_DONE fills the placeholder ready (idempotent — a duplicate is dropped)", () => {
+    const s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    const unlocked = reducer(s, { type: "UNLOCK", role: "assistant", stageId: "birth" }, NOW);
+    const prep = unlocked.commands.find((c) => c.type === "CALL_PREPARE");
+    const preparedId = prep && prep.type === "CALL_PREPARE" ? prep.preparedId : "";
+
+    const done = reducer(unlocked.state, { type: "PREPARE_DONE", studentId: "k1", stageId: "birth", preparedId, output: { text: "轩轩你好", audioUrl: "u" }, outputKind: "audio", degraded: false }, NOW);
+    expect(done.state.students.k1!.prepared[preparedId]!.ready).toBe(true);
+    expect(done.state.students.k1!.prepared[preparedId]!.output.text).toBe("轩轩你好");
+
+    const dup = reducer(done.state, { type: "PREPARE_DONE", studentId: "k1", stageId: "birth", preparedId, output: { text: "different" }, outputKind: "audio", degraded: false }, NOW);
+    expect(dup.state.students.k1!.prepared[preparedId]!.output.text).toBe("轩轩你好"); // unchanged
+    expect(dup.commands.some((c) => c.type === "PERSIST")).toBe(false);
+  });
+
+  it("denies a playPrepared INTERACT (it is handled out-of-band, not via the reducer)", () => {
+    const s = session("birth", ["k1"]);
+    const r = reducer(s, { type: "INTERACT", studentId: "k1", stageId: "birth", interactionId: "p1", input: { kind: "playPrepared", preparedId: "x" } }, NOW);
+    expect(r.state.students.k1!.pending).toEqual({});
+    expect(r.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ denied: true }) }) });
+  });
+});
+
+describe("reducer — M4a hardening (Codex review)", () => {
+  it("a duplicate/late MEMORY_EXTRACTION_DONE (id not pending) is a no-op — no memory write, no prepare", () => {
+    let s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    s.students.k1!.memories = { favorite_toy: "奥特曼" };
+    // id "iX" is NOT in pendingMemory → must be dropped without touching memory or minting prepare
+    const r = reducer(s, { type: "MEMORY_EXTRACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "iX", memory: { key: "favorite_toy", value: "OVERWRITE" } }, NOW);
+    expect(r.state.students.k1!.memories.favorite_toy).toBe("奥特曼"); // unchanged
+    expect(r.commands.some((c) => c.type === "CALL_PREPARE")).toBe(false);
+    expect(r.commands.some((c) => c.type === "PERSIST")).toBe(false);
+  });
+
+  it("PREPARE_DONE with an empty output is rejected (never marked ready → never replays a blank)", () => {
+    const s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    const unlocked = reducer(s, { type: "UNLOCK", role: "assistant", stageId: "birth" }, NOW);
+    const prep = unlocked.commands.find((c) => c.type === "CALL_PREPARE");
+    const preparedId = prep && prep.type === "CALL_PREPARE" ? prep.preparedId : "";
+    const done = reducer(unlocked.state, { type: "PREPARE_DONE", studentId: "k1", stageId: "birth", preparedId, output: {}, outputKind: "audio", degraded: true }, NOW);
+    expect(done.state.students.k1!.prepared[preparedId]!.ready).toBe(false); // still a placeholder
+    expect(done.commands.some((c) => c.type === "PERSIST")).toBe(false);
   });
 });

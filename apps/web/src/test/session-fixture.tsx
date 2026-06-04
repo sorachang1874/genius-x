@@ -9,7 +9,7 @@ import type { StudentRuntimeState } from "@genius-x/contracts";
 import { SessionContext, type SessionApi } from "../shared/session";
 
 export function freshStudentState(): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: {}, pendingMemory: [], prepared: {} };
 }
 
 export function fakeSession(partial: Partial<SessionApi> = {}): SessionApi {

@@ -20,6 +20,7 @@ purpose limitation, under 《未成年人网络保护条例》.
 | AI **request/response** (redacted) + prompt version | review, regression eval, rollback | via TraceSink; redacted before write |
 | **Fallback / degradation** occurrences | operator-visible degradation, incident signal | counts + cause |
 | **Memory** data points + **artifacts** (avatar, story, birth cert) | the product output itself | per StudentProfile |
+| Live **runtime state** `memories` / `prepared` (contracts-v1.4) | drive the 伙伴出生证 + instant birth playback | derived signals + renderable refs (text/audioUrl), **never raw audio**; in Redis during class, archived with the session |
 | **Feedback / eval labels** | continuous product improvement | human + LLM-judge scores |
 
 ## What we NEVER store

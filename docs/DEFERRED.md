@@ -12,8 +12,8 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | --- | --- | --- | --- | --- | --- | --- |
 | DF-1 | AI providers (LLM/TTS/ASR/image) | placeholder | `FakeProvider` behind `ProviderAdapter` (deterministic, no keys) | Tencent keys available **and** M6 | After swap, run a refinement pass on prompts/fallbacks/timeouts/corner-cases vs real output quality+latency; then delete fake from the live path (keep for scripted tests) | D · **M6** |
 | DF-2 | Image moderation (天御 IMS) | half-built | `imageModerator` seam; absent ⇒ traces `moderation_deferred_m6` | inject real 天御 IMS moderator | required before any public/real-AI demo with children | D · **M6** |
-| DF-3 | Memory extraction in talent | deferred-feature | gateway `extractMemory` exists but not called from talent flow | wire into talent interaction | needed for Lesson-1-complete (birth cert uses memories) | C/D · **M4** |
-| DF-4 | Birth pre-generation + `playPrepared` + `AI_READY{preparedId,outputKind}` | deferred-feature | removed `playPrepared` from `InteractionInput`; AI_READY marked M4 | birth stage build | re-add to contracts (v1.x) when birth lands | C/D · **M4** |
+| DF-3 | Memory extraction in talent | **resolved (M4a)** | talent voice/answer interactions mine a memory via `extractMemory` (reusing the runner's ASR transcript), written to `you.memories` (declared-key validated) | — | done in contracts-v1.4 + server | C/D · ✅ |
+| DF-4 | Birth pre-generation + `playPrepared` + `AI_READY{preparedId,outputKind}` | **resolved (M4a)** | `playPrepared` back in `InteractionInput`; `AI_READY{preparedId,outputKind}` reshaped; birth pre-generates on settled memories (contracts-v1.4) | — | done | C/D · ✅ |
 | DF-5 | `REQUEST_PROJECTION` → teacher big-screen | deferred-feature | controller returns early (no-op); `PROJECT` message defined | teacher-screen UI | wire when assistant/teacher projection is built | A/C · **M4/M5** |
 | DF-6 | Session mutex (concurrency) | temp-fallback | in-process `KeyedMutex` (single server instance only) | multi-instance deploy | replace with Redis lock/CAS when >1 server instance | C · scale-out |
 | DF-7 | Course authoring | shadow | hand-authored `lesson-001.ts` (git) | Payload CMS (`apps/cms`) | when authoring Lesson 2+; CMS export must conform to `LessonConfig` | F · fast-follow |
@@ -35,6 +35,18 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-7 | M3 UI/UX as a whole | half-built | functional-first interim: minimal native `<canvas>` doodle, placeholder avatars, plain visual style | **needs a full UX + visual design pass** | before any real classroom/B-level demo |
 | DF-M3-8 | Assistant advance controls | partial | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); **`FORCE_ADVANCE` not surfaced** — the engine requires `assistantId ∈ session.assistants`, which `/session/join` does not populate yet | register assistants on join (or an assistant-join endpoint) + add the override button | one straggler can't yet be force-advanced from the UI |
 | DF-M3-9 | Client-side degradation telemetry | placeholder | client degradations (audio→speech fallback, mic-denied) call an `onDegraded` seam → default `console.warn("[client-degraded] …")` (operator-visible, greppable) | real client telemetry sink (post to a `/client-trace` endpoint / Langfuse) | keeps the degradation principle honest on the client until a real sink lands |
+
+## M4 (talent / birth / closure / projection) entries
+
+| ID | Item | Kind | What we do now | Replace trigger | Notes |
+| --- | --- | --- | --- | --- | --- |
+| DF-M4-1 | Birth speech TTS | placeholder | pre-gen produces a placeholder `audioUrl` via the fake gateway | real TTS provider (M6) ⇒ **automatic** (client prefers `audioUrl`) | swap is server-side only |
+| DF-M4-2 | Talent 反问埋点 prompt tree | placeholder | `memory_v1`/`talent_v1` are simple versioned templates; extraction mines ≤1 memory/turn | a designed 4–5-option induction 话术树 (rundown 待确认) | prompt-design work, not engine |
+| DF-M4-3 | personality_tag / background_setting | half-built | modelled as declared memory keys + config `certificate.memoryLabels`; background sourced from shape B-line when present, else talent | richer trait/background modelling if needed | certificate renders available labelled memories (no hard count) |
+| DF-M4-4 | Teacher / projection screen | half-built | **server done** (M4a): `REQUEST_PROJECTION{requestedBy}` validated (control-surface + readiness) → `PROJECT`. Thin `?role=teacher` UI = M4b | richer multi-pad projection UX | single projected child, manual trigger |
+| DF-M4-5 | Persisted `BirthCertificate` artifact | deferred-feature | live 伙伴出生证 assembled client-side from `RESUME_STATE.you` | archive/print/parent-report persistence = M5 | M4 ships the live view only |
+| DF-M4-6 | GeniusX naming | deferred-feature | certificate name field may be blank | naming flow = Lesson 2 (D2 open) | — |
+| DF-M4-7 | Projection role enforcement | placeholder | `requestedBy` must be a **registered assistant** (`∈ session.assistants`); student-origin/unknown ids denied + traced | cryptographic role check = Better Auth (DF-8) | needs assistant registration on join (same gap as `FORCE_ADVANCE` / DF-M3-8) for production; the smoke seeds an assistant |
 
 ## Review log
 

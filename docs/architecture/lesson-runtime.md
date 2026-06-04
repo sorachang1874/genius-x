@@ -46,8 +46,10 @@ special case (resolves the old C1 gap).
 ## Runtime state (typed engine fields vs config outputs)
 
 `StudentRuntimeState = { stageStatus, interactionCounts, completedInteractionIds,
-selectedVariant, outputs: Record<OutputKey, RuntimeValue> }`. Engine fields are typed; lesson
-**outputs are opaque** → new lesson outputs never force a contract change.
+selectedVariant, pending, outputs: Record<OutputKey, RuntimeValue>, displayName?, memories,
+pendingMemory, prepared }` (the last four added in contracts-v1.4 for talent memory + birth
+pre-generation). Engine fields are typed; lesson **outputs are opaque** → new lesson outputs
+never force a contract change.
 
 ## Persistence / resume
 

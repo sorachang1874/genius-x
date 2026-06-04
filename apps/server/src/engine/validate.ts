@@ -47,7 +47,11 @@ const aiInteraction = z.union([
     maxInteractions: z.number().int().positive(),
     memoryExtraction: z.boolean(),
   }),
-  z.object({ type: z.literal("birth_speech"), promptTemplate: z.string() }),
+  z.object({
+    type: z.literal("birth_speech"),
+    promptTemplate: z.string(),
+    outputKind: z.enum(["text", "audio", "images"]),
+  }),
 ]);
 
 const stageVariant = z.object({
@@ -86,6 +90,12 @@ const lessonConfig = z.object({
   declaredMemoryKeys: z.array(z.string()),
   declaredArtifactTypes: z.array(z.string()),
   stages: z.array(stageConfig).min(1),
+  certificate: z
+    .object({
+      memoryLabels: z.record(z.string(), z.string()),
+      order: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export type ValidationResult =
@@ -118,6 +128,15 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
   const errors: string[] = [];
   const outputs = new Set(lesson.declaredOutputs);
   const artifacts = new Set(lesson.declaredArtifactTypes);
+  const memoryKeys = new Set(lesson.declaredMemoryKeys);
+
+  // certificate labels/order must reference declared memory keys (fail closed — contracts-v1.4)
+  for (const k of Object.keys(lesson.certificate?.memoryLabels ?? {})) {
+    if (!memoryKeys.has(k)) errors.push(`certificate.memoryLabels references undeclared memory key "${k}"`);
+  }
+  for (const k of lesson.certificate?.order ?? []) {
+    if (!memoryKeys.has(k)) errors.push(`certificate.order references undeclared memory key "${k}"`);
+  }
 
   const seen = new Set<string>();
   for (const st of lesson.stages) {

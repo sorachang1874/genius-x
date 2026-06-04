@@ -34,12 +34,18 @@ the engine's vocabulary:
 ## Public interface
 
 **WebSocket** (Socket.IO; message types in `@genius-x/contracts` ws-events):
-- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `TEACHER_UNLOCK`, `FORCE_ADVANCE`, `INTERACT`, `STAGE_COMPLETE`, `REQUEST_PROJECTION`
-- Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_OUTPUT`, `PROJECT`, `RESUME_STATE` (full per-student state + `lessonConfigVersion`); `AI_READY` is M4 (birth pre-gen)
+- Inbound `ClientMessage`: `HELLO`, `ASSISTANT_UNLOCK`, `TEACHER_UNLOCK`, `FORCE_ADVANCE`, `INTERACT`
+  (incl. `playPrepared` — birth replay, handled out-of-band), `STAGE_COMPLETE`, `REQUEST_PROJECTION`
+  (carries `requestedBy` — control-surface id; student-origin denied + traced)
+- Outbound `ServerMessage`: `STAGE_UNLOCK`, `GLOBAL_STATE`, `AI_OUTPUT`, `AI_READY` (contracts-v1.4 —
+  a pre-generated output `{preparedId, outputKind}` is ready), `PROJECT`, `RESUME_STATE` (full
+  per-student state + `lessonConfigVersion`)
 
 Engine events/commands are typed in `@genius-x/contracts` (`engine.ts`: `EngineEvent`,
 `EngineCommand`) — the reducer maps `ClientMessage` → `EngineEvent`, and `EngineCommand`
-(`BROADCAST`/`CALL_INTERACTION`/`PERSIST`/`TRACE`) → effects.
+(`BROADCAST`/`CALL_INTERACTION`/`CALL_PREPARE`/`PERSIST`/`TRACE`) → effects. Memory extraction +
+birth pre-generation use the `MEMORY_EXTRACTION_DONE`/`PREPARE_DONE` events fed back by the runners
+(contracts-v1.4); `playPrepared`/`AI_READY`/`PROJECT` delivery is controller-side (like `AI_OUTPUT`).
 
 **HTTP** (typed via contracts):
 - `POST /session/join` → `{ studentId, sessionId }` (room-code/QR; no password — see client-server)
