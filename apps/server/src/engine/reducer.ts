@@ -336,7 +336,12 @@ function onMemoryExtractionDone(
 ): EngineResult {
   const s = state.students[event.studentId];
   if (!s) return denied(state, now, `unknown student ${event.studentId}`);
-  const pendingMemory = s.pendingMemory.filter((id) => id !== event.interactionId); // idempotent drain
+  // idempotent: only a real, still-outstanding extraction counts. A duplicate/late event for an id
+  // already drained is a no-op — it must NOT (re)write memory or re-trigger pre-generation.
+  if (!s.pendingMemory.includes(event.interactionId)) {
+    return { state, commands: [{ type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "duplicate_or_late_memory", interactionId: event.interactionId, studentId: event.studentId }, event.stageId) }] };
+  }
+  const pendingMemory = s.pendingMemory.filter((id) => id !== event.interactionId);
   let memories = s.memories;
   const traces: EngineCommand[] = [];
   if (event.memory) {
@@ -366,6 +371,12 @@ function onPrepareDone(
     // no placeholder (stale) or already filled (duplicate) — drop, never overwrite a ready output
     return { state, commands: [{ type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "stale_or_duplicate_prepare", preparedId: event.preparedId, studentId: event.studentId }, event.stageId) }] };
   }
+  // never mark an EMPTY output ready — a ready entry must be playable, else playPrepared would
+  // replay a blank. The runner always supplies a friendly fallback line, so this is a backstop.
+  const isEmpty = !event.output.text && !event.output.audioUrl && !(event.output.imageUrls && event.output.imageUrls.length);
+  if (isEmpty) {
+    return { state, commands: [{ type: "TRACE", event: mkTrace(now, "fallback", { dropped: true, reason: "empty_prepared_output_rejected", preparedId: event.preparedId, studentId: event.studentId }, event.stageId) }] };
+  }
   const filled: PreparedOutput = { ...existing, ready: true, output: event.output, outputKind: event.outputKind, degraded: event.degraded, preparedAt: now };
   const nextS: StudentRuntimeState = { ...s, prepared: { ...s.prepared, [event.preparedId]: filled } };
   const nextState: ClassSession = { ...state, students: { ...state.students, [event.studentId]: nextS } };
@@ -378,6 +389,14 @@ function onPrepareDone(
  * Start birth pre-generation for ONE student if it's due and not already started. Idempotent: a
  * deterministic `preparedId` + the "already prepared" guard ⇒ at most one CALL_PREPARE per student.
  * Gate: the birth stage is current AND that student's memories are settled (`pendingMemory` empty).
+ *
+ * `pendingMemory` empty SUBSUMES the design's "no pending talent interaction" clause: only audio
+ * talent inputs (voice/talentAnswer) feed the speech, and every one of those is tracked in
+ * `pendingMemory` (seeded at INTERACT, drained at MEMORY_EXTRACTION_DONE — even when the reply went
+ * stale). A still-pending `talentOption` contributes no memory, so it cannot change the speech;
+ * gating on it would also strand pre-gen (the controller clears a stale interaction without a
+ * reducer event). So this gate is both correct and simpler. Re-checked at birth-unlock and on
+ * every MEMORY_EXTRACTION_DONE drain.
  */
 function maybePrepareBirth(
   lesson: LessonConfig,

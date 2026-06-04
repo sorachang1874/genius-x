@@ -128,6 +128,15 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
   const errors: string[] = [];
   const outputs = new Set(lesson.declaredOutputs);
   const artifacts = new Set(lesson.declaredArtifactTypes);
+  const memoryKeys = new Set(lesson.declaredMemoryKeys);
+
+  // certificate labels/order must reference declared memory keys (fail closed — contracts-v1.4)
+  for (const k of Object.keys(lesson.certificate?.memoryLabels ?? {})) {
+    if (!memoryKeys.has(k)) errors.push(`certificate.memoryLabels references undeclared memory key "${k}"`);
+  }
+  for (const k of lesson.certificate?.order ?? []) {
+    if (!memoryKeys.has(k)) errors.push(`certificate.order references undeclared memory key "${k}"`);
+  }
 
   const seen = new Set<string>();
   for (const st of lesson.stages) {

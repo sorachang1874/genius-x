@@ -46,7 +46,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M4-4 | Teacher / projection screen | half-built | **server done** (M4a): `REQUEST_PROJECTION{requestedBy}` validated (control-surface + readiness) → `PROJECT`. Thin `?role=teacher` UI = M4b | richer multi-pad projection UX | single projected child, manual trigger |
 | DF-M4-5 | Persisted `BirthCertificate` artifact | deferred-feature | live 伙伴出生证 assembled client-side from `RESUME_STATE.you` | archive/print/parent-report persistence = M5 | M4 ships the live view only |
 | DF-M4-6 | GeniusX naming | deferred-feature | certificate name field may be blank | naming flow = Lesson 2 (D2 open) | — |
-| DF-M4-7 | Projection role enforcement | placeholder | `requestedBy` is validated as "not a student in the session" (trusted-classroom); student-origin denied + traced | cryptographic role check = Better Auth (DF-8) | same posture as `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` |
+| DF-M4-7 | Projection role enforcement | placeholder | `requestedBy` must be a **registered assistant** (`∈ session.assistants`); student-origin/unknown ids denied + traced | cryptographic role check = Better Auth (DF-8) | needs assistant registration on join (same gap as `FORCE_ADVANCE` / DF-M3-8) for production; the smoke seeds an assistant |
 
 ## Review log
 

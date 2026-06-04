@@ -17,6 +17,16 @@ describe("buildHttp", () => {
     await app.close();
   });
 
+  it("stores the join name as displayName (for the 伙伴出生证)", async () => {
+    const store = new InMemorySessionStore();
+    const app = buildHttp(store, "lesson-001", "1.1.0", "intro");
+    const res = await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "r2", name: "  轩轩 " } });
+    const body = res.json() as { studentId: string };
+    const session = await store.load("r2");
+    expect(session!.students[body.studentId]!.displayName).toBe("轩轩"); // trimmed
+    await app.close();
+  });
+
   it("GET /session/:id/state 404s for an unknown session", async () => {
     const app = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro");
     const res = await app.inject({ method: "GET", url: "/session/nope/state" });

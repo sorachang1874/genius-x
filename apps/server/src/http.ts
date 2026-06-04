@@ -33,7 +33,10 @@ export function buildHttp(
         students: {},
         assistants: [],
       };
-      session.students[studentId] = freshStudentState();
+      const student = freshStudentState();
+      const name = body.name?.trim();
+      if (name) student.displayName = name; // for the 伙伴出生证 (contracts-v1.4)
+      session.students[studentId] = student;
       return { next: session, out: undefined };
     });
     const res: SessionJoinResponse = { studentId, sessionId, role: "student" };

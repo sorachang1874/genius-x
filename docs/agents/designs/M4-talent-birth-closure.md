@@ -266,12 +266,14 @@ raw audio crosses the boundary — the runner holds the transcript transiently (
   is fully over (the `talent→birth` gate already required `allStudents{minInteractions}`), so **no
   new** talent interactions or extractions can start; `pendingMemory` only drains. The reducer runs
   one shared predicate **`maybePrepareBirth(student)`** = (birth current/unlocked) ∧ (no birth
-  `prepared` yet) ∧ (`pendingMemory` empty) ∧ (no pending talent interaction), re-evaluated at **every**
-  point that could flip it true — **birth-unlock, each talent `INTERACTION_DONE` clear, AND each
-  `MEMORY_EXTRACTION_DONE` drain** — and on the first true it mints the `preparedId` + placeholder
-  and emits `CALL_PREPARE`. Checking *both* drain sources closes the edge where a still-pending
-  optional 3rd turn's extraction had already drained (v4 #2). **No regeneration, exactly one
-  `preparedId` per student** → no stale/superseded id to play or project.
+  `prepared` yet) ∧ (`pendingMemory` empty), re-evaluated at **birth-unlock AND each
+  `MEMORY_EXTRACTION_DONE` drain**; on the first true it mints the `preparedId` + placeholder and
+  emits `CALL_PREPARE`. **`pendingMemory` empty subsumes "no pending talent interaction"** (impl
+  decision, M4a): only audio inputs (voice/talentAnswer) feed the speech and every one is tracked
+  in `pendingMemory` (seeded at INTERACT, drained at MEMORY_EXTRACTION_DONE even when the reply went
+  stale); a pending `talentOption` adds no memory, so it can't change the speech — and gating on it
+  would strand pre-gen (a stale interaction is cleared controller-side with no reducer event).
+  **No regeneration, exactly one `preparedId` per student** → no stale/superseded id to play or project.
   - **Why this is still instant on-stage:** birth-unlock begins the 诞生礼 phase; the teacher gives
     a ~2-min intro and children are called **one at a time** over ~12 min. Pre-gen (seconds/student)
     completes long before anyone taps; the play button is **`AI_READY`-gated** and the projection

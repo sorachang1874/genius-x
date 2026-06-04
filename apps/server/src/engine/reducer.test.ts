@@ -278,3 +278,27 @@ describe("reducer — memory + birth pre-generation (contracts-v1.4)", () => {
     expect(r.commands).toContainEqual({ type: "TRACE", event: expect.objectContaining({ payload: expect.objectContaining({ denied: true }) }) });
   });
 });
+
+describe("reducer — M4a hardening (Codex review)", () => {
+  it("a duplicate/late MEMORY_EXTRACTION_DONE (id not pending) is a no-op — no memory write, no prepare", () => {
+    let s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    s.students.k1!.memories = { favorite_toy: "奥特曼" };
+    // id "iX" is NOT in pendingMemory → must be dropped without touching memory or minting prepare
+    const r = reducer(s, { type: "MEMORY_EXTRACTION_DONE", studentId: "k1", stageId: "talent", interactionId: "iX", memory: { key: "favorite_toy", value: "OVERWRITE" } }, NOW);
+    expect(r.state.students.k1!.memories.favorite_toy).toBe("奥特曼"); // unchanged
+    expect(r.commands.some((c) => c.type === "CALL_PREPARE")).toBe(false);
+    expect(r.commands.some((c) => c.type === "PERSIST")).toBe(false);
+  });
+
+  it("PREPARE_DONE with an empty output is rejected (never marked ready → never replays a blank)", () => {
+    const s = session("talent", ["k1"]);
+    s.students.k1!.interactionCounts = { talent: 2 };
+    const unlocked = reducer(s, { type: "UNLOCK", role: "assistant", stageId: "birth" }, NOW);
+    const prep = unlocked.commands.find((c) => c.type === "CALL_PREPARE");
+    const preparedId = prep && prep.type === "CALL_PREPARE" ? prep.preparedId : "";
+    const done = reducer(unlocked.state, { type: "PREPARE_DONE", studentId: "k1", stageId: "birth", preparedId, output: {}, outputKind: "audio", degraded: true }, NOW);
+    expect(done.state.students.k1!.prepared[preparedId]!.ready).toBe(false); // still a placeholder
+    expect(done.commands.some((c) => c.type === "PERSIST")).toBe(false);
+  });
+});

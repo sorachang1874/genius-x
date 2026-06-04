@@ -74,6 +74,10 @@ interface Effects {
   prepares: Extract<EngineCommand, { type: "CALL_PREPARE" }>[];
 }
 
+/** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
+ *  (PRD §0). Child-safe: no AI/Prompt/LLM wording. Replaced by real content when providers land (DF-M4-1). */
+const BIRTH_FALLBACK_LINE = "我是你的好朋友呀，今天认识你真高兴，我们以后一起玩！";
+
 export class ClassroomController {
   constructor(
     private readonly lesson: LessonConfig,
@@ -217,6 +221,13 @@ export class ClassroomController {
       output = {};
       degraded = true;
     }
+    // the prepared output must be PLAYABLE — a child taps once and must hear something. If the
+    // gateway degraded to nothing, use a friendly preset台词 (invisible to the child, degraded for
+    // operators) so a `ready` entry is never empty (PRD §0 + the playPrepared ready-gate).
+    if (!output.text && !output.audioUrl && !(output.imageUrls && output.imageUrls.length)) {
+      output = { text: BIRTH_FALLBACK_LINE };
+      degraded = true;
+    }
 
     const accepted = await this.store.update<{ ok: boolean; traces: TraceEvent[] }>(sessionId, async (session) => {
       const guard = this.guardSession(session, sessionId);
@@ -234,23 +245,28 @@ export class ClassroomController {
    *  emits an empty output (so AI_READY is a real server gate, not just a UI hint). */
   private async playPrepared(sessionId: string, studentId: string, stageId: string, preparedId: string): Promise<void> {
     const session = await this.store.load(sessionId);
-    if (!session) return;
-    const prepared = session.students[studentId]?.prepared[preparedId];
-    if (session.currentStageId !== stageId || !prepared || !prepared.ready) {
+    const guard = this.guardSession(session, sessionId);
+    if (guard) return void this.trace.record(guard); // fail closed on missing/invalid/version-mismatched session
+    const s = session as ClassSession;
+    const prepared = s.students[studentId]?.prepared[preparedId];
+    if (s.currentStageId !== stageId || !prepared || !prepared.ready) {
       this.trace.record(this.mkTrace("interaction", { dropped: true, reason: "play_not_ready_or_stale", preparedId, studentId }));
       return;
     }
     this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId: preparedId, output: prepared.output });
   }
 
-  /** Project a child's prepared output to the big screen — control-surface only, ready-gated. */
+  /** Project a child's prepared output to the big screen — registered-assistant only, ready-gated. */
   private async requestProjection(sessionId: string, msg: Extract<ClientMessage, { type: "REQUEST_PROJECTION" }>): Promise<void> {
     const session = await this.store.load(sessionId);
-    if (!session) return;
-    const student = session.students[msg.studentId];
-    // role: derived from the control-surface id (trusted-classroom MVP; real RBAC = Better Auth).
-    const isControlSurface = !!msg.requestedBy && !session.students[msg.requestedBy];
-    const ready = student && Object.values(student.prepared).find((p) => p.ready && p.stageId === session.currentStageId);
+    const guard = this.guardSession(session, sessionId);
+    if (guard) return void this.trace.record(guard); // fail closed on missing/invalid session
+    const s = session as ClassSession;
+    const student = s.students[msg.studentId];
+    // requester must be a registered assistant (trusted-classroom MVP; cryptographic RBAC = Better
+    // Auth, DF-8). Same posture as FORCE_ADVANCE — needs assistant registration (DF-M4-7).
+    const isControlSurface = s.assistants.includes(msg.requestedBy);
+    const ready = student && Object.values(student.prepared).find((p) => p.ready && p.stageId === s.currentStageId);
     if (!isControlSurface || !ready) {
       this.trace.record(this.mkTrace("interaction", { dropped: true, reason: "projection_denied_or_not_ready", studentId: msg.studentId, requestedBy: msg.requestedBy }));
       return;
