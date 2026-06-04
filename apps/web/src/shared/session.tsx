@@ -236,7 +236,7 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
   // `you` self-refresh effect below depends on doFetchState).
   const injJoin = deps?.join;
   const injFetch = deps?.fetchState;
-  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string) => joinSession(base, roomCode, name)), [injJoin, base]);
+  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string, role?: "student" | "assistant" | "teacher" | "parent" | "admin") => joinSession(base, roomCode, name, role)), [injJoin, base]);
   const doFetchState = useMemo(() => injFetch ?? ((sessionId: string) => fetchSessionState(base, sessionId)), [injFetch, base]);
 
   const [state, dispatch] = useReducer(reduce, {
@@ -257,17 +257,19 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
           const res = await doJoin(roomCode, name);
           dispatch({ t: "JOIN_OK", sessionId: res.sessionId, studentId: res.studentId });
         } else {
-          const aid = assistantId ?? "assistant-1";
-          dispatch({ t: "JOIN_OK", sessionId: roomCode, assistantId: aid });
+          // assistant joins via the same endpoint with role="assistant" to register in session.assistants
+          const res = await doJoin(roomCode, undefined, "assistant");
+          if (!res.assistantId) throw new Error("assistant join did not return assistantId");
+          dispatch({ t: "JOIN_OK", sessionId: res.sessionId, assistantId: res.assistantId });
           // best-effort: learn the current stage right away (broadcasts only carry changes)
-          const snapshot = await doFetchState(roomCode);
+          const snapshot = await doFetchState(res.sessionId);
           if (snapshot) dispatch({ t: "CLASS_STATE", currentStageId: snapshot.currentStageId, global: snapshot.global });
         }
       } catch (err) {
         dispatch({ t: "JOIN_ERROR", error: err instanceof Error ? err.message : String(err) });
       }
     },
-    [role, assistantId, doJoin, doFetchState],
+    [role, doJoin, doFetchState],
   );
 
   // Open the socket once we have a session id (+ studentId for students). Re-runs if identity changes.

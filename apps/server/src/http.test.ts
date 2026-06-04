@@ -27,6 +27,41 @@ describe("buildHttp", () => {
     await app.close();
   });
 
+  it("POST /session/join registers an assistant when role=assistant", async () => {
+    const store = new InMemorySessionStore();
+    const app = buildHttp(store, "lesson-001", "1.0.0", "intro");
+    const res = await app.inject({
+      method: "POST",
+      url: "/session/join",
+      payload: { roomCode: "r3", role: "assistant" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { studentId: string; sessionId: string; role: string; assistantId?: string };
+    expect(body.sessionId).toBe("r3");
+    expect(body.role).toBe("assistant");
+    expect(body.assistantId).toBeDefined();
+    const session = await store.load("r3");
+    expect(session!.assistants).toContain(body.assistantId);
+    expect(session!.students[body.studentId]).toBeUndefined(); // assistant does not create student record
+    await app.close();
+  });
+
+  it("POST /session/join does not duplicate assistant registration", async () => {
+    const store = new InMemorySessionStore();
+    const app = buildHttp(store, "lesson-001", "1.0.0", "intro");
+    // first assistant joins
+    const res1 = await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "r4", role: "assistant" } });
+    const body1 = res1.json() as { assistantId?: string };
+    // second assistant joins
+    const res2 = await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "r4", role: "assistant" } });
+    const body2 = res2.json() as { assistantId?: string };
+    const session = await store.load("r4");
+    expect(session!.assistants).toHaveLength(2);
+    expect(session!.assistants).toContain(body1.assistantId);
+    expect(session!.assistants).toContain(body2.assistantId);
+    await app.close();
+  });
+
   it("GET /session/:id/state 404s for an unknown session", async () => {
     const app = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro");
     const res = await app.inject({ method: "GET", url: "/session/nope/state" });
