@@ -67,24 +67,38 @@ on drift; client degradations call an operator-visible `onDegraded` sink; Icebre
 latched) → re-review **GO-with-nits** → nit closed (dropped the unused `variantId` override prop).
 PR #6, branch `m3-frontend`.
 
-**Remaining M3:** human merge of PR #6 to main (CI green).
+**M3 merged** (PR #6, squash `00f1b86`, CI green). **M4 design** note merged (`11c363f`,
+Codex-GO). **M4a built** on branch `m4a-server` (PR open, Codex GO-with-nits).
 
-Then M4 (talent/birth/memory + AI_READY{preparedId,outputKind} + playPrepared) → wire-up = B-level demo.
+## M4a — contracts-v1.4 + server (branch `m4a-server`, PR pending human merge)
+
+Implements the server half of `docs/agents/designs/M4-talent-birth-closure.md`:
+- contracts-v1.4: `playPrepared` input, `PreparedOutput`/`PreparedOutputId`, `AI_READY` reshaped,
+  `StudentRuntimeState` += displayName/memories/pendingMemory/prepared, `MEMORY_EXTRACTION_DONE`/
+  `PREPARE_DONE`/`CALL_PREPARE`, `BirthSpeechInteraction.outputKind`, config `certificate` labels;
+  `lessonConfigVersion` 1.0.0→1.1.0; docs/contracts updated.
+- server: talent memory extraction (reuses ASR transcript, never blocks the reply), birth
+  pre-generation gated on settled memories (one preparedId/student, ready-gated playPrepared with
+  a friendly fallback so it's never empty), validated projection — all serialized under the session
+  mutex. Tests: server 59 (incl. M4 e2e talent→birth→closure), web 30, ai-gateway 19; typecheck green.
+
+Then **M4b** (frontend): Talent/Birth/Closure student stages + the thin teacher/projection screen,
+against the frozen v1.4 contracts → B-level demo.
 
 ## Open / deferred
 
-- Memory extraction not yet wired into talent (gateway has `extractMemory`) — M4.
-- Birth pre-generation + `playPrepared` + `AI_READY` payload — M4 (deferred in M2b).
+- M4b frontend (talent/birth/closure stages + projection screen) — next.
 - Real Tencent providers + 天御 moderation — M6 (inject behind the existing seams; config/key swap).
-- `REQUEST_PROJECTION` → teacher big-screen delivery — later.
+- Projection + FORCE_ADVANCE need assistant registration on join for production (DF-M4-7 / DF-M3-8).
 - In-process session mutex = single-instance only (multi-instance → Redis lock).
 - China: author offshore, run in China; demo uses fakes.
 
-## Handoff — next session starts here (M3 review/merge, on branch `m3-frontend`)
+## Handoff — next session starts here (M4a review/merge → M4b, branch `m4a-server`)
 
-1. `git checkout m3-frontend` (M3 features built + green; PR open).
-2. Read: `docs/agents/designs/A-M3-frontend.md`, `AGENTS.md`, `docs/agents/README.md` +
-   `REVIEW_BRIEF.md`, `packages/contracts/src/ws-events.ts`, `docs/DEFERRED.md` (DF-M3-1..8).
-3. `pnpm install && pnpm typecheck && pnpm test` (all green: ai-gateway 19 / server 47 / web 29).
-4. Address Codex review findings on the PR → human merges to main. Then M4 (talent/birth/memory +
-   `AI_READY{preparedId,outputKind}`/`playPrepared` + projection wire-up).
+1. `git checkout m4a-server` (M4a built + green; PR open). Or `main` after it merges.
+2. Read: `docs/agents/designs/M4-talent-birth-closure.md` (the plan), `AGENTS.md`,
+   `packages/contracts/src/{ws-events,engine,student,course-config}.ts`, `docs/DEFERRED.md` (DF-M4-1..7).
+3. `pnpm install && pnpm typecheck && pnpm test` (green: ai-gateway 19 / server 59 / web 30).
+4. Human merges the M4a PR to main. Then build **M4b** (frontend) on its own branch against the
+   frozen contracts-v1.4: Talent.tsx / Birth.tsx (AI_READY-gated play → 伙伴出生证 from RESUME_STATE.you) /
+   Closure.tsx + a thin `?role=teacher` projection screen + tests (extend the banned-wording scan).
