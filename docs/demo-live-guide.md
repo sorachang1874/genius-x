@@ -13,6 +13,31 @@
 
 ## 启动步骤
 
+### ⚠️ WSL2 用户必读
+
+如果你在 WSL2 环境中开发，Windows 无法直接访问 `localhost:5173`。
+
+**快速解决方案**（2 分钟配置）：
+
+```bash
+# 1. 在 WSL2 中查看 IP 地址
+hostname -I | awk '{print $1}'
+# 假设输出: 172.18.208.123
+
+# 2. 启动 Demo
+cd /home/sorachang/projects/Genius-X
+./demo-start.sh
+
+# 3. 在 Windows 浏览器中访问（用 WSL2 IP，不是 localhost）
+# http://172.18.208.123:5173/?role=assistant
+# http://172.18.208.123:5173/
+```
+
+**完整配置指南**（包括端口转发、VPN 分流、手机访问）：
+👉 查看 [`docs/wsl2-setup.md`](./wsl2-setup.md)
+
+---
+
 ### 1. 启动服务器
 
 ```bash
