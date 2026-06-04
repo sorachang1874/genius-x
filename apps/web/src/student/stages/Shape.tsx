@@ -12,6 +12,7 @@ import type { StageId } from "@genius-x/contracts";
 import { lesson001 } from "@genius-x/course-config";
 import { useSession } from "../../shared/session";
 import { Thinking } from "../../shared/thinking";
+import { Standby } from "./Standby";
 import { createAiOutputPlayer, type AiOutputPlayer } from "../../shared/ai-output";
 
 export interface ShapeProps {
@@ -33,17 +34,26 @@ export function Shape({ stageId, variantId, player }: ShapeProps): React.JSX.Ele
   const drawing = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  // resolve the A-line variant + output slot from the lesson config — not hardcoded ids.
-  const aLine = lesson001.stages.find((s) => s.stageId === stageId)?.variants?.[0];
+  // resolve the A-line (image-gen) variant + its output slot STRICTLY from the lesson config —
+  // selected by interaction type, not position, and with NO hardcoded id fallback. If the config
+  // can't supply them we fail closed (render a safe placeholder) rather than invent an output key
+  // that would make a STAGE_COMPLETE the server rejects after the child already saw success.
+  const aLine = lesson001.stages.find((s) => s.stageId === stageId)?.variants?.find((v) => v.interaction.type === "image_gen");
   const resolvedVariant = variantId ?? aLine?.id;
-  const outputKey = aLine?.writesOutputs?.[0] ?? "avatarUrl";
+  const outputKey = aLine?.writesOutputs?.[0];
+
+  const thinking = pendingInteractionId !== undefined;
+  const candidates = lastOutput ? aiPlayer.imageUrls(lastOutput.output) : [];
+
+  if (!resolvedVariant || !outputKey) {
+    // misconfigured A-line — never a child-facing error; operators notice the stuck placeholder.
+    return <Standby copy="魔法正在准备中…… ✨" />;
+  }
 
   // chosen = authoritative output if present, else the positive local transient (not yet acked).
   const authoritative = you.outputs[outputKey];
   const chosenAvatar =
     authoritative ?? (localSelection?.output === outputKey ? localSelection.value : undefined);
-  const thinking = pendingInteractionId !== undefined;
-  const candidates = lastOutput ? aiPlayer.imageUrls(lastOutput.output) : [];
 
   // --- minimal freehand drawing (interim, DF-M3-6) ---
   const point = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
