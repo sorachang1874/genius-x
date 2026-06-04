@@ -3,6 +3,7 @@
  * read-only session-state endpoint. MVP: the room code IS the session id.
  */
 import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import type { SessionJoinRequest, SessionJoinResponse, ClassSession } from "@genius-x/contracts";
 import type { SessionStore } from "./session/store";
@@ -15,6 +16,9 @@ export function buildHttp(
   firstStageId: string,
 ): FastifyInstance {
   const app = Fastify();
+
+  // Enable CORS for cross-origin requests (dev: separate origins for Vite + Fastify)
+  void app.register(cors, { origin: "*" });
 
   app.post("/session/join", async (req, reply) => {
     const body = req.body as SessionJoinRequest;

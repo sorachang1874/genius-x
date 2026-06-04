@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@genius-x/ai-gateway": "workspace:*",
     "@genius-x/config": "workspace:*",
     "@genius-x/contracts": "workspace:*",
