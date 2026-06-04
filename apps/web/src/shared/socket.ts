@@ -43,10 +43,18 @@ export interface ConnectOptions {
 /**
  * Server base URL. In dev the React app and the Fastify server are separate origins, so the
  * URL is configured via `VITE_SERVER_URL`; default targets the local server (apps/server).
+ *
+ * If running from a non-localhost host (e.g., WSL2 IP accessed from Windows), use the same
+ * hostname to reach the backend — this supports cross-network demo testing.
  */
 export function serverBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_SERVER_URL;
-  return typeof fromEnv === "string" && fromEnv.length > 0 ? fromEnv : "http://localhost:3001";
+  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
+
+  // Dynamic: if accessing via IP (e.g., 172.x.x.x from Windows), use same IP for backend
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  return `${protocol}//${hostname}:3000`;
 }
 
 /** Real `ClassroomSocket` backed by socket.io-client, with the reconnect policy from the design. */

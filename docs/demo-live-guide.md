@@ -13,28 +13,20 @@
 
 ## 启动步骤
 
-### ⚠️ WSL2 用户必读
+### ⚠️ WSL2 + VPN 用户必读
 
-如果你在 WSL2 环境中开发，Windows 无法直接访问 `localhost:5173`。
+**环境：Windows + WSL2 + 全局/TUN 模式 VPN**
 
-**快速解决方案**（2 分钟配置）：
+**推荐方案：Windows 端口转发**（一次配置，随时演示，无需关 VPN）
 
-```bash
-# 1. 在 WSL2 中查看 IP 地址
-hostname -I | awk '{print $1}'
-# 假设输出: 172.18.208.123
+1. **以管理员身份运行 PowerShell**
+2. 执行 `tools/wsl-port-forward.ps1` 脚本
+3. 配置完成后，直接访问 `http://localhost:5173/?role=assistant`
 
-# 2. 启动 Demo
-cd /home/sorachang/projects/Genius-X
-./demo-start.sh
-
-# 3. 在 Windows 浏览器中访问（用 WSL2 IP，不是 localhost）
-# http://172.18.208.123:5173/?role=assistant
-# http://172.18.208.123:5173/
-```
-
-**完整配置指南**（包括端口转发、VPN 分流、手机访问）：
-👉 查看 [`docs/wsl2-setup.md`](./wsl2-setup.md)
+**相关文档：**
+- VPN 分流配置：[`docs/vpn-split-tunnel-config.md`](./vpn-split-tunnel-config.md)
+- 端口转发脚本：[`tools/wsl-port-forward.ps1`](../tools/wsl-port-forward.ps1)
+- 完整 WSL2 配置：[`docs/wsl2-setup.md`](./wsl2-setup.md)
 
 ---
 
