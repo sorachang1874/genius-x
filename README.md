@@ -34,12 +34,36 @@ docs/
 - **Main app:** Node 22 / TypeScript (unified pipeline). pnpm workspaces.
 - **Offline tools:** Python 3.12 in `tools/.venv` (decoupled from the main pipeline).
 
-## Getting started
+## Quick start for Demo
+
+```bash
+# One-command start (server + web app)
+./demo-start.sh
+
+# Then open in browser:
+# • Assistant: http://localhost:5173/?role=assistant
+# • Student:   http://localhost:5173/
+```
+
+📖 **Full demo guide:** [`docs/demo-live-guide.md`](docs/demo-live-guide.md) — includes real interaction (canvas drawing, microphone), multi-student testing, and mobile access.
+
+🧪 **Automated tests:**
+```bash
+node tools/demo-e2e-test.mjs              # Single student end-to-end
+node tools/demo-e2e-multi-student.mjs     # Multi-student concurrent
+```
+
+## Getting started (development)
 
 ```sh
 corepack enable pnpm     # pnpm via Node corepack
-pnpm install             # install the TS workspace (once deps are added)
+pnpm install             # install the TS workspace
 
+# Manual start (separate terminals)
+cd apps/server && pnpm dev    # Terminal 1: Backend server
+cd apps/web && pnpm dev        # Terminal 2: Frontend app
+
+# Python tools (offline layer)
 cd tools && python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ```
 
