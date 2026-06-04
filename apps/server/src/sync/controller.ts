@@ -244,34 +244,41 @@ export class ClassroomController {
   /** Replay a pre-generated output — ONLY if it's the current stage and the entry is ready. Never
    *  emits an empty output (so AI_READY is a real server gate, not just a UI hint). */
   private async playPrepared(sessionId: string, studentId: string, stageId: string, preparedId: string): Promise<void> {
-    const session = await this.store.load(sessionId);
-    const guard = this.guardSession(session, sessionId);
-    if (guard) return void this.trace.record(guard); // fail closed on missing/invalid/version-mismatched session
-    const s = session as ClassSession;
-    const prepared = s.students[studentId]?.prepared[preparedId];
-    if (s.currentStageId !== stageId || !prepared || !prepared.ready) {
-      this.trace.record(this.mkTrace("interaction", { dropped: true, reason: "play_not_ready_or_stale", preparedId, studentId }));
-      return;
-    }
-    this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId: preparedId, output: prepared.output });
+    // Validate UNDER the session mutex (like resume/INTERACTION_DONE) so a concurrent stage
+    // transition can't slip between the read and the emit and let us replay a stale output.
+    const result = await this.store.update<{ output?: ClientAiOutput; trace?: TraceEvent }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { trace: guard } };
+      const s = session as ClassSession;
+      const prepared = s.students[studentId]?.prepared[preparedId];
+      if (s.currentStageId !== stageId || !prepared || prepared.stageId !== stageId || !prepared.ready) {
+        return { out: { trace: this.mkTrace("interaction", { dropped: true, reason: "play_not_ready_or_stale", preparedId, studentId, stageId }) } };
+      }
+      return { out: { output: prepared.output } }; // read-only: no `next` ⇒ no persist
+    });
+    if (result.trace) this.trace.record(result.trace);
+    if (result.output) this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId: preparedId, output: result.output });
   }
 
-  /** Project a child's prepared output to the big screen — registered-assistant only, ready-gated. */
+  /** Project a child's prepared output to the big screen — registered-assistant only, ready-gated.
+   *  Validated under the session mutex (no stale snapshot). */
   private async requestProjection(sessionId: string, msg: Extract<ClientMessage, { type: "REQUEST_PROJECTION" }>): Promise<void> {
-    const session = await this.store.load(sessionId);
-    const guard = this.guardSession(session, sessionId);
-    if (guard) return void this.trace.record(guard); // fail closed on missing/invalid session
-    const s = session as ClassSession;
-    const student = s.students[msg.studentId];
-    // requester must be a registered assistant (trusted-classroom MVP; cryptographic RBAC = Better
-    // Auth, DF-8). Same posture as FORCE_ADVANCE — needs assistant registration (DF-M4-7).
-    const isControlSurface = s.assistants.includes(msg.requestedBy);
-    const ready = student && Object.values(student.prepared).find((p) => p.ready && p.stageId === s.currentStageId);
-    if (!isControlSurface || !ready) {
-      this.trace.record(this.mkTrace("interaction", { dropped: true, reason: "projection_denied_or_not_ready", studentId: msg.studentId, requestedBy: msg.requestedBy }));
-      return;
-    }
-    this.emit.toSession(sessionId, { type: "PROJECT", studentId: msg.studentId, output: ready.output });
+    const result = await this.store.update<{ output?: ClientAiOutput; trace?: TraceEvent }>(sessionId, async (session) => {
+      const guard = this.guardSession(session, sessionId);
+      if (guard) return { out: { trace: guard } };
+      const s = session as ClassSession;
+      const student = s.students[msg.studentId];
+      // requester must be a registered assistant (trusted-classroom MVP; cryptographic RBAC = Better
+      // Auth, DF-8). Same posture as FORCE_ADVANCE — needs assistant registration (DF-M4-7).
+      const isControlSurface = s.assistants.includes(msg.requestedBy);
+      const ready = student && Object.values(student.prepared).find((p) => p.ready && p.stageId === s.currentStageId);
+      if (!isControlSurface || !ready) {
+        return { out: { trace: this.mkTrace("interaction", { dropped: true, reason: "projection_denied_or_not_ready", studentId: msg.studentId, requestedBy: msg.requestedBy }) } };
+      }
+      return { out: { output: ready.output } }; // read-only: no `next` ⇒ no persist
+    });
+    if (result.trace) this.trace.record(result.trace);
+    if (result.output) this.emit.toSession(sessionId, { type: "PROJECT", studentId: msg.studentId, output: result.output });
   }
 
   /** Map an interaction input to gateway calls → a child-renderable output + degraded flag. */
