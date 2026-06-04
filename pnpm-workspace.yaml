@@ -3,9 +3,11 @@
 packages:
   - "apps/*"
   - "packages/*"
-# esbuild (vite/vitest) wants a build script; its binary actually ships via the
-# @esbuild/<platform> optional dep, so the script is functionally unneeded. We allowlist it
-# to document intent; the CI pnpm version (pinned in .github/workflows/ci.yml) keeps a missed
-# build a non-fatal warning rather than an install error.
+# esbuild (vite/vitest) declares a build script, but its binary actually ships via the
+# @esbuild/<platform> optional dep — so the (unrun) build script is functionally unneeded.
+# `strictDepBuilds: false` makes pnpm treat an ignored build script as a non-fatal warning
+# instead of ERR_PNPM_IGNORED_BUILDS, which otherwise fails `pnpm install` in CI. Verified in a
+# clean-HOME CI-faithful run: install + typecheck + all tests pass with esbuild fully functional.
+strictDepBuilds: false
 onlyBuiltDependencies:
   - esbuild
