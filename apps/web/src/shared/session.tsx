@@ -28,6 +28,7 @@ import type {
   ServerMessage,
   StageId,
   OutputKey,
+  OutputKind,
   RuntimeValue,
   GlobalState,
   StudentRuntimeState,
@@ -86,6 +87,11 @@ export interface SessionState {
   /** A child's just-made choice, shown as a positive transient BEFORE the server acks it. NOT
    *  authoritative — `you.outputs` (from RESUME_STATE) is. Cleared on the next RESUME_STATE. */
   localSelection?: { output: OutputKey; value: RuntimeValue } | undefined;
+  /** A pre-generated output is ready to play (from AI_READY, contracts-v1.4) — gates the birth
+   *  play button. On resume it's re-derived from `you.prepared` (a ready entry for the stage). */
+  readyPrepared?: { stageId: StageId; preparedId: string; outputKind: OutputKind } | undefined;
+  /** Teacher/projection screen only: the child currently projected to the big screen (from PROJECT). */
+  projected?: { studentId: string; output: ClientAiOutput } | undefined;
 }
 
 type Action =
@@ -96,7 +102,8 @@ type Action =
   | { t: "CLASS_STATE"; currentStageId: StageId; global: GlobalState }
   | { t: "SERVER"; msg: ServerMessage }
   | { t: "INTERACT_SENT"; interactionId: string }
-  | { t: "LOCAL_SELECT"; output: OutputKey; value: RuntimeValue };
+  | { t: "LOCAL_SELECT"; output: OutputKey; value: RuntimeValue }
+  | { t: "YOU_REFRESH"; you: StudentRuntimeState };
 
 function reduce(state: SessionState, action: Action): SessionState {
   switch (action.t) {
@@ -121,6 +128,15 @@ function reduce(state: SessionState, action: Action): SessionState {
     case "LOCAL_SELECT":
       // positive transient ONLY — does not touch authoritative `you`; RESUME_STATE reconciles.
       return { ...state, localSelection: { output: action.output, value: action.value } };
+    case "YOU_REFRESH":
+      // authoritative per-student state pulled from the read model — refresh `you` ONLY (keep the
+      // transient lastOutput/readyPrepared so in-flight playback isn't dropped). Drop a localSelection
+      // once the server confirms it (the chosen output is now authoritative).
+      return {
+        ...state,
+        you: action.you,
+        localSelection: state.localSelection && action.you.outputs[state.localSelection.output] !== undefined ? undefined : state.localSelection,
+      };
     case "SERVER":
       return applyServer(state, action.msg);
     default: {
@@ -134,7 +150,7 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
   switch (msg.type) {
     case "STAGE_UNLOCK":
       // class advanced: drop transient interaction state (candidate images don't survive a stage change)
-      return { ...state, currentStageId: msg.stageId, global: "active", pendingInteractionId: undefined, lastOutput: undefined };
+      return { ...state, currentStageId: msg.stageId, global: "active", pendingInteractionId: undefined, lastOutput: undefined, readyPrepared: undefined };
     case "GLOBAL_STATE":
       return { ...state, global: msg.state };
     case "AI_OUTPUT":
@@ -149,6 +165,9 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
       // server still has a pending interaction for the current stage, keep showing "thinking"
       // (the AI_OUTPUT is still coming) instead of dropping to idle and inviting a duplicate.
       const pendingHere = Object.entries(msg.you.pending).find(([, v]) => v.stageId === msg.currentStageId);
+      // re-derive a ready prepared output for the current stage from authoritative state (so a
+      // reconnect mid-birth restores the play button without waiting for a fresh AI_READY).
+      const readyEntry = Object.entries(msg.you.prepared).find(([, p]) => p.ready && p.stageId === msg.currentStageId);
       return {
         ...state,
         phase: "live",
@@ -159,11 +178,14 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
         pendingInteractionId: pendingHere ? pendingHere[0] : undefined,
         lastOutput: undefined,
         localSelection: undefined,
+        readyPrepared: readyEntry ? { stageId: msg.currentStageId, preparedId: readyEntry[0], outputKind: readyEntry[1].outputKind } : undefined,
       };
     }
-    case "AI_READY": // M4 (prepared birth output)
-    case "PROJECT": // M4 (teacher projection)
-      return state;
+    case "AI_READY":
+      if (state.studentId && msg.studentId !== state.studentId) return state;
+      return { ...state, readyPrepared: { stageId: msg.stageId, preparedId: msg.preparedId, outputKind: msg.outputKind } };
+    case "PROJECT": // teacher/projection screen
+      return { ...state, projected: { studentId: msg.studentId, output: msg.output } };
     default: {
       const _exhaustive: never = msg;
       return _exhaustive;
@@ -183,6 +205,8 @@ export interface SessionApi extends SessionState {
   interact(stageId: StageId, input: InteractionInput, variantId?: string): string | undefined;
   /** Finish/choose for a stage (e.g. avatar selection). Optimistically reflects a selection locally. */
   complete(stageId: StageId, payload: StageCompletePayload): void;
+  /** Replay a pre-generated output (birth speech). The server answers with AI_OUTPUT keyed by preparedId. */
+  playPrepared(stageId: StageId, preparedId: string): void;
   /** Escape hatch for control messages the assistant builds from the lesson config (UNLOCK etc.). */
   send(msg: ClientMessage): void;
 }
@@ -208,8 +232,12 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
   const base = serverBaseUrl();
   const wsUrl = deps?.wsUrl ?? base;
   const connect = deps?.connect ?? connectSocket;
-  const doJoin = deps?.join ?? ((roomCode: string, name?: string) => joinSession(base, roomCode, name));
-  const doFetchState = deps?.fetchState ?? ((sessionId: string) => fetchSessionState(base, sessionId));
+  // Memoize the injectable seams so effects keyed on them don't re-run every render (the
+  // `you` self-refresh effect below depends on doFetchState).
+  const injJoin = deps?.join;
+  const injFetch = deps?.fetchState;
+  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string) => joinSession(base, roomCode, name)), [injJoin, base]);
+  const doFetchState = useMemo(() => injFetch ?? ((sessionId: string) => fetchSessionState(base, sessionId)), [injFetch, base]);
 
   const [state, dispatch] = useReducer(reduce, {
     role,
@@ -266,6 +294,24 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
     };
   }, [connect, wsUrl, sessionId, studentId, role]);
 
+  // Keep authoritative `you` fresh between resumes: the server delivers a renderable AI_OUTPUT but
+  // not the updated StudentRuntimeState, so after each AI_OUTPUT and each stage change we pull the
+  // read model and refresh `you` only (talent progress, memories, prepared, avatar). lastOutput is
+  // preserved (unlike a full HELLO/RESUME_STATE), so in-flight playback isn't dropped.
+  const lastOutputId = state.lastOutput?.interactionId;
+  const currentStageId = state.currentStageId;
+  useEffect(() => {
+    if (role !== "student" || !sessionId || !studentId) return;
+    let cancelled = false;
+    void doFetchState(sessionId).then((session) => {
+      const you = session?.students[studentId];
+      if (!cancelled && you) dispatch({ t: "YOU_REFRESH", you });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [role, sessionId, studentId, lastOutputId, currentStageId, doFetchState]);
+
   const send = useCallback((msg: ClientMessage): void => {
     socketRef.current?.send(msg);
   }, []);
@@ -297,9 +343,20 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
     [studentId, send],
   );
 
+  const playPrepared = useCallback(
+    (stageId: StageId, preparedId: string): void => {
+      if (!studentId || pendingInteractionId) return; // one in flight at a time (no double-send)
+      // reuse preparedId as the client interactionId — the server answers AI_OUTPUT keyed by
+      // preparedId, so the pending/thinking state clears when the stored speech arrives.
+      send({ type: "INTERACT", studentId, stageId, interactionId: preparedId, input: { kind: "playPrepared", preparedId } } satisfies ClientMessage);
+      dispatch({ t: "INTERACT_SENT", interactionId: preparedId });
+    },
+    [studentId, send, pendingInteractionId],
+  );
+
   const api = useMemo<SessionApi>(
-    () => ({ ...state, join, interact, complete, send }),
-    [state, join, interact, complete, send],
+    () => ({ ...state, join, interact, complete, playPrepared, send }),
+    [state, join, interact, complete, playPrepared, send],
   );
 
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;

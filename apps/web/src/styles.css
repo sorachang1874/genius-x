@@ -190,3 +190,73 @@ button:disabled {
   font-size: 1.8rem;
   font-weight: 700;
 }
+
+/* --- M4b: talent / birth / certificate / teacher screen (interim, DF-M3-7) --- */
+.talent-cards {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.talent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 1.1rem;
+}
+.btn--play {
+  font-size: 1.6rem;
+  padding: 24px 36px;
+  background: #ff9d2e;
+}
+.certificate {
+  background: #fff;
+  border: 4px solid var(--magic);
+  border-radius: 20px;
+  padding: 20px;
+  max-width: 360px;
+  box-shadow: 0 6px 24px rgba(91, 63, 255, 0.2);
+}
+.certificate__title {
+  margin-top: 0;
+}
+.certificate__avatar {
+  width: 160px;
+  height: 160px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.certificate__memories {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+}
+.certificate__label {
+  font-weight: 700;
+  color: var(--magic);
+}
+.certificate__speech {
+  font-style: italic;
+}
+.teacher-screen {
+  padding: 24px;
+}
+.teacher-screen__bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.teacher-screen__stage {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+.teacher-screen__roster {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.roster-item--ready {
+  background: #2ec28a;
+}
