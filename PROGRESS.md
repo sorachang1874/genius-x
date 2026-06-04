@@ -2,26 +2,215 @@
 
 ## Last updated
 
-2026-06-04
+2026-06-04 (Post-M3 Demo)
 
 ## Current state
 
-**M2 complete.** The backend runs Lesson 1 end-to-end AND produces AI content (on fake
-providers). Merged PRs #1-#5, all cross-model (Claude+Codex) reviewed to GO. main is green.
+**M3 完成，Demo 就绪 ✅**
 
-- M1 — generic config-driven reducer + guards + Zod validator + Socket.IO sync + atomic
-  session store + resume.
-- E-M1 — real-socket end-to-end smoke (intro→closure + reconnect).
-- M2a — AI gateway core: `llm/tts/asr/imageGen/extractMemory`, pipeline (input safety →
-  timeout-bounded provider → output validation+safety → fallback, never throws), fake
-  provider with fault injection, moderation seam (real 天御 IMS = M6).
-- M2b — contracts-v1.3 (`INTERACT`/`AI_OUTPUT`/`ClientAiOutput`/`PROJECT`/`pending`;
-  `STAGE_COMPLETE`=selection/variantChoice/done) + interaction wiring: INTERACT →
-  CALL_INTERACTION → gateway → AI_OUTPUT → INTERACTION_DONE, idempotent, stale-safe,
-  run outside the session mutex.
+完整的 6-Stage 课堂流程（intro → icebreak → shape → talent → birth → closure）已跑通。
+多端实时协作（学生/助教/教师）验证通过。技术架构和产品理念验证完成。
 
-Tests: ai-gateway 19/19, server 47/47, typecheck green across packages. Contracts at v1.3
-(tags contracts-v0/v1/v1.1; v1.2 TEACHER_UNLOCK; v1.3 interactions — not separately tagged).
+### 已完成的里程碑
+
+- **M1** — 配置驱动的状态机 + Reducer + Zod 验证器 + Socket.IO 同步 + 原子性 SessionStore + Resume
+- **E-M1** — 端到端烟雾测试（intro→closure + 断线重连）
+- **M2a** — AI Gateway 核心：`llm/tts/asr/imageGen/extractMemory` 管道（输入安全 → 超时控制 → 输出验证 → 降级，永不抛异常），FakeProvider + 故障注入，审核接口（真实天御 IMS = M6）
+- **M2b** — contracts-v1.3（`INTERACT`/`AI_OUTPUT`/`PROJECT`/`pending`；交互幂等、防过期、Session 锁外执行）
+- **M3** — 前端完整实现（React + Vite）：
+  - 学生端：6 个 Stage（Standby/Intro/Icebreak/Shape/Talent/Birth/Closure）
+  - 助教端：创建课堂、查看状态、推进流程
+  - 教师端：大屏投影、学生花名册
+  - WebSocket 实时同步 + 断线重连（5 次重试）
+  - Canvas 涂鸦、语音输入、图像选择等真实交互
+- **M4a** — contracts-v1.4 + 服务器端（才艺记忆提取、生日预生成、投影验证）
+- **M4b** — 前端 Talent/Birth/Closure + 教师投影屏
+- **M4c** — 助教注册机制（`role=assistant` → `assistantId`）
+- **M4d** — 强制推进 UI（FORCE_ADVANCE 按钮 + 确认流程）
+
+### 测试覆盖
+
+✅ **单元测试**:
+- ai-gateway: 19/19
+- server: 61/61
+- web: 49/49
+
+✅ **端到端测试**:
+- 单学生流程: `tools/demo-e2e-test.mjs`
+- 多学生并发: `tools/demo-e2e-multi-student.mjs`（3 学生同时加入，状态同步，推进条件验证）
+
+✅ **环境验证**:
+- WSL2 + Windows + 全局 VPN 环境下运行成功
+- CORS 跨域配置正确
+- 端口转发 + VPN 分流方案文档化
+
+### 技术债务（已记录，不阻塞 Demo）
+
+详见 `docs/known-issues.md`：
+- 助教端状态显示不完整（P2）
+- Advance 条件未严格触发（P2）
+- 占位图片显示坏图（P2）
+- Fake TTS 语音突兀（P2，M6 解决）
+
+---
+
+## Contracts 版本
+
+**当前**: v1.4
+
+关键变更：
+- v1.0: 初始合约
+- v1.1: `TEACHER_UNLOCK`
+- v1.2: `PreparedOutput` / `AI_READY`
+- v1.3: `INTERACT` / `AI_OUTPUT` / `pending`
+- v1.4: `displayName` / `memories` / `PREPARE_DONE` / `PROJECTION` 授权
+
+---
+
+## 开发环境配置
+
+### WSL2 + Windows + VPN（当前）
+
+已解决的挑战：
+- ✅ 跨域 CORS 配置（@fastify/cors）
+- ✅ Windows 端口转发（`tools/wsl-port-forward.ps1`）
+- ✅ VPN 分流配置（`docs/vpn-split-tunnel-config.md`）
+- ✅ WSL2 网络配置（`docs/wsl2-setup.md`）
+
+### Mac 迁移计划
+
+详见 `docs/migration-wsl2-to-mac.md`：
+- 环境配置：Homebrew, Node.js, pnpm
+- 项目克隆和依赖安装
+- 验证清单（typecheck, test, 启动服务）
+- 预计时间：45-85 分钟
+
+---
+
+## 文档状态
+
+### 产品文档
+- ✅ `docs/product/genius-x-manifesto.md` — 产品理念
+- ✅ `docs/product/genius-x-mvp-prd.md` — MVP 需求文档
+- ✅ `docs/product/genius-x-lesson1-rundown.md` — 第一课流程
+
+### 技术文档
+- ✅ `AGENTS.md` — AI Agent 协作规则
+- ✅ `docs/contracts/` — 合约文档（完整更新）
+- ✅ `docs/demo-live-guide.md` — Demo 演示指南
+- ✅ `docs/demo-quickstart.md` — 5 分钟快速启动
+- ✅ `docs/known-issues.md` — 已知问题和优化点
+- ✅ `docs/presentation.md` — 汇报材料（技术 + 产品）
+- ✅ `docs/migration-wsl2-to-mac.md` — 迁移计划
+
+### 网络配置文档
+- ✅ `docs/wsl2-setup.md` — WSL2 完整配置
+- ✅ `docs/vpn-split-tunnel-config.md` — VPN 分流配置
+- ✅ `tools/wsl-port-forward.ps1` — Windows 端口转发脚本
+
+---
+
+## 下一步计划
+
+### 短期（Demo 演示后）
+
+**M5: 家长反馈系统**（2-3 周）
+- 课后报告生成（文字总结）
+- 伙伴出生证导出（PDF/图片）
+- 家长端查看链接（只读）
+- 互动片段回放（录音/截图）
+
+**M4 体验优化**（1-2 周）
+- 助教端状态显示完善（学生列表、进度 overview）
+- Advance 条件严格触发
+- 占位图片替换为真实图片
+
+### 中期（1-2 个月）
+
+**M6: 真实 AI 服务集成**
+- LLM: 豆包 (Doubao) / Claude（6-8h）
+- TTS: Azure TTS / 讯飞语音（4-6h）
+- 图像生成: DALL-E / Stable Diffusion（8-12h）
+- 成本优化：缓存 + 预算控制（6h）
+
+**M7: 课程扩展框架**
+- 课程编辑器（Payload CMS）
+- Stage 模板库（可复用组件）
+- 课程版本管理
+- A/B 测试框架
+
+### 长期（3-6 个月）
+
+- **M8**: 数据分析和个性化推荐
+- **M9**: 多课堂并发和负载均衡
+- **M10**: 移动端 App（React Native）
+
+---
+
+## Codex 审查协议
+
+`codex exec` 审查必须按以下方式运行：
+```bash
+codex exec --sandbox read-only -c model_reasoning_effort="xhigh" \
+  "<prompt starting with docs/agents/REVIEW_BRIEF.md>" \
+  < /dev/null > file 2>&1
+```
+
+关键点：
+- `< /dev/null` 防止 codex 阻塞在 stdin
+- 快速确认：告诉 codex "不运行 shell 命令，仅读取 + 判断"（~48s vs 超时）
+- 详见 `docs/agents/README.md`
+
+---
+
+## 开放问题 / 延期项
+
+- 真实腾讯 Provider + 天御审核 — M6（通过现有接口注入；配置/密钥切换）
+- 进程内 Session 锁 = 单实例限制（多实例 → Redis 分布式锁）
+- 中国部署：离岸开发，国内运行；Demo 使用 Fake Provider
+
+---
+
+## Handoff — 下次会话从这里开始
+
+### 在 WSL2 环境继续开发
+
+1. 确保代码最新：`git pull origin main`
+2. 安装依赖（如有更新）：`pnpm install`
+3. 运行测试验证：`pnpm typecheck && pnpm test`
+4. 启动 Demo：`./demo-start.sh`
+5. 阅读关键文档：
+   - `docs/presentation.md` — 汇报材料
+   - `docs/known-issues.md` — 已知问题
+   - `AGENTS.md` — 协作规则
+
+### 迁移到 Mac 后
+
+1. 按照 `docs/migration-wsl2-to-mac.md` 完整迁移
+2. 验证清单：环境、测试、功能（45-85 分钟）
+3. 继续 M5/M6 开发
+
+### Demo 演示准备
+
+1. 启动服务：`./demo-start.sh`
+2. 打开 3 个浏览器标签页：
+   - `http://localhost:5173/?role=assistant`（助教）
+   - `http://localhost:5173/`（学生 1）
+   - `http://localhost:5173/`（学生 2）
+3. 按照 `docs/presentation.md` 中的 5 分钟演示脚本执行
+4. 重点讲述产品理念和技术架构，避免提及技术细节缺陷
+
+---
+
+## 项目状态总结
+
+✅ **核心功能完成**：6 个 Stage 完整流程  
+✅ **多端协作验证**：学生/助教/教师实时同步  
+✅ **技术架构稳定**：合约驱动、模块化、可扩展  
+✅ **环境配置文档化**：WSL2 + Mac 迁移方案  
+✅ **汇报材料就绪**：技术 + 产品双视角  
+
+**下一阶段重点：Demo 演示 → 用户反馈 → M5/M6 迭代优化**
 
 ## Codex review setup (operational — IMPORTANT)
 
