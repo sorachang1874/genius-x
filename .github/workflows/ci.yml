@@ -14,6 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # Pin to the committed packageManager version. Without this, action-setup may install
+          # a newer pnpm that treats esbuild's "ignored build script" warning as a fatal install
+          # error. esbuild's binary ships via its @esbuild/<platform> optional dep, so the build
+          # script is functionally unneeded; 11.5.0 keeps it a non-fatal warning. Keep in sync
+          # with package.json "packageManager".
+          version: 11.5.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22

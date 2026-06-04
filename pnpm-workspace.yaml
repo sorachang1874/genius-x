@@ -3,7 +3,9 @@
 packages:
   - "apps/*"
   - "packages/*"
-allowBuilds:
-  esbuild: set this to true or false
+# esbuild (vite/vitest) wants a build script; its binary actually ships via the
+# @esbuild/<platform> optional dep, so the script is functionally unneeded. We allowlist it
+# to document intent; the CI pnpm version (pinned in .github/workflows/ci.yml) keeps a missed
+# build a non-fatal warning rather than an install error.
 onlyBuiltDependencies:
   - esbuild
