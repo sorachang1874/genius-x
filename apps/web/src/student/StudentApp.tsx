@@ -12,6 +12,9 @@ import { Standby } from "./stages/Standby";
 import { Intro } from "./stages/Intro";
 import { Icebreak } from "./stages/Icebreak";
 import { Shape } from "./stages/Shape";
+import { Talent } from "./stages/Talent";
+import { Birth } from "./stages/Birth";
+import { Closure } from "./stages/Closure";
 
 export function StudentApp(): React.JSX.Element {
   return (
@@ -51,11 +54,16 @@ function StageView({ stageId }: { stageId?: string | undefined }): React.JSX.Ele
       return <Icebreak stageId={stageId} />;
     case "shape":
       return <Shape stageId={stageId} />;
+    case "talent":
+      return <Talent stageId={stageId} />;
+    case "birth":
+      return <Birth stageId={stageId} />;
+    case "closure":
+      return <Closure stageId={stageId} />;
     case "intro":
     case undefined:
       return <Intro />;
     default:
-      // talent / birth / closure → M4
       return <Standby copy="魔法还在继续，下一个惊喜马上来 ✨" />;
   }
 }

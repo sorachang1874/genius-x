@@ -52,9 +52,12 @@ function Probe(): React.JSX.Element {
       <span data-testid="avatar">{String(s.you.outputs.avatarUrl ?? "")}</span>
       <span data-testid="chosen">{String(s.localSelection?.output === "avatarUrl" ? s.localSelection.value : (s.you.outputs.avatarUrl ?? ""))}</span>
       <span data-testid="pending">{s.pendingInteractionId ?? ""}</span>
+      <span data-testid="ready">{s.readyPrepared?.preparedId ?? ""}</span>
+      <span data-testid="projected">{s.projected?.studentId ?? ""}</span>
       <button onClick={() => s.join("room-1")}>join</button>
       <button onClick={() => s.interact("icebreak", { kind: "voice", audioRef: "a1" })}>interact</button>
       <button onClick={() => s.complete("shape", { kind: "selection", output: "avatarUrl", value: "u1" })}>complete</button>
+      <button onClick={() => s.playPrepared("birth", "prep-1")}>play</button>
     </div>
   );
 }
@@ -160,5 +163,24 @@ describe("session context (fake socket)", () => {
     fake.sent.length = 0;
     await fake.fireConnect();
     expect(fake.sent).toContainEqual({ type: "HELLO", studentId: "k1" });
+  });
+
+  it("AI_READY marks a prepared output ready (gates the birth play button)", async () => {
+    const { fake } = await setupLiveStudent();
+    await fake.emit({ type: "AI_READY", studentId: "k1", stageId: "birth", preparedId: "prep-1", outputKind: "audio" });
+    expect(screen.getByTestId("ready").textContent).toBe("prep-1");
+  });
+
+  it("playPrepared emits an exact INTERACT keyed by preparedId (so AI_OUTPUT clears it)", async () => {
+    const { fake } = await setupLiveStudent();
+    fireEvent.click(screen.getByText("play"));
+    expect(fake.sent).toContainEqual({ type: "INTERACT", studentId: "k1", stageId: "birth", interactionId: "prep-1", input: { kind: "playPrepared", preparedId: "prep-1" } });
+    expect(screen.getByTestId("pending").textContent).toBe("prep-1");
+  });
+
+  it("PROJECT records the projected child (for the teacher screen)", async () => {
+    const { fake } = await setupLiveStudent();
+    await fake.emit({ type: "PROJECT", studentId: "k1", output: { text: "轩轩你好" } });
+    expect(screen.getByTestId("projected").textContent).toBe("k1");
   });
 });

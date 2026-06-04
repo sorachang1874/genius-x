@@ -22,6 +22,7 @@ export function fakeSession(partial: Partial<SessionApi> = {}): SessionApi {
     join: vi.fn(async () => {}),
     interact: vi.fn(() => "iid-1"),
     complete: vi.fn(),
+    playPrepared: vi.fn(),
     send: vi.fn(),
     ...partial,
   };

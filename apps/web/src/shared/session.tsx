@@ -28,6 +28,7 @@ import type {
   ServerMessage,
   StageId,
   OutputKey,
+  OutputKind,
   RuntimeValue,
   GlobalState,
   StudentRuntimeState,
@@ -86,6 +87,11 @@ export interface SessionState {
   /** A child's just-made choice, shown as a positive transient BEFORE the server acks it. NOT
    *  authoritative — `you.outputs` (from RESUME_STATE) is. Cleared on the next RESUME_STATE. */
   localSelection?: { output: OutputKey; value: RuntimeValue } | undefined;
+  /** A pre-generated output is ready to play (from AI_READY, contracts-v1.4) — gates the birth
+   *  play button. On resume it's re-derived from `you.prepared` (a ready entry for the stage). */
+  readyPrepared?: { stageId: StageId; preparedId: string; outputKind: OutputKind } | undefined;
+  /** Teacher/projection screen only: the child currently projected to the big screen (from PROJECT). */
+  projected?: { studentId: string; output: ClientAiOutput } | undefined;
 }
 
 type Action =
@@ -134,7 +140,7 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
   switch (msg.type) {
     case "STAGE_UNLOCK":
       // class advanced: drop transient interaction state (candidate images don't survive a stage change)
-      return { ...state, currentStageId: msg.stageId, global: "active", pendingInteractionId: undefined, lastOutput: undefined };
+      return { ...state, currentStageId: msg.stageId, global: "active", pendingInteractionId: undefined, lastOutput: undefined, readyPrepared: undefined };
     case "GLOBAL_STATE":
       return { ...state, global: msg.state };
     case "AI_OUTPUT":
@@ -149,6 +155,9 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
       // server still has a pending interaction for the current stage, keep showing "thinking"
       // (the AI_OUTPUT is still coming) instead of dropping to idle and inviting a duplicate.
       const pendingHere = Object.entries(msg.you.pending).find(([, v]) => v.stageId === msg.currentStageId);
+      // re-derive a ready prepared output for the current stage from authoritative state (so a
+      // reconnect mid-birth restores the play button without waiting for a fresh AI_READY).
+      const readyEntry = Object.entries(msg.you.prepared).find(([, p]) => p.ready && p.stageId === msg.currentStageId);
       return {
         ...state,
         phase: "live",
@@ -159,11 +168,14 @@ function applyServer(state: SessionState, msg: ServerMessage): SessionState {
         pendingInteractionId: pendingHere ? pendingHere[0] : undefined,
         lastOutput: undefined,
         localSelection: undefined,
+        readyPrepared: readyEntry ? { stageId: msg.currentStageId, preparedId: readyEntry[0], outputKind: readyEntry[1].outputKind } : undefined,
       };
     }
-    case "AI_READY": // M4 (prepared birth output)
-    case "PROJECT": // M4 (teacher projection)
-      return state;
+    case "AI_READY":
+      if (state.studentId && msg.studentId !== state.studentId) return state;
+      return { ...state, readyPrepared: { stageId: msg.stageId, preparedId: msg.preparedId, outputKind: msg.outputKind } };
+    case "PROJECT": // teacher/projection screen
+      return { ...state, projected: { studentId: msg.studentId, output: msg.output } };
     default: {
       const _exhaustive: never = msg;
       return _exhaustive;
@@ -183,6 +195,8 @@ export interface SessionApi extends SessionState {
   interact(stageId: StageId, input: InteractionInput, variantId?: string): string | undefined;
   /** Finish/choose for a stage (e.g. avatar selection). Optimistically reflects a selection locally. */
   complete(stageId: StageId, payload: StageCompletePayload): void;
+  /** Replay a pre-generated output (birth speech). The server answers with AI_OUTPUT keyed by preparedId. */
+  playPrepared(stageId: StageId, preparedId: string): void;
   /** Escape hatch for control messages the assistant builds from the lesson config (UNLOCK etc.). */
   send(msg: ClientMessage): void;
 }
@@ -297,9 +311,20 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
     [studentId, send],
   );
 
+  const playPrepared = useCallback(
+    (stageId: StageId, preparedId: string): void => {
+      if (!studentId) return;
+      // reuse preparedId as the client interactionId — the server answers AI_OUTPUT keyed by
+      // preparedId, so the pending/thinking state clears when the stored speech arrives.
+      send({ type: "INTERACT", studentId, stageId, interactionId: preparedId, input: { kind: "playPrepared", preparedId } } satisfies ClientMessage);
+      dispatch({ t: "INTERACT_SENT", interactionId: preparedId });
+    },
+    [studentId, send],
+  );
+
   const api = useMemo<SessionApi>(
-    () => ({ ...state, join, interact, complete, send }),
-    [state, join, interact, complete, send],
+    () => ({ ...state, join, interact, complete, playPrepared, send }),
+    [state, join, interact, complete, playPrepared, send],
   );
 
   return <SessionContext.Provider value={api}>{children}</SessionContext.Provider>;
