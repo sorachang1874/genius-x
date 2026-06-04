@@ -191,6 +191,62 @@ button:disabled {
   font-weight: 700;
 }
 
+.assistant-app__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.assistant-app__force-btn {
+  background: #ff9d2e;
+  font-size: 1rem;
+}
+
+.assistant-app__force-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #fff3e0;
+  border-radius: 12px;
+  border: 2px solid #ff9d2e;
+}
+
+.assistant-app__force-confirm label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+.assistant-app__force-confirm input {
+  font-size: 1rem;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.assistant-app__force-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.assistant-app__force-actions button {
+  font-size: 1rem;
+  padding: 12px 20px;
+}
+
+.assistant-app__force-actions button:first-child {
+  background: #ff5b8a;
+}
+
+.assistant-app__force-actions button:last-child {
+  background: #999;
+}
+
 /* --- M4b: talent / birth / certificate / teacher screen (interim, DF-M3-7) --- */
 .talent-cards {
   display: flex;
