@@ -17,8 +17,6 @@ import { createAiOutputPlayer, type AiOutputPlayer } from "../../shared/ai-outpu
 
 export interface ShapeProps {
   stageId: StageId;
-  /** Override the A-line variant id (default: read from the lesson config for this stage). */
-  variantId?: string;
   player?: AiOutputPlayer;
 }
 
@@ -27,7 +25,7 @@ function newDoodleRef(): string {
   return `placeholder-doodle://${id}`;
 }
 
-export function Shape({ stageId, variantId, player }: ShapeProps): React.JSX.Element {
+export function Shape({ stageId, player }: ShapeProps): React.JSX.Element {
   const { pendingInteractionId, lastOutput, you, localSelection, interact, complete } = useSession();
   const aiPlayer = useMemo(() => player ?? createAiOutputPlayer(), [player]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -39,7 +37,7 @@ export function Shape({ stageId, variantId, player }: ShapeProps): React.JSX.Ele
   // can't supply them we fail closed (render a safe placeholder) rather than invent an output key
   // that would make a STAGE_COMPLETE the server rejects after the child already saw success.
   const aLine = lesson001.stages.find((s) => s.stageId === stageId)?.variants?.find((v) => v.interaction.type === "image_gen");
-  const resolvedVariant = variantId ?? aLine?.id;
+  const resolvedVariant = aLine?.id;
   const outputKey = aLine?.writesOutputs?.[0];
 
   const thinking = pendingInteractionId !== undefined;

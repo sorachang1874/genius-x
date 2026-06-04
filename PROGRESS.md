@@ -59,7 +59,15 @@ Design note `docs/agents/designs/A-M3-frontend.md` (Codex-reviewed/hardened) imp
   banned-wording scan). Full suite green: ai-gateway 19, server 47, web 29. typecheck green;
   `vite build` OK. New deferrals: **DF-M3-8** (assistant FORCE_ADVANCE) + DF-M3-2 extended (doodleRef).
 
-**Remaining M3:** Codex review (xhigh, `< /dev/null`) → address → human merge to main.
+**Codex review (xhigh, read-only):** initial NO-GO (6 findings) → all addressed (resume renders
+pending from authoritative `you.pending`; selection is a non-authoritative `localSelection`
+transient, never mutates `you.outputs`; connect-race closed via immediate `onConnect` when already
+connected; Shape resolves variant-by-`image_gen` + output key strictly from config, fails closed
+on drift; client degradations call an operator-visible `onDegraded` sink; Icebreak double-send
+latched) → re-review **GO-with-nits** → nit closed (dropped the unused `variantId` override prop).
+PR #6, branch `m3-frontend`.
+
+**Remaining M3:** human merge of PR #6 to main (CI green).
 
 Then M4 (talent/birth/memory + AI_READY{preparedId,outputKind} + playPrepared) → wire-up = B-level demo.
 
