@@ -10,8 +10,8 @@
  */
 import { useState } from "react";
 import { lesson001 } from "@genius-x/course-config";
-import type { StageConfig } from "@genius-x/contracts";
-import { SessionProvider, useSession } from "../shared/session";
+import type { StageConfig, ClientMessage } from "@genius-x/contracts";
+import { SessionProvider, useSession, type SessionProviderProps } from "../shared/session";
 
 const STAGES = lesson001.stages;
 
@@ -21,9 +21,9 @@ function nextStage(currentStageId?: string): StageConfig | undefined {
   return idx >= 0 ? STAGES[idx + 1] : undefined;
 }
 
-export function AssistantApp(): React.JSX.Element {
+export function AssistantApp({ deps }: { deps?: SessionProviderProps["deps"] } = {}): React.JSX.Element {
   return (
-    <SessionProvider role="assistant">
+    <SessionProvider role="assistant" {...(deps ? { deps } : {})}>
       <AssistantPanel />
     </SessionProvider>
   );
@@ -31,6 +31,8 @@ export function AssistantApp(): React.JSX.Element {
 
 function AssistantPanel(): React.JSX.Element {
   const session = useSession();
+  const [showForceAdvance, setShowForceAdvance] = useState(false);
+  const [forceReason, setForceReason] = useState("");
 
   if (session.phase !== "live") {
     return <ConnectScreen />;
@@ -51,6 +53,21 @@ function AssistantPanel(): React.JSX.Element {
     }
   };
 
+  const forceAdvance = (): void => {
+    if (!next || !session.currentStageId) return;
+    const trimmedReason = forceReason.trim();
+    const msg: Extract<ClientMessage, { type: "FORCE_ADVANCE" }> = {
+      type: "FORCE_ADVANCE",
+      stageId: next.stageId,
+      assistantId,
+      expectedCurrentStageId: session.currentStageId,
+    };
+    if (trimmedReason) msg.reason = trimmedReason;
+    session.send(msg);
+    setShowForceAdvance(false);
+    setForceReason("");
+  };
+
   return (
     <div className="assistant-app">
       <header className="assistant-app__bar">
@@ -66,10 +83,50 @@ function AssistantPanel(): React.JSX.Element {
 
       <section className="assistant-app__controls">
         {next ? (
-          <button type="button" onClick={unlock}>
-            解锁下一环节：{next.name}
-            <small>（{next.unlock === "assistant" ? "助教" : "老师"}解锁）</small>
-          </button>
+          <>
+            <button type="button" onClick={unlock}>
+              解锁下一环节：{next.name}
+              <small>（{next.unlock === "assistant" ? "助教" : "老师"}解锁）</small>
+            </button>
+
+            {!showForceAdvance ? (
+              <button
+                type="button"
+                className="assistant-app__force-btn"
+                onClick={() => setShowForceAdvance(true)}
+                title="跳过推进条件，直接解锁下一环节（会被审计记录）"
+              >
+                强制推进
+              </button>
+            ) : (
+              <div className="assistant-app__force-confirm">
+                <label>
+                  推进原因（选填）
+                  <input
+                    type="text"
+                    value={forceReason}
+                    onChange={(e) => setForceReason(e.target.value)}
+                    placeholder="例如：部分学生卡住，需要继续课程"
+                    maxLength={100}
+                  />
+                </label>
+                <div className="assistant-app__force-actions">
+                  <button type="button" onClick={forceAdvance}>
+                    确认强制推进
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForceAdvance(false);
+                      setForceReason("");
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : session.currentStageId ? (
           <p>已经是最后一个环节啦 🎉</p>
         ) : (
