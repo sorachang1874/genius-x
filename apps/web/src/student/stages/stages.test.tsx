@@ -77,7 +77,7 @@ describe("Shape", () => {
   });
 
   it("shows the chosen avatar after selection", () => {
-    const you = { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: { avatarUrl: "chosen-url" } };
+    const you = { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: { avatarUrl: "chosen-url" }, memories: {}, pendingMemory: [], prepared: {} };
     renderWithSession(<Shape stageId="shape" player={noopPlayer} />, fakeSession({ you }));
     expect(screen.getByAltText("我的好朋友").getAttribute("src")).toBe("chosen-url");
   });

@@ -36,6 +36,18 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-8 | Assistant advance controls | partial | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); **`FORCE_ADVANCE` not surfaced** — the engine requires `assistantId ∈ session.assistants`, which `/session/join` does not populate yet | register assistants on join (or an assistant-join endpoint) + add the override button | one straggler can't yet be force-advanced from the UI |
 | DF-M3-9 | Client-side degradation telemetry | placeholder | client degradations (audio→speech fallback, mic-denied) call an `onDegraded` seam → default `console.warn("[client-degraded] …")` (operator-visible, greppable) | real client telemetry sink (post to a `/client-trace` endpoint / Langfuse) | keeps the degradation principle honest on the client until a real sink lands |
 
+## M4 (talent / birth / closure / projection) entries
+
+| ID | Item | Kind | What we do now | Replace trigger | Notes |
+| --- | --- | --- | --- | --- | --- |
+| DF-M4-1 | Birth speech TTS | placeholder | pre-gen produces a placeholder `audioUrl` via the fake gateway | real TTS provider (M6) ⇒ **automatic** (client prefers `audioUrl`) | swap is server-side only |
+| DF-M4-2 | Talent 反问埋点 prompt tree | placeholder | `memory_v1`/`talent_v1` are simple versioned templates; extraction mines ≤1 memory/turn | a designed 4–5-option induction 话术树 (rundown 待确认) | prompt-design work, not engine |
+| DF-M4-3 | personality_tag / background_setting | half-built | modelled as declared memory keys + config `certificate.memoryLabels`; background sourced from shape B-line when present, else talent | richer trait/background modelling if needed | certificate renders available labelled memories (no hard count) |
+| DF-M4-4 | Teacher / projection screen | half-built | **server done** (M4a): `REQUEST_PROJECTION{requestedBy}` validated (control-surface + readiness) → `PROJECT`. Thin `?role=teacher` UI = M4b | richer multi-pad projection UX | single projected child, manual trigger |
+| DF-M4-5 | Persisted `BirthCertificate` artifact | deferred-feature | live 伙伴出生证 assembled client-side from `RESUME_STATE.you` | archive/print/parent-report persistence = M5 | M4 ships the live view only |
+| DF-M4-6 | GeniusX naming | deferred-feature | certificate name field may be blank | naming flow = Lesson 2 (D2 open) | — |
+| DF-M4-7 | Projection role enforcement | placeholder | `requestedBy` is validated as "not a student in the session" (trusted-classroom); student-origin denied + traced | cryptographic role check = Better Auth (DF-8) | same posture as `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` |
+
 ## Review log
 
 - 2026-06-03 — ledger created; seeded from M1/M2 deferrals.

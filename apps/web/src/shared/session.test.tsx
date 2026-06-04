@@ -93,7 +93,7 @@ describe("session context (fake socket)", () => {
       currentStageId: "shape",
       global: "active",
       lessonConfigVersion: "1.0.0",
-      you: { ...{ stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {} }, outputs: { avatarUrl: "resumed-url" } },
+      you: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: { avatarUrl: "resumed-url" }, memories: {}, pendingMemory: [], prepared: {} },
     });
     expect(screen.getByTestId("stage").textContent).toBe("shape");
     expect(screen.getByTestId("version").textContent).toBe("1.0.0");
@@ -150,7 +150,7 @@ describe("session context (fake socket)", () => {
       currentStageId: "icebreak",
       global: "active",
       lessonConfigVersion: "1.0.0",
-      you: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: { "iid-live": { stageId: "icebreak" } }, outputs: {} },
+      you: { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: { "iid-live": { stageId: "icebreak" } }, outputs: {}, memories: {}, pendingMemory: [], prepared: {} },
     });
     expect(screen.getByTestId("pending").textContent).toBe("iid-live");
   });

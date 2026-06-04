@@ -13,6 +13,7 @@ import type {
   ArtifactType,
   StageStatus,
 } from "./enums";
+import type { OutputKind } from "./ws-events";
 
 export interface LessonConfig {
   lessonId: string;
@@ -26,6 +27,15 @@ export interface LessonConfig {
   declaredMemoryKeys: MemoryKey[];
   declaredArtifactTypes: ArtifactType[];
   stages: StageConfig[];
+  /** Per-memory display metadata for the 伙伴出生证 / report (contracts-v1.4). Generic — keys ∈
+   *  declaredMemoryKeys; an unlabelled key falls back to a neutral label, never an error. */
+  certificate?: CertificateConfig;
+}
+
+export interface CertificateConfig {
+  memoryLabels: Record<MemoryKey, string>;
+  /** Optional render order; unlisted labelled memories follow in declaration order. */
+  order?: MemoryKey[];
 }
 
 export interface StageConfig {
@@ -115,6 +125,8 @@ export interface MultimodalTalentInteraction {
 export interface BirthSpeechInteraction {
   type: "birth_speech";
   promptTemplate: string;
+  /** What pre-generation produces (server reads this; not assumed). Lesson 1: "audio". */
+  outputKind: OutputKind;
 }
 
 export interface StageAppState {

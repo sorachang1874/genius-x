@@ -6,7 +6,7 @@
  * raw child audio crosses this boundary. `STAGE_COMPLETE` is a typed union, not `unknown`.
  */
 import type { StageId, OutputKey, RuntimeValue, GlobalState } from "./enums";
-import type { StudentRuntimeState } from "./student";
+import type { StudentRuntimeState, PreparedOutputId } from "./student";
 
 /** Opaque storage references — NOT raw media bytes. */
 export type AudioRef = string;
@@ -19,8 +19,8 @@ export type InteractionInput =
   | { kind: "doodle"; doodleRef: DoodleRef } // shape A-line
   | { kind: "answers"; answersByQuestionId: Record<string, string> } // shape B-line dialogue
   | { kind: "talentOption"; option: string } // talent pick
-  | { kind: "talentAnswer"; option?: string; audioRef: AudioRef };
-// birth pre-generation + a `playPrepared` input land in M4 (with AI_READY{preparedId,outputKind}).
+  | { kind: "talentAnswer"; option?: string; audioRef: AudioRef }
+  | { kind: "playPrepared"; preparedId: PreparedOutputId }; // birth: replay a server pre-generated output
 
 /** A student's CHOICE / finish (not an interaction). Source: D-M2 v2 (Codex #3). */
 export type StageCompletePayload =
@@ -40,7 +40,8 @@ export interface ClientAiOutput {
 export type ServerMessage =
   | { type: "STAGE_UNLOCK"; stageId: StageId }
   | { type: "GLOBAL_STATE"; state: GlobalState }
-  | { type: "AI_READY"; studentId: string; stageId: StageId; interactionId: string; outputKind: OutputKind }
+  /** A pre-generated output is ready; the child replays it with INTERACT{playPrepared,preparedId}. */
+  | { type: "AI_READY"; studentId: string; stageId: StageId; preparedId: PreparedOutputId; outputKind: OutputKind }
   | { type: "AI_OUTPUT"; studentId: string; stageId: StageId; interactionId: string; output: ClientAiOutput }
   /** Project a child's renderable output to the teacher/big-screen audience (REQUEST_PROJECTION). */
   | { type: "PROJECT"; studentId: string; output: ClientAiOutput }
@@ -83,6 +84,8 @@ export type ClientMessage =
       stageId: StageId;
       payload: StageCompletePayload;
     }
-  | { type: "REQUEST_PROJECTION"; studentId: string };
+  /** Project a child's prepared output to the big screen. `requestedBy` is the control-surface
+   *  (assistant/teacher) id — student-origin requests are denied + traced (full RBAC = Better Auth). */
+  | { type: "REQUEST_PROJECTION"; studentId: string; requestedBy: string };
 
 export type ClassroomEvent = ServerMessage | ClientMessage;

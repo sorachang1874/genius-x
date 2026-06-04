@@ -47,7 +47,11 @@ const aiInteraction = z.union([
     maxInteractions: z.number().int().positive(),
     memoryExtraction: z.boolean(),
   }),
-  z.object({ type: z.literal("birth_speech"), promptTemplate: z.string() }),
+  z.object({
+    type: z.literal("birth_speech"),
+    promptTemplate: z.string(),
+    outputKind: z.enum(["text", "audio", "images"]),
+  }),
 ]);
 
 const stageVariant = z.object({
@@ -86,6 +90,12 @@ const lessonConfig = z.object({
   declaredMemoryKeys: z.array(z.string()),
   declaredArtifactTypes: z.array(z.string()),
   stages: z.array(stageConfig).min(1),
+  certificate: z
+    .object({
+      memoryLabels: z.record(z.string(), z.string()),
+      order: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export type ValidationResult =

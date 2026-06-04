@@ -11,7 +11,7 @@ import type { LessonConfig } from "@genius-x/contracts";
 export const lesson001: LessonConfig = {
   lessonId: "lesson-001",
   lessonTitle: "认识我的 AI 好朋友",
-  lessonConfigVersion: "1.0.0",
+  lessonConfigVersion: "1.1.0",
   totalDuration: 60,
   unlockPolicy: "classWide",
   declaredOutputs: ["avatarUrl"],
@@ -22,8 +22,32 @@ export const lesson001: LessonConfig = {
     "favorite_color",
     "favorite_food",
     "preferred_name",
+    "personality_tag", // the one 性格标签 (contracts-v1.4)
+    "background_setting", // from shape B-line or talent (contracts-v1.4)
   ],
   declaredArtifactTypes: ["birth_certificate"],
+  certificate: {
+    memoryLabels: {
+      personality_tag: "性格",
+      favorite_toy: "最喜欢的玩具",
+      favorite_animal: "最喜欢的动物",
+      best_friend: "最好的朋友",
+      favorite_color: "最喜欢的颜色",
+      favorite_food: "最喜欢的食物",
+      background_setting: "故事背景",
+      preferred_name: "喜欢的称呼",
+    },
+    order: [
+      "personality_tag",
+      "favorite_toy",
+      "favorite_animal",
+      "best_friend",
+      "favorite_color",
+      "favorite_food",
+      "background_setting",
+      "preferred_name",
+    ],
+  },
   stages: [
     {
       stageId: "intro",
@@ -112,7 +136,7 @@ export const lesson001: LessonConfig = {
         type: "allStudents",
         of: { kind: "stageStatus", is: "completed" },
       },
-      interaction: { type: "birth_speech", promptTemplate: "birth_speech_v1" },
+      interaction: { type: "birth_speech", promptTemplate: "birth_speech_v1", outputKind: "audio" },
       output: "birth_certificate",
     },
     {

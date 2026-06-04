@@ -13,11 +13,11 @@ import { startClassroomServer, type ServerHandle } from "./server";
 const NOW = "2026-06-03T00:00:00.000Z";
 
 function fresh(): StudentRuntimeState {
-  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {} };
+  return { stageStatus: {}, interactionCounts: {}, completedInteractionIds: [], selectedVariant: {}, pending: {}, outputs: {}, memories: {}, pendingMemory: [], prepared: {} };
 }
 function seed(): ClassSession {
   return {
-    sessionId: "demo", lessonId: "lesson-001", lessonConfigVersion: "1.0.0", classId: "demo",
+    sessionId: "demo", lessonId: "lesson-001", lessonConfigVersion: "1.1.0", classId: "demo",
     currentStageId: "intro", global: "standby", stageStartTime: NOW,
     students: { k1: fresh() }, assistants: ["a1"],
   };
