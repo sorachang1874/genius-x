@@ -19,8 +19,11 @@ export function buildHttp(
   app.post("/session/join", async (req, reply) => {
     const body = req.body as SessionJoinRequest;
     const sessionId = body.roomCode; // MVP: room code is the session id
+    const role = body.role ?? "student";
     const studentId = randomUUID();
-    // atomic: create-if-absent + add this student, without racing concurrent joins
+    const assistantId = role === "assistant" ? randomUUID() : undefined;
+
+    // atomic: create-if-absent + add this student/assistant, without racing concurrent joins
     await store.update(sessionId, async (current) => {
       const session: ClassSession = current ?? {
         sessionId,
@@ -33,13 +36,29 @@ export function buildHttp(
         students: {},
         assistants: [],
       };
-      const student = freshStudentState();
-      const name = body.name?.trim();
-      if (name) student.displayName = name; // for the 伙伴出生证 (contracts-v1.4)
-      session.students[studentId] = student;
+
+      if (role === "assistant") {
+        // register assistant if not already registered
+        if (assistantId && !session.assistants.includes(assistantId)) {
+          session.assistants.push(assistantId);
+        }
+      } else {
+        // student join logic
+        const student = freshStudentState();
+        const name = body.name?.trim();
+        if (name) student.displayName = name; // for the 伙伴出生证 (contracts-v1.4)
+        session.students[studentId] = student;
+      }
+
       return { next: session, out: undefined };
     });
-    const res: SessionJoinResponse = { studentId, sessionId, role: "student" };
+
+    const res: SessionJoinResponse = {
+      studentId,
+      sessionId,
+      role,
+      ...(assistantId && { assistantId }),
+    };
     return reply.send(res);
   });
 

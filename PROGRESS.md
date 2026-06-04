@@ -87,13 +87,38 @@ against the frozen v1.4 contracts → B-level demo.
 
 ## Open / deferred
 
-- M4b frontend (talent/birth/closure stages + projection screen) — next.
 - Real Tencent providers + 天御 moderation — M6 (inject behind the existing seams; config/key swap).
-- Projection + FORCE_ADVANCE need assistant registration on join for production (DF-M4-7 / DF-M3-8).
+- `FORCE_ADVANCE` button in assistant panel (engine ready, UI deferred).
 - In-process session mutex = single-instance only (multi-instance → Redis lock).
 - China: author offshore, run in China; demo uses fakes.
 
-## Handoff — next session starts here (M4a review/merge → M4b, branch `m4a-server`)
+## M4b (talent/birth/closure frontend) — MERGED (PR #8)
+
+Built on branch `m4b-frontend` (now merged to main):
+- Student stages: `Talent.tsx` (hold-to-talk voice → thinking → AI reply → speak/play),
+  `Birth.tsx` (AI_READY-gated play button → 伙伴出生证), `Closure.tsx` (goodbye message).
+- Teacher/projection screen: `TeacherScreen.tsx` (renders `PROJECT` messages to the big screen).
+- Certificate: `Certificate.tsx` (伙伴出生证 assembled from `RESUME_STATE.you` — displayName,
+  memories, avatarUrl, personality/background labels from config).
+- Tests: web 46 (incl. M4 stage render+dispatch+banned-wording scan), server 61, ai-gateway 19.
+- Codex-reviewed the design (GO), typecheck green, `vite build` OK.
+
+## M4c (assistant registration on join) — COMPLETE (branch `m4c-assistant-registration`)
+
+Resolves DF-M3-8 / DF-M4-7 (assistant registration gap):
+- contracts-v1.4: `SessionJoinRequest` += optional `role`, `SessionJoinResponse` += optional `assistantId`.
+- server: `/session/join` now supports `role=assistant` → generates+returns `assistantId`, registers
+  in `session.assistants[]`. Tests: http.test.ts covers assistant join + no-duplicate registration.
+- web: `joinSession()` accepts optional `role` param; `SessionProvider.join()` for assistants calls
+  `/session/join` with `role=assistant` (replaces the old workaround that used room code directly).
+- Tests green: ai-gateway 19, server 61 (incl. assistant join tests), web 46; typecheck green.
+- DEFERRED.md: marked DF-M3-8 / DF-M4-7 as **resolved (M4c)**.
+
+**Impact:** Teacher projection (`REQUEST_PROJECTION`) now works in production (assistants are registered
+and `requestedBy ∈ session.assistants` passes validation). The student-facing path (talent → birth →
+certificate → closure) and the teacher big-screen projection are both fully functional.
+
+## Handoff — next session starts here
 
 1. `git checkout m4a-server` (M4a built + green; PR open). Or `main` after it merges.
 2. Read: `docs/agents/designs/M4-talent-birth-closure.md` (the plan), `AGENTS.md`,

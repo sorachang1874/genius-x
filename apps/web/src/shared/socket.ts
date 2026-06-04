@@ -91,13 +91,14 @@ export function connectSocket(opts: ConnectOptions): ClassroomSocket {
   };
 }
 
-/** POST /session/join — room code only. Returns the assigned studentId + sessionId. */
+/** POST /session/join — room code + optional name/role. Returns the assigned studentId + sessionId (+ assistantId if role=assistant). */
 export async function joinSession(
   baseUrl: string,
   roomCode: string,
   name?: string,
+  role?: "student" | "assistant" | "teacher" | "parent" | "admin",
 ): Promise<SessionJoinResponse> {
-  const body: SessionJoinRequest = name ? { roomCode, name } : { roomCode };
+  const body: SessionJoinRequest = { roomCode, ...(name && { name }), ...(role && { role }) };
   const res = await fetch(`${baseUrl}/session/join`, {
     method: "POST",
     headers: { "content-type": "application/json" },

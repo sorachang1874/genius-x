@@ -33,7 +33,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M3-5 | PWA / offline | deferred-feature | none (plain SPA) | vite-plugin-pwa service worker | add when classroom-offline reliability matters |
 | DF-M3-6 | Clay figure + visual assets | placeholder | static placeholder art in `public/` (魔法泥人, candidate avatars) | final illustrated assets ready | B-level polish pass |
 | DF-M3-7 | M3 UI/UX as a whole | half-built | functional-first interim: minimal native `<canvas>` doodle, placeholder avatars, plain visual style | **needs a full UX + visual design pass** | before any real classroom/B-level demo |
-| DF-M3-8 | Assistant advance controls | partial | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); **`FORCE_ADVANCE` not surfaced** — the engine requires `assistantId ∈ session.assistants`, which `/session/join` does not populate yet | register assistants on join (or an assistant-join endpoint) + add the override button | one straggler can't yet be force-advanced from the UI |
+| DF-M3-8 | Assistant advance controls | **resolved (M4c)** | assistant panel emits `ASSISTANT_UNLOCK`/`TEACHER_UNLOCK` for the next stage (role read from lesson config); `FORCE_ADVANCE` requires `assistantId ∈ session.assistants` | — | assistants now register on join with `role=assistant`; `FORCE_ADVANCE` button still deferred to follow-up |
 | DF-M3-9 | Client-side degradation telemetry | placeholder | client degradations (audio→speech fallback, mic-denied) call an `onDegraded` seam → default `console.warn("[client-degraded] …")` (operator-visible, greppable) | real client telemetry sink (post to a `/client-trace` endpoint / Langfuse) | keeps the degradation principle honest on the client until a real sink lands |
 
 ## M4 (talent / birth / closure / projection) entries
@@ -46,7 +46,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-M4-4 | Teacher / projection screen | half-built | **server done** (M4a): `REQUEST_PROJECTION{requestedBy}` validated (control-surface + readiness) → `PROJECT`. Thin `?role=teacher` UI = M4b | richer multi-pad projection UX | single projected child, manual trigger |
 | DF-M4-5 | Persisted `BirthCertificate` artifact | deferred-feature | live 伙伴出生证 assembled client-side from `RESUME_STATE.you` | archive/print/parent-report persistence = M5 | M4 ships the live view only |
 | DF-M4-6 | GeniusX naming | deferred-feature | certificate name field may be blank | naming flow = Lesson 2 (D2 open) | — |
-| DF-M4-7 | Projection role enforcement | placeholder | `requestedBy` must be a **registered assistant** (`∈ session.assistants`); student-origin/unknown ids denied + traced | cryptographic role check = Better Auth (DF-8) | needs assistant registration on join (same gap as `FORCE_ADVANCE` / DF-M3-8) for production; the smoke seeds an assistant |
+| DF-M4-7 | Projection role enforcement | **resolved (M4c)** | `requestedBy` must be a **registered assistant** (`∈ session.assistants`); student-origin/unknown ids denied + traced | — | assistants register on join with `role=assistant`; cryptographic role check via Better Auth (DF-8) deferred |
 
 ## Review log
 

@@ -8,10 +8,14 @@ export interface SessionJoinRequest {
   roomCode: string;
   /** Optional display name supplied at join (students), else assigned. */
   name?: string;
+  /** Role to join as (defaults to "student" if not provided). */
+  role?: Role;
 }
 
 export interface SessionJoinResponse {
   studentId: string;
   sessionId: string;
   role: Role;
+  /** Assistant ID returned when joining as assistant. */
+  assistantId?: string;
 }
