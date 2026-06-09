@@ -7,18 +7,53 @@ import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import type { SessionJoinRequest, SessionJoinResponse, ClassSession } from "@genius-x/contracts";
 import type { SessionStore } from "./session/store";
+import type { IdentityService } from "./identity/service";
+import { registerIdentityRoutes } from "./identity/routes";
 import { freshStudentState } from "./sync/controller";
+
+/**
+ * The seeded demo tenant (migrations/001_phase1_identity_seed.sql) — the Phase-1 default
+ * session tenant, so the Step-5 join check `student.tenantId === session.tenantId` matches
+ * enrolled demo students. The migration test asserts seed ↔ this constant stay in sync.
+ */
+export const DEFAULT_DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
 
 export function buildHttp(
   store: SessionStore,
   lessonId: string,
   lessonConfigVersion: string,
   firstStageId: string,
+  // Phase 1: single demo tenant; real per-room tenant resolution lands in Step 5
+  // (the persistent-join rewrite). See identity.md.
+  tenantId = DEFAULT_DEMO_TENANT_ID,
+  // Identity Service (Phase 1 Step 4). Absent ⇒ enrollment/admin endpoints are NOT
+  // registered (404) — a deployment mode, not a fallback: the composition root logs the
+  // disabled state loudly (operator-visible), and Step 5 will require it for student joins.
+  identity?: IdentityService,
+  // CORS origin. "*" for dev (separate Vite/Fastify origins); pin via CORS_ORIGIN in
+  // operator deployments — identity endpoints carry child PII and have no auth until Phase 3.
+  corsOrigin: string = "*",
 ): FastifyInstance {
   const app = Fastify();
 
-  // Enable CORS for cross-origin requests (dev: separate origins for Vite + Fastify)
-  void app.register(cors, { origin: "*" });
+  void app.register(cors, { origin: corsOrigin });
+
+  // Contract-shape backstop for errors that never reach a route's own try/catch:
+  //   - Fastify body-parser failures (FST_ERR_CTP_*: malformed/empty JSON, wrong
+  //     content-type) → 400 INVALID_INPUT (they bypass the zod boundary entirely);
+  //   - anything else → sanitized 500 INTERNAL.
+  // NEVER err.message on the wire or in logs: Fastify's default handler serializes it
+  // verbatim, and DB/internal messages can carry row contents (child names = PII).
+  app.setErrorHandler((err, _req, reply) => {
+    const code = (err as { code?: string })?.code;
+    console.error("[http] unhandled error:", { name: (err as Error)?.name, code });
+    if (typeof code === "string" && code.startsWith("FST_ERR_CTP_")) {
+      return reply.code(400).send({ error: "INVALID_INPUT", detail: code });
+    }
+    return reply.code(500).send({ error: "INTERNAL" });
+  });
+
+  if (identity) registerIdentityRoutes(app, identity);
 
   app.post("/session/join", async (req, reply) => {
     const body = req.body as SessionJoinRequest;
@@ -33,6 +68,7 @@ export function buildHttp(
     await store.update(sessionId, async (current) => {
       const session: ClassSession = current ?? {
         sessionId,
+        tenantId,
         lessonId,
         lessonConfigVersion,
         classId: sessionId,

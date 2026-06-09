@@ -45,6 +45,7 @@ function makeFakeSocket() {
 function makeFakeSession(): ClassSession {
   return {
     sessionId: "s1",
+    tenantId: "demo-tenant",
     lessonId: "lesson-001",
     classId: "c1",
     currentStageId: "intro",

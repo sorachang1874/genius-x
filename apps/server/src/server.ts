@@ -9,6 +9,7 @@ import { lesson001 } from "@genius-x/course-config";
 import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
 import { InMemorySessionStore, type SessionStore } from "./session/store";
+import type { IdentityService } from "./identity/service";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
 import { buildHttp } from "./http";
@@ -21,6 +22,12 @@ export interface ServerOptions {
   lesson?: LessonConfig;
   trace?: TraceSink;
   clock?: Clock;
+  /** Tenant that owns sessions created by this server (Phase 1: single demo tenant). */
+  tenantId?: string;
+  /** Identity Service (Phase 1). Absent ⇒ enrollment/admin endpoints disabled (logged loudly). */
+  identity?: IdentityService;
+  /** CORS origin ("*" default for dev; pin in operator deployments — see buildHttp). */
+  corsOrigin?: string;
 }
 
 export interface ServerHandle {
@@ -51,7 +58,7 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     trace,
     now: () => clock.now(),
   });
-  const app = buildHttp(store, lesson.lessonId, lesson.lessonConfigVersion, firstStageId);
+  const app = buildHttp(store, lesson.lessonId, lesson.lessonConfigVersion, firstStageId, opts.tenantId, opts.identity, opts.corsOrigin);
   const io = new Server(app.server, { cors: { origin: "*" } });
   const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway);
   attachSocket(io, controller);

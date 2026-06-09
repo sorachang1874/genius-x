@@ -19,8 +19,26 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-7 | Course authoring | shadow | hand-authored `lesson-001.ts` (git) | Payload CMS (`apps/cms`) | when authoring Lesson 2+; CMS export must conform to `LessonConfig` | F · fast-follow |
 | DF-8 | Auth / RBAC | shadow | lightweight room-code/QR join; role from message type (trusted) | Better Auth | enforce connection-role verification when auth lands | F · fast-follow |
 | DF-9 | Tracing / prompt eval | shadow | no-op/console `TraceSink`; prompts in git | Langfuse (async sink) + promptfoo | adopt when prompt iteration heats up; never a runtime dep | F · early |
-| DF-10 | Parent end | deferred-feature | none | WeChat-optimized H5 | M5 | F · **M5** |
+| DF-10 | Parent end | **in-progress (Phase 3)** | Phase 3 delivers parent read-only H5 artifact; Phase 6 adds co-working | parent read-only artifact = Phase 3; parent co-working = Phase 6 | see scalable-architecture-v2.md §6 | K · **Phase 3/6** |
 | DF-11 | Monorepo build cache | deferred-feature | pnpm workspaces only | Turborepo | when CI/builds drag | E · later |
+
+## Scalable Architecture v2.0 deferrals (Phase 1+)
+
+New deferrals for the student-centric persistent architecture. See `docs/architecture/scalable-architecture-v2.md`.
+
+| ID | Item | Kind | What we do now | Replace / complete trigger | Notes |
+| --- | --- | --- | --- | --- | --- |
+| DF-v2-1 | Persistent student identity | deferred-feature | Students are ephemeral (room-code join) | Phase 1: parent enrollment creates permanent `studentId` before class | Enables workspace, agent, parent co-work |
+| DF-v2-2 | Student workspace | deferred-feature | Class artifacts lost after Redis expiry | Phase 2: PostgreSQL + object storage persistent workspace | Works, interactions, memories persist |
+| DF-v2-3 | AI agent long-term memory | deferred-feature | No cross-lesson memory | Phase 4: agent service with importance-scored memories | Agent co-evolves with child |
+| DF-v2-4 | Tool-calling framework | deferred-feature | No discoverable tools | Phase 5: tool registry + agent suggestions | Children call tools to create IPs |
+| DF-v2-5 | Parent co-working | deferred-feature | No parent-initiated interactions | Phase 6: parent can interact with child's agent | WeChat miniapp + OAuth |
+| DF-v2-6 | Rich media (video/3D) | deferred-feature | Images only | Phase 7: video generation, 3D models, async processing | Physical souvenirs (3D print) |
+| DF-v2-7 | Multi-city tenant isolation | deferred-feature | Single deployment | Phase 8: tenant-aware queries, distributed locks | Data residency, 20-30 students/class (premium model) |
+| DF-v2-8 | Service extraction | deferred-feature | Modular monolith | Extract services when 100+ concurrent classrooms | Workspace, agent, content services |
+| DF-v2-9 | Vector DB semantic search | deferred-feature | Importance-scored list | pgvector or Pinecone when workspace grows large (100+ memories/student) | Optional optimization |
+| DF-v2-10 | Physical souvenir ordering | deferred-feature | None | M7+: order service + fulfillment partner integration | 3D printed figurines, printed books |
+| DF-v2-11 | `pg` version convergence (pnpm catalog) | deferred-infra | `pg`/`@types/pg`/PGlite declared only in `apps/server` (sole consumer; "who uses, declares") | A second Postgres consumer appears (e.g. extracted `apps/identity-service`, CMS direct-connect) → move shared versions to a pnpm catalog | PGlite is pure WASM (no postinstall) — no build-script allowlist needed |
 
 ## M3 (frontend) entries — add when M3 starts
 
@@ -51,3 +69,4 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 ## Review log
 
 - 2026-06-03 — ledger created; seeded from M1/M2 deferrals.
+- 2026-06-08 — updated with Architecture v2.0 deferrals; DF-10 parent end now tracked as Phase 3/6.

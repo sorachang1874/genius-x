@@ -6,10 +6,23 @@ import type { Role } from "./enums";
 
 export interface SessionJoinRequest {
   roomCode: string;
-  /** Optional display name supplied at join (students), else assigned. */
+  /**
+   * Display name for assistant/unnamed-role joins. IGNORED for `role === "student"` in Phase 1:
+   * a student's display name always derives from the resolved `Student.displayName`, never the
+   * join body (so a client cannot override the enrolled identity).
+   */
   name?: string;
   /** Role to join as (defaults to "student" if not provided). */
   role?: Role;
+  /**
+   * Persistent student identity (Phase 1). REQUIRED when `role === "student"` once the
+   * persistent-join path lands (Step 5): the server looks up the enrolled `Student` and
+   * validates tenant, rather than minting an ephemeral id. Optional at the type level only
+   * because assistants/teachers never send it. No dual ephemeral/persistent path — a student
+   * join with a MISSING `studentId` is rejected `400 INVALID_INPUT`, and an UNKNOWN one
+   * `404 STUDENT_NOT_FOUND`; never silently back-filled. See docs/contracts/enrollment.md.
+   */
+  studentId?: string;
 }
 
 export interface SessionJoinResponse {
