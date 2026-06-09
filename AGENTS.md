@@ -22,6 +22,10 @@ agents — so **the docs and contracts ARE the team's shared memory**. Keep them
 - **No "Prompt / LLM / token / AI / model" wording in any child-facing UI.** It's a friend.
 - **No visible failure state for the child.** Every input gets a positive output.
 - **Latency is dressed as "thinking"** (animation + copy), never a blank wait.
+- **User-invisible fallback must stay operator-visible** — logged, counted, surfaced in
+  preflight/metrics. A fallback invisible to operators is a silent normal path.
+- **Model output is a contract** — version prompts, validate output against schema at the
+  boundary, keep records for review/rollback (see playbook `10-prompt-and-model-output-contracts.md`).
 
 ## The degradation principle (key reconciliation)
 
@@ -87,6 +91,16 @@ Define the contract in `docs/contracts/` **before** relying on the field.
 | D | AI gateway (safety, budget, routing, fallback) | `packages/ai-gateway` |
 | E | Contracts, schema, docs, **test harness** | `packages/contracts`, `docs/`, smoke harness |
 | F | Platform shadow (CMS, auth, Langfuse, promptfoo) — pluggable | `apps/cms`, `packages/auth`, `tools/` |
+
+**Phase 1+ (Scalable Architecture v2.0) additions:**
+
+| Agent | Owns | Directory |
+| --- | --- | --- |
+| G | Identity & enrollment (student/parent/tenant) | `apps/server/src/identity` (or future `apps/identity-service`) |
+| H | Student workspace (works, interactions, memories) | `apps/server/src/workspace` (or future `apps/workspace-service`) |
+| I | Agent service (context building, memory retrieval) | `apps/server/src/agent` (or future `apps/agent-service`) |
+| J | Content pipeline (media storage, processing) | `apps/server/src/content` (or future `apps/content-service`) |
+| K | Parent surfaces (H5, miniapp, co-working) | `apps/web/src/parent` |
 
 Avoid two agents editing the same contract or schema unless one lead owns the merge.
 Each handoff: changed files, what was validated, residual risk, next step.

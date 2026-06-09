@@ -29,7 +29,7 @@ function freshStudent(over: Partial<StudentRuntimeState> = {}): StudentRuntimeSt
 
 function seed(currentStageId: string, students: Record<string, StudentRuntimeState>): ClassSession {
   return {
-    sessionId: "s1", lessonId: "lesson-001", lessonConfigVersion: "1.1.0", classId: "c1",
+    sessionId: "s1", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.1.0", classId: "c1",
     currentStageId, global: "active", stageStartTime: NOW, students, assistants: ["a1"],
   };
 }

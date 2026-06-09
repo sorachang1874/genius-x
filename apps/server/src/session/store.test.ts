@@ -5,6 +5,7 @@ import { InMemorySessionStore } from "./store";
 function session(): ClassSession {
   return {
     sessionId: "s1",
+    tenantId: "demo-tenant",
     lessonId: "lesson-001",
     lessonConfigVersion: "1.1.0",
     classId: "c1",

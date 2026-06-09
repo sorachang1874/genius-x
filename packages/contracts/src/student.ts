@@ -17,6 +17,12 @@ import type {
 } from "./enums";
 import type { ClientAiOutput, OutputKind } from "./ws-events";
 
+/**
+ * @deprecated Legacy PRD aggregate (never wired into the runtime). The persistent identity
+ * model is now `Student` in identity.ts (Phase 1); per-class runtime is `StudentRuntimeState`
+ * below; persistent works/memories move to the Phase 2 workspace. Kept for reference only —
+ * do not build new code against this. Tracked for removal once Phase 2 lands.
+ */
 export interface StudentProfile {
   id: string; // UUID
   name: string;
@@ -75,7 +81,9 @@ export interface BirthCertificate {
   lessonId: string; // the LessonConfig.lessonId (e.g. "lesson-001")
 }
 
-// --- Live runtime state (Redis during class, archived to Postgres after) ---
+// --- Live runtime state (Redis during class). Ephemeral runtime fields are discarded after
+//     class; persistent outputs flow back to the Student profile via StudentProgressUpdate
+//     (see enrollment.ts). Full per-session archival to Postgres is a later phase. ---
 
 // --- Pre-generated outputs (contracts-v1.4) — e.g. the birth 专属台词, generated before the
 //     child is on stage so the tap→play moment is instant. Server-minted, server-filled. ---
@@ -104,7 +112,9 @@ export interface StudentRuntimeState {
   pending: Record<string, { stageId: StageId }>;
   /** Config-declared outputs (e.g. "avatarUrl"). Keys must be in lesson.declaredOutputs. */
   outputs: Record<OutputKey, RuntimeValue>;
-  /** Display name from /session/join (for the 伙伴出生证). Optional — assigned if absent. */
+  /** Display name shown on the 伙伴出生证. Phase 1: for a student join this is pre-filled from
+   *  the resolved `Student.displayName` (the join-body `name` is IGNORED for students); the
+   *  `name` field remains only for assistant/unnamed-role display. Optional — assigned if absent. */
   displayName?: string;
   /** Invisibly collected in talent (contracts-v1.4). Keys ∈ lesson.declaredMemoryKeys. */
   memories: Record<MemoryKey, string>;
@@ -116,6 +126,12 @@ export interface StudentRuntimeState {
 
 export interface ClassSession {
   sessionId: string;
+  /**
+   * Tenant that owns this classroom — the isolation boundary (Phase 1). Immutable; set at
+   * session creation. A student may join only if `student.tenantId === session.tenantId`,
+   * else `403 TENANT_MISMATCH`. See docs/contracts/identity.md + enrollment.md.
+   */
+  tenantId: string;
   lessonId: string;
   lessonConfigVersion: string; // resume only against a matching version (fail closed)
   classId: string;

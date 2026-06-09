@@ -12,3 +12,6 @@ export * from "./engine";
 export * from "./ai-response";
 export * from "./student";
 export * from "./errors";
+// Phase 1 — persistent identity & enrollment (docs/contracts/identity.md, enrollment.md).
+export * from "./identity";
+export * from "./enrollment";

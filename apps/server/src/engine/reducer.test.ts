@@ -25,6 +25,7 @@ function session(currentStageId: string, studentIds: string[]): ClassSession {
   for (const id of studentIds) students[id] = student();
   return {
     sessionId: "s1",
+    tenantId: "demo-tenant",
     lessonId: "lesson-001",
     lessonConfigVersion: "1.0.0",
     classId: "c1",
