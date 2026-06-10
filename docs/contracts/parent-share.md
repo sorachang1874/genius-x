@@ -1,6 +1,6 @@
 # Parent Share Contract (Phase 3)
 
-**Status**: Frozen v1.1 (v1 + security-review amendments, lead-serialized — see Changelog)
+**Status**: Frozen v1.2 (v1.1 + the Phase-4 episodic-memory DENY line — see Changelog)
 **Owner**: Parent surfaces (Agent K) · share service in `apps/server/src/share`
 **Phase**: Phase 3 — Parent read-only artifact
 **Typed realization**: `packages/contracts/src/parent-share.ts`
@@ -93,6 +93,9 @@ carry**:
 - ❌ `aiParams` / `degraded` / `sessionId` / `stageId` (operator metadata)
 - ❌ `studentId` / `tenantId` / `parentId` / work `id`s (internal identifiers)
 - ❌ raw memory rows (memories appear only as the certificate's curated `{label, value}`)
+- ❌ **episodic memories (`key="episode"`), raw OR curated** — not parent-served pending a
+  founder decision on scene-content visibility; see `agent-context.md` §Episodic memory.
+  (A "curated summary" is still a child's private scene content until decided otherwise.)
 - ❌ any "AI/Prompt/LLM/token/model" wording in H5 copy (friend, not model — all surfaces)
 
 A serialization test asserts the response JSON contains none of the denied keys.
@@ -191,6 +194,10 @@ preflight below binding the content pipeline.
 
 ## Changelog
 
+- **v1.2** (2026-06-09, lead-serialized with the Phase-4 contract freeze): episodic
+  memories (`key="episode"`) added to the DENY list — raw or curated, not parent-served
+  pending the founder's scene-content-visibility decision (agent-context.md). The DENY-list
+  serialization test gains an `episode` assertion when Phase 6 parent reads expand.
 - **v1.1** (2026-06-09, lead-serialized after the Phase-3 adversarial security review):
   Deployment exposure rule (BINDING) added; notification seam allows async sinks with
   rejection-swallowing + carries `studentId`/`hasArtifacts`; certificate derivation

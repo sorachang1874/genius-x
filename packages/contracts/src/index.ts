@@ -20,3 +20,8 @@ export * from "./workspace";
 export * from "./workspace-api";
 // Phase 3 — parent read-only share artifact (docs/contracts/parent-share.md).
 export * from "./parent-share";
+// Phase 4 — agent context (docs/contracts/agent-context.md) + brand style (brand-style.md).
+export * from "./agent-context";
+export * from "./brand-style";
+// Phase 4.5 — IP character entity (docs/contracts/ip-character.md).
+export * from "./ip-character";

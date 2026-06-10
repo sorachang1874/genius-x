@@ -17,7 +17,7 @@ function fresh(): StudentRuntimeState {
 }
 function seed(): ClassSession {
   return {
-    sessionId: "demo", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.2.0", classId: "demo",
+    sessionId: "demo", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.3.0", classId: "demo",
     currentStageId: "intro", global: "standby", stageStartTime: NOW,
     students: { k1: fresh() }, assistants: ["a1"],
   };

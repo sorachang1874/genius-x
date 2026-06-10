@@ -104,8 +104,17 @@ export interface StructuredQaInteraction {
   type: "structured_qa";
   promptTemplate: string;
   questions: StructuredQuestion[];
+  /** SCENE-content template with {questionId} tokens (brand-style.md: never brand language). */
   promptAssembly?: string;
 }
+
+/**
+ * THE one promptAssembly token syntax — shared by the validator (fail-closed token check)
+ * and the runtime assembler so the two can never drift (brand-style.md). Question ids used
+ * in a template must match the inner pattern (ASCII word chars). NOTE: /g regex — use only
+ * with matchAll/replace (stateless); never .test()/.exec() (lastIndex footgun).
+ */
+export const PROMPT_ASSEMBLY_TOKEN_RE = /\{([A-Za-z0-9_]+)\}/g;
 
 export interface StructuredQuestion {
   id: string;

@@ -9,6 +9,7 @@ export { KeywordSafetyFilter } from "./safety";
 export type { SafetyFilter } from "./safety";
 export { PresetFallbackLibrary } from "./fallback";
 export type { FallbackLibrary } from "./fallback";
+export { BRAND_STYLE_V0 } from "./brand-style";
 export { FakeProvider } from "./providers/fake";
 export type { FakeContent } from "./providers/fake";
 export type {

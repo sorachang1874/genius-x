@@ -58,3 +58,63 @@ describe("validateLessonConfig", () => {
     expect(validateLessonConfig(bad).ok).toBe(false);
   });
 });
+
+describe("promptAssembly token validation (brand-style.md preflight)", () => {
+  it("rejects a promptAssembly token that references an unknown question id (fails closed)", () => {
+    const bad = clone(lesson001);
+    const dialogue = bad.stages[2]!.variants!.find((v) => v.id === "dialogue")!;
+    if (dialogue.interaction.type === "structured_qa") {
+      dialogue.interaction.promptAssembly = "一只 {ears} 角色，{nope}背景";
+    }
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes('unknown question id "nope"'))).toBe(true);
+  });
+
+  it("accepts templates whose tokens all reference declared question ids (lesson-001)", () => {
+    expect(validateLessonConfig(lesson001).ok).toBe(true);
+  });
+});
+
+describe("review-mandated preflights (P4 Step 1c)", () => {
+  it("rejects a lesson declaring the RESERVED 'episode' memory key (agent-context.md)", () => {
+    const bad = clone(lesson001);
+    bad.declaredMemoryKeys.push("episode");
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes('reserved key "episode"'))).toBe(true);
+  });
+
+  it("rejects a non-tokenizable question id when a promptAssembly exists (CJK id would silently un-template)", () => {
+    const bad = clone(lesson001);
+    const dialogue = bad.stages[2]!.variants!.find((v) => v.id === "dialogue")!;
+    if (dialogue.interaction.type === "structured_qa") {
+      dialogue.interaction.questions[0]!.id = "耳朵";
+    }
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("not tokenizable"))).toBe(true);
+  });
+
+  it("rejects malformed token text (residual braces ship as literal text to the provider)", () => {
+    const bad = clone(lesson001);
+    const dialogue = bad.stages[2]!.variants!.find((v) => v.id === "dialogue")!;
+    if (dialogue.interaction.type === "structured_qa") {
+      dialogue.interaction.promptAssembly = "一只 { ears } 角色，{accessory}";
+    }
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("malformed token text"))).toBe(true);
+  });
+
+  it("rejects brand-style vocabulary in promptAssembly (scene content only — brand-style.md)", () => {
+    const bad = clone(lesson001);
+    const dialogue = bad.stages[2]!.variants!.find((v) => v.id === "dialogue")!;
+    if (dialogue.interaction.type === "structured_qa") {
+      dialogue.interaction.promptAssembly = "一只 {ears} 角色，水彩画风";
+    }
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("brand-style language"))).toBe(true);
+  });
+});

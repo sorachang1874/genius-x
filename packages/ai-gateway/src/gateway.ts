@@ -6,6 +6,7 @@
  * stays here + in traces (not shipped to the child). See D-M2 design / data-and-privacy.
  */
 import type {
+  BrandStyleContract,
   LlmTextResult,
   TtsResult,
   AsrResult,
@@ -43,6 +44,13 @@ export interface GatewayDeps {
   timeouts?: { llm?: number; tts?: number; asr?: number; image?: number };
   /** Image moderation seam (天御 IMS in M6). If omitted, M2a traces that it is deferred. */
   imageModerator?: (imageUrls: string[]) => Promise<{ ok: boolean; reasons: string[] }>;
+  /**
+   * Brand style contract (docs/contracts/brand-style.md): applied INSIDE the gateway to
+   * EVERY image generation — lessons/tools carry scene content only, no caller can bypass.
+   * If omitted, every image call traces `brand_style_absent` (a deployment state, never a
+   * silent normal path — the moderation_deferred_m6 pattern).
+   */
+  brandStyle?: BrandStyleContract;
 }
 
 const DEFAULT_TIMEOUTS = { llm: 8000, tts: 2000, asr: 8000, image: 15000 };
@@ -90,11 +98,35 @@ export class AiGateway {
   }
 
   async imageGen(req: ImageGenRequest): Promise<ImageGenResult> {
+    const styleVersion = this.d.brandStyle?.styleVersion;
+    // PRE-SUBMIT input review (brand-style.md "Pre-submit input review" / agent-context.md
+    // safety parity): a text2img source is PROSE that may embed client-derived content —
+    // review it like llm input. img2img sources are refs, not prose (no review point; the
+    // post-generation imageModerator covers the output side).
+    if (req.kind === "text2img") {
+      const input = this.d.safety.reviewInput(req.source);
+      if (!input.ok) {
+        this.emit("safety", { capability: "image_gen", reasons: input.reasons });
+        this.emit("fallback", { capability: "image_gen", reason: "input_filtered", ...(styleVersion && { styleVersion }) });
+        return this.d.fallback.imageGen(req.count);
+      }
+    }
+    // Brand style (brand-style.md): the ONE injection point no image call can bypass.
+    // text2img gets the versioned suffix appended (AFTER review — the suffix is ours, the
+    // review targets the caller's content); img2img is version-stamped in traces only
+    // (prompt-level styling lands with the real style kit, DF-v2-18). Absence is LOUD.
+    const styled: ImageGenRequest =
+      this.d.brandStyle && req.kind === "text2img"
+        ? { ...req, source: req.source === "" ? this.d.brandStyle.promptSuffix : `${req.source}，${this.d.brandStyle.promptSuffix}` }
+        : req;
+    if (!this.d.brandStyle) {
+      this.emit("interaction", { capability: "image_gen", note: "brand_style_absent" });
+    }
     // ONE end-to-end deadline for the whole capability (submit + poll + moderate) ≤ budget.
     const deadline = Date.now() + this.timeout("image");
     const remaining = (): number => Math.max(0, deadline - Date.now());
     try {
-      const job = await withTimeout(this.d.provider.imageSubmit(req), remaining());
+      const job = await withTimeout(this.d.provider.imageSubmit(styled), remaining());
       const r = await this.pollImage(job, deadline);
       assertImage(r);
       // Moderate before returning (天御 IMS). M2a: seam present; real moderator injected in M6.
@@ -102,15 +134,18 @@ export class AiGateway {
         const mod = await withTimeout(this.d.imageModerator(r.imageUrls), remaining());
         if (!mod.ok) {
           this.emit("safety", { capability: "image_gen", reasons: mod.reasons });
+          this.emit("fallback", { capability: "image_gen", reason: "image_moderation_failed", ...(styleVersion && { styleVersion }) });
           return this.d.fallback.imageGen(req.count);
         }
       } else {
         this.emit("interaction", { capability: "image_gen", note: "moderation_deferred_m6" });
       }
-      this.emit("ai_response", { capability: "image_gen" });
+      this.emit("ai_response", { capability: "image_gen", ...(styleVersion && { styleVersion }) });
       return r;
     } catch (e) {
-      this.emit("fallback", { capability: "image_gen", reason: reason(e) });
+      // Degraded generations are still brand-attributed (preset fallbacks carry the brand
+      // version they were served under — conformance audits need this).
+      this.emit("fallback", { capability: "image_gen", reason: reason(e), ...(styleVersion && { styleVersion }) });
       return this.d.fallback.imageGen(req.count);
     }
   }
