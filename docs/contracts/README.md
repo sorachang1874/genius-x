@@ -31,11 +31,11 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | --- | --- | --- | --- |
 | [`identity.md`](identity.md) | Student/parent persistent identity, tenant model, guardian consent | **frozen v1** | Phase 1 |
 | [`enrollment.md`](enrollment.md) | Enrollment API surface, error codes, classroom-join migration | **frozen v1** | Phase 1 |
-| [`workspace.md`](workspace.md) | Student workspace: works, interactions, memories | draft | Phase 2 |
-| [`agent.md`](agent.md) | Per-student AI agent: context building, memory retrieval | draft | Phase 4 |
-| [`tool.md`](tool.md) | Tool registry and tool-calling framework | draft | Phase 5 |
-| [`parent-share.md`](parent-share.md) | Parent read-only artifact + co-working | draft | Phase 3/6 |
-| [`content.md`](content.md) | Media storage, processing, and CDN delivery | draft | Phase 7 |
+| `workspace.md` | Student workspace: works, interactions, memories | planned — not yet authored | Phase 2 |
+| `agent.md` | Per-student AI agent: context building, memory retrieval | planned — not yet authored | Phase 4 |
+| `tool.md` | Tool registry and tool-calling framework | planned — not yet authored | Phase 5 |
+| `parent-share.md` | Parent read-only artifact + co-working | planned — not yet authored | Phase 3/6 |
+| `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 |
 
 **Contract freeze protocol**: Phase N contracts are authored and frozen by the lead
 before Phase N implementation begins. Workers import contracts read-only.

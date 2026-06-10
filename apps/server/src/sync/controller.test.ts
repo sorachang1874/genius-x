@@ -159,3 +159,140 @@ describe("ClassroomController — concurrency (no lost update)", () => {
     expect(s!.students.k2!.outputs.avatarUrl).toBe("u2");
   });
 });
+
+// --- Phase 1 Step 6: lesson-end profile write-back (final-review mandates) ---
+
+import type { IdentityService } from "../identity/service";
+
+class FakeIdentity {
+  calls: { studentId: string; lessonId: string; geniusX: { avatarUrl?: string; birthdaySpeech?: string } }[] = [];
+  async recordLessonCompletion(
+    studentId: string,
+    lessonId: string,
+    geniusX: { avatarUrl?: string; birthdaySpeech?: string } = {},
+  ): Promise<never> {
+    this.calls.push({ studentId, lessonId, geniusX });
+    return undefined as never;
+  }
+}
+
+function untilTrue(check: () => boolean, timeoutMs = 2000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tick = (): void => {
+      if (check()) return resolve();
+      if (Date.now() - start > timeoutMs) return reject(new Error("untilTrue timeout"));
+      setTimeout(tick, 5);
+    };
+    tick();
+  });
+}
+
+describe("lesson-end profile write-back", () => {
+  function birthDone(over: Partial<StudentRuntimeState> = {}): StudentRuntimeState {
+    return freshStudent({ stageStatus: { birth: "completed" }, ...over });
+  }
+  function withIdentity(identity: FakeIdentity): ClassroomController {
+    return new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      identity as unknown as IdentityService,
+    );
+  }
+
+  it("extracts avatar + birth speech (per speech-stage prepared entry) and traces ok", async () => {
+    const identity = new FakeIdentity();
+    const c = withIdentity(identity);
+    await store.save(seed("birth", {
+      k1: birthDone({
+        outputs: { avatarUrl: "u9" },
+        prepared: { p1: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "生日快乐呀" }, degraded: false, preparedAt: NOW } },
+      }),
+    }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => identity.calls.length === 1);
+    expect(identity.calls[0]).toEqual({
+      studentId: "k1", lessonId: "lesson-001",
+      geniusX: { avatarUrl: "u9", birthdaySpeech: "生日快乐呀" },
+    });
+    const ok = trace.events.find((e) => e.payload.reason === "profile_writeback_ok");
+    expect(ok?.payload.degraded).toBeUndefined();
+    expect(ok?.payload.birthdaySpeechMissing).toBeUndefined();
+  });
+
+  it("persists a DEGRADED speech but flags it in the trace (never a silent normal path)", async () => {
+    const identity = new FakeIdentity();
+    const c = withIdentity(identity);
+    await store.save(seed("birth", {
+      k1: birthDone({
+        prepared: { p1: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "预设台词" }, degraded: true, preparedAt: NOW } },
+      }),
+    }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => identity.calls.length === 1);
+    expect(identity.calls[0]!.geniusX.birthdaySpeech).toBe("预设台词");
+    const ok = trace.events.find((e) => e.payload.reason === "profile_writeback_ok");
+    expect(ok?.payload.degraded).toBe(true); // operator-visible at the durable boundary
+  });
+
+  it("prefers a non-degraded speech when both exist; flags MISSING speech/avatar otherwise", async () => {
+    const identity = new FakeIdentity();
+    const c = withIdentity(identity);
+    await store.save(seed("birth", {
+      k1: birthDone({
+        prepared: {
+          pBad: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "备用" }, degraded: true, preparedAt: NOW },
+          pGood: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "真台词" }, degraded: false, preparedAt: NOW },
+        },
+      }),
+      k2: birthDone(), // nothing produced at all
+    }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => identity.calls.length === 2);
+    const k1 = identity.calls.find((x) => x.studentId === "k1")!;
+    expect(k1.geniusX.birthdaySpeech).toBe("真台词");
+    const missing = trace.events.find((e) => e.payload.reason === "profile_writeback_ok" && e.payload.studentId === "k2");
+    expect(missing?.payload.birthdaySpeechMissing).toBe(true);
+    expect(missing?.payload.avatarUrlMissing).toBe(true);
+  });
+
+  it("fires exactly once: a repeat unlock at closure does NOT re-write", async () => {
+    const identity = new FakeIdentity();
+    const c = withIdentity(identity);
+    await store.save(seed("birth", { k1: birthDone() }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => identity.calls.length === 1);
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" }); // already there
+    await new Promise((r) => setTimeout(r, 30));
+    expect(identity.calls).toHaveLength(1);
+  });
+
+  it("identity absent → operator-visible skip trace, classroom unaffected", async () => {
+    await store.save(seed("birth", { k1: birthDone() })); // default `controller` has no identity
+    await controller.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "profile_writeback_skipped_identity_not_wired"));
+    expect((await store.load("s1"))!.currentStageId).toBe("closure"); // class advanced fine
+  });
+
+  it("RACE: a prepare resolving AFTER closure fires a supplemental write with the speech", async () => {
+    const identity = new FakeIdentity();
+    const slowGateway = new AiGateway({
+      provider: new FakeProvider({ llm: { latencyMs: 120 } }),
+      safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, slowGateway,
+      identity as unknown as IdentityService,
+    );
+    // Entering birth mints the prepared placeholder + CALL_PREPARE (slow). Complete birth and
+    // unlock closure BEFORE the prepare resolves — the lesson-end snapshot misses the speech.
+    await store.save(seed("talent", { k1: freshStudent({ stageStatus: { talent: "completed" }, interactionCounts: { talent: 2 } }) }));
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" });
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "done" } });
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => identity.calls.length >= 2, 3000); // lesson_end + late_prepare
+    const late = identity.calls[identity.calls.length - 1]!;
+    expect(typeof late.geniusX.birthdaySpeech).toBe("string");
+    expect(late.geniusX.birthdaySpeech!.length).toBeGreaterThan(0); // the late speech LANDS
+    expect(trace.events.some((e) => e.payload.reason === "profile_writeback_ok" && e.payload.mode === "late_prepare")).toBe(true);
+  });
+});

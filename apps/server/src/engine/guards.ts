@@ -21,7 +21,6 @@ export function evalStudentPredicate(
     case "minInteractions":
       return (s.interactionCounts[stageId] ?? 0) >= p.count;
     case "outputSet":
-      console.log(`[DEBUG] evalStudentPredicate outputSet: checking ${p.output}, value=${s.outputs[p.output]}, exists=${s.outputs[p.output] !== undefined}`);
       return s.outputs[p.output] !== undefined;
     case "variantSelected":
       return s.selectedVariant[stageId] !== undefined;
@@ -38,7 +37,6 @@ export function evalAdvanceCondition(
   stageId: StageId,
 ): boolean {
   const students = Object.values(session.students);
-  console.log(`[DEBUG] evalAdvanceCondition: type=${c.type}, studentCount=${students.length}, studentIds=[${Object.keys(session.students).join(',')}]`);
   switch (c.type) {
     case "immediate":
       return true;

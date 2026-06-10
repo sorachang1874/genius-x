@@ -62,7 +62,7 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
   // Same origin policy as HTTP (note: CORS cannot gate non-browser WS clients — the real
   // guard is the controller's deny-unknown-student resume, Phase 1 Step 5).
   const io = new Server(app.server, { cors: { origin: opts.corsOrigin ?? "*" } });
-  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway);
+  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity);
   attachSocket(io, controller);
 
   const host = opts.host ?? "0.0.0.0";

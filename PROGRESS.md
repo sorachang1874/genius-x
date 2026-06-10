@@ -2,11 +2,11 @@
 
 ## Last updated
 
-2026-06-09 (Phase 1 Steps 1-5 complete: identity stack + persistent classroom join)
+2026-06-09 (PHASE 1 COMPLETE: persistent identity & enrollment, all 7 steps)
 
 ## Current state
 
-**M4d complete, Architecture v2.0 designed ✅, Phase 1 in progress (Steps 1-5 of 7 done)**
+**M4d complete, Architecture v2.0 designed ✅, Phase 1 COMPLETE ✅ (persistent identity & enrollment)**
 
 Complete 6-stage classroom flow (intro → icebreak → shape → talent → birth → closure) validated.
 Multi-role real-time collaboration (student/assistant/teacher) verified. Technical architecture
@@ -34,9 +34,9 @@ tool-calling framework, rich media, and multi-city deployment.
 
 ### Test coverage
 
-✅ **Unit tests** (221 total):
+✅ **Unit tests** (231 total):
 - ai-gateway: 19/19
-- server: 145/145 (incl. 22 PGlite migration/runner tests + 74 identity tests + persistent-join suite —
+- server: 155/155 (incl. 22 PGlite migration/runner tests + identity suite + persistent-join suite + the Phase-1 e2e (`identity-classroom.e2e.test.ts`) —
   the contract preflights, identity semantics, and HTTP error discipline as a permanent CI gate)
 - web: 57/57
 
@@ -88,7 +88,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | Phase | Focus | Duration | Status |
 | --- | --- | --- | --- |
 | **Phase 0** | Architecture design | 1 week | ✅ Complete |
-| **Phase 1** | Persistent identity & enrollment | 2-3 weeks | 🔄 In progress (Steps 1-5/7 ✅) |
+| **Phase 1** | Persistent identity & enrollment | 2-3 weeks | ✅ Complete (2026-06-09) |
 | **Phase 2** | Student workspace foundation | 3-4 weeks | 📋 Planned |
 | **Phase 3** | Parent read-only artifact | 2 weeks | 📋 Planned |
 | **Phase 4** | Agent service with memory | 4-5 weeks | 📋 Planned |
@@ -139,11 +139,8 @@ Key MVP changes:
 Phase 1+ contracts:
 - `identity.md`: Student/parent persistent identity, tenant model — **frozen v1**
 - `enrollment.md`: Enrollment API surface, error codes, join migration — **frozen v1**
-- `workspace.md`: Works, interactions, memories (draft)
-- `agent.md`: Context building, memory retrieval, tool suggestions
-- `tool.md`: Tool registry and tool-calling framework
-- `parent-share.md`: Parent read-only artifact + co-working
-- `content.md`: Media storage, processing, CDN delivery
+- `workspace.md` / `agent.md` / `tool.md` / `parent-share.md` / `content.md`: planned —
+  not yet authored (frozen by the lead before their phases begin)
 
 ---
 
@@ -183,7 +180,7 @@ See `docs/migration-wsl2-to-mac.md`:
 ### Technical docs
 - ✅ `AGENTS.md` — AI agent collaboration rules (updated with Phase 1+ ownership map)
 - ✅ `docs/contracts/README.md` — Contract registry (updated with Phase 1+ contracts)
-- ✅ `docs/contracts/` — Boundary contracts (complete)
+- ✅ `docs/contracts/` — Boundary contracts (MVP + Phase 1 frozen; Phase 2+ planned)
 - ✅ `docs/demo-live-guide.md` — Demo guide
 - ✅ `docs/agents/README.md` — Multi-agent protocol
 - ✅ `docs/DEFERRED.md` — Shadow systems and deferrals ledger
@@ -236,8 +233,14 @@ See `docs/migration-wsl2-to-mac.md`:
    child-facing rejection (pinned by JoinScreen tests + banned-wording scan). Demo scripts
    + demo-start.sh migrated to seeded students. Adversarial review: 1 blocker (WS phantom
    mint) + 4 majors + 5 minors + 2 nits all fixed. Real-PG16 join smoke green.
-6. 📋 Step 6: End-to-end validation (enroll → join → class → profile persists)
-7. 📋 Step 7: Documentation & cleanup (DEFERRED.md DF-v2-1, migration guide)
+6. ✅ **Step 6: End-to-end validated** (2026-06-09) — classroom→profile WRITE-BACK at lesson
+   end (`recordLessonCompletion`: atomic + idempotent; fire-and-forget, never blocks the
+   classroom, failures = operator traces only). `identity-classroom.e2e.test.ts`: enroll →
+   join → full lesson over real HTTP+WS → profile persists (completedLessonIds + avatar) +
+   write-back failure isolation. Admin tool `tools/enroll-student.mjs` (prints enrollment
+   links; sibling enrollment reuses the parent). Real-PG smokes green.
+7. ✅ **Step 7: Docs & cleanup** (2026-06-09) — `docs/migration/mvp-to-phase1.md` (operator
+   runbook + failure modes), DF-v2-1 resolved, debug logs swept (guards.ts), full suite green.
 
 ---
 
@@ -258,5 +261,5 @@ All shadow systems remain pluggable and will not block classroom runtime per AGE
 
 ---
 
-_Last milestone: Phase 1 Steps 1-5 — persistent identity live end-to-end (enroll → join → classroom)_
-_Next milestone: Phase 1 Step 6 — end-to-end validation + Step 7 docs_
+_Last milestone: PHASE 1 COMPLETE — persistent identity & enrollment (contracts → schema → service → HTTP → join → write-back)_
+_Next milestone: Phase 2 — student workspace foundation (works/interactions/memories persist)_

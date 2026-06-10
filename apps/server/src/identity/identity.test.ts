@@ -310,6 +310,41 @@ describe("applyProgressUpdate (server-internal — the Classroom Service path)",
   });
 });
 
+describe("recordLessonCompletion (server-internal lesson-end write-back)", () => {
+  it("appends the lesson + companion fields atomically; re-runs are idempotent", async () => {
+    const parentId = await ctx.makeParent(tenantA);
+    const s = await ctx.service.enrollStudent({ parentId, displayName: "结课", age: 7, consent: CONSENT_V1 });
+
+    const first = await ctx.service.recordLessonCompletion(s.id, "lesson-001", {
+      avatarUrl: "cos://a.png",
+      birthdaySpeech: "你好呀！",
+    });
+    expect(first.progress.completedLessonIds).toEqual(["lesson-001"]);
+    expect(first.geniusX).toMatchObject({ avatarUrl: "cos://a.png", birthdaySpeech: "你好呀！" });
+
+    const again = await ctx.service.recordLessonCompletion(s.id, "lesson-001", {});
+    expect(again.progress.completedLessonIds).toEqual(["lesson-001"]); // no duplicate
+    expect(again.geniusX.avatarUrl).toBe("cos://a.png"); // COALESCE keeps existing on empty re-run
+    expect(again.geniusX.birthdaySpeech).toBe("你好呀！");
+
+    const second = await ctx.service.recordLessonCompletion(s.id, "lesson-002", {});
+    expect(second.progress.completedLessonIds).toEqual(["lesson-001", "lesson-002"]);
+  });
+
+  it("rejects: blank/oversized lessonId and oversized geniusX text → INVALID_INPUT; unknown student → STUDENT_NOT_FOUND", async () => {
+    const parentId = await ctx.makeParent(tenantA);
+    const s = await ctx.service.enrollStudent({ parentId, displayName: "结课边界", age: 7, consent: CONSENT_V1 });
+    expect(await code(ctx.service.recordLessonCompletion(s.id, "   ", {}))).toBe("INVALID_INPUT");
+    expect(await code(ctx.service.recordLessonCompletion(s.id, "L".repeat(201), {}))).toBe("INVALID_INPUT");
+    expect(
+      await code(ctx.service.recordLessonCompletion(s.id, "lesson-001", { birthdaySpeech: "长".repeat(5000) })),
+    ).toBe("INVALID_INPUT");
+    expect(
+      await code(ctx.service.recordLessonCompletion("99999999-9999-4999-8999-999999999980", "lesson-001", {})),
+    ).toBe("STUDENT_NOT_FOUND");
+  });
+});
+
 describe("listTenantStudents (tenant isolation + cursor pagination)", () => {
   it("returns ONLY the tenant's own students (isolation), pages with a stable cursor", async () => {
     // Fresh tenants so counts are exact.

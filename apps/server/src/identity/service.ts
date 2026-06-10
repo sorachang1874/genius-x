@@ -494,6 +494,44 @@ export class IdentityService {
   }
 
   /**
+   * SERVER-INTERNAL (Classroom Service at lesson end) — ONE atomic, IDEMPOTENT statement:
+   * appends the lesson to completedLessonIds (skipped if already present) and fills the
+   * Lesson-1 companion fields that the runtime produced (COALESCE keeps later non-null
+   * values authoritative — re-running a write-back never erases). Never exposed over HTTP.
+   */
+  async recordLessonCompletion(
+    studentId: string,
+    lessonId: string,
+    geniusX: { avatarUrl?: string; birthdaySpeech?: string } = {},
+  ): Promise<Student> {
+    requireUuid(studentId, "studentId");
+    const lesson = lessonId.trim();
+    if (lesson === "" || lesson.length > 200) {
+      throw new IdentityServiceError("INVALID_INPUT", "lessonId must be a non-empty string (<=200 chars)");
+    }
+    for (const [field, value] of Object.entries(geniusX)) {
+      if (value !== undefined && value.length > GENIUS_X_TEXT_MAX) {
+        throw new IdentityServiceError("INVALID_INPUT", `geniusX.${field} exceeds ${GENIUS_X_TEXT_MAX} characters`);
+      }
+    }
+
+    const result = await this.db.query(
+      `UPDATE students SET
+         completed_lesson_ids = CASE WHEN $2 = ANY(completed_lesson_ids)
+                                     THEN completed_lesson_ids
+                                     ELSE array_append(completed_lesson_ids, $2) END,
+         genius_x_avatar_url      = COALESCE($3, genius_x_avatar_url),
+         genius_x_birthday_speech = COALESCE($4, genius_x_birthday_speech),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING ${STUDENT_COLUMNS}`,
+      [studentId, lesson, geniusX.avatarUrl ?? null, geniusX.birthdaySpeech ?? null],
+    );
+    if (result.rows.length === 0) throw new IdentityServiceError("STUDENT_NOT_FOUND");
+    return toStudent(result.rows[0] as StudentRow);
+  }
+
+  /**
    * Admin-only listing (operator convention in Phase 1; auth is Phase 3). Cursor-keyset
    * pagination ordered by id — `nextCursor` absent on the last page.
    *

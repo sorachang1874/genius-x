@@ -22,6 +22,7 @@ import type { Reducer } from "../engine";
 import { stageById } from "../engine/nextStage";
 import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
+import { IdentityServiceError, type IdentityService } from "../identity/service";
 
 export interface Emitter {
   toSession(sessionId: string, msg: ServerMessage): void;
@@ -72,6 +73,8 @@ interface Effects {
   traces: TraceEvent[];
   calls: Extract<EngineCommand, { type: "CALL_INTERACTION" }>[];
   prepares: Extract<EngineCommand, { type: "CALL_PREPARE" }>[];
+  /** Set when this event transitioned the class INTO the final stage (lesson complete). */
+  completed?: { lessonId: string; students: Record<string, StudentRuntimeState> };
 }
 
 /** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
@@ -87,6 +90,12 @@ export class ClassroomController {
     private readonly trace: TraceSink,
     private readonly clock: Clock,
     private readonly gateway: AiGateway,
+    /**
+     * Phase 1 (Step 6): persistent profile write-back at lesson end. OPTIONAL — identity
+     * down or absent NEVER touches the running classroom (write-back is fire-and-forget;
+     * skips/failures are operator-visible traces only).
+     */
+    private readonly identity?: IdentityService,
   ) {}
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
@@ -111,7 +120,8 @@ export class ClassroomController {
     const effects = await this.store.update<Effects>(sessionId, async (session) => {
       const guard = this.guardSession(session, sessionId);
       if (guard) return { out: { broadcasts: [], traces: [guard], calls: [], prepares: [] } };
-      const result = this.reducer(session as ClassSession, event, this.clock.now());
+      const before = session as ClassSession;
+      const result = this.reducer(before, event, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");
       const broadcasts: ServerMessage[] = [];
       const traces: TraceEvent[] = [];
@@ -123,7 +133,15 @@ export class ClassroomController {
         else if (c.type === "CALL_INTERACTION") calls.push(c);
         else if (c.type === "CALL_PREPARE") prepares.push(c);
       }
-      return { next: persist ? result.state : undefined, out: { broadcasts, traces, calls, prepares } };
+      // Lesson complete = the class transitioned INTO the final stage (incl. via
+      // FORCE_ADVANCE — an operator decision still ends the lesson). Captured inside the
+      // mutex for a consistent snapshot; written back OUTSIDE it (fire-and-forget).
+      const finalStageId = this.lesson.stages[this.lesson.stages.length - 1]!.stageId;
+      const completed =
+        persist && before.currentStageId !== finalStageId && result.state.currentStageId === finalStageId
+          ? { lessonId: before.lessonId, students: result.state.students }
+          : undefined;
+      return { next: persist ? result.state : undefined, out: { broadcasts, traces, calls, prepares, ...(completed && { completed }) } };
     });
     for (const t of effects.traces) this.trace.record(t);
     for (const m of effects.broadcasts) this.emit.toSession(sessionId, m);
@@ -137,6 +155,97 @@ export class ClassroomController {
       void this.runPrepare(sessionId, prep).catch((err: unknown) =>
         this.trace.record(this.mkTrace("interaction", { reason: "run_prepare_failed", error: String(err), sessionId, preparedId: prep.preparedId })),
       );
+    // Phase 1 (Step 6): persistent profile write-back at lesson end — fire-and-forget,
+    // NEVER blocks the classroom; every skip/failure is an operator-visible trace.
+    if (effects.completed) {
+      void this.writeBackProfiles(sessionId, effects.completed).catch((err: unknown) =>
+        this.trace.record(this.mkTrace("stage_transition", { reason: "profile_writeback_crashed", error: String((err as Error)?.name ?? err), sessionId })),
+      );
+    }
+  }
+
+  /**
+   * Write each student's lesson completion + companion fields to the persistent profile.
+   *
+   * LEAD-SERIALIZED DIVERGENCE from the identity.md lifecycle: the contract sketches
+   * stage-level geniusX writes ("After stage completion ..."); Phase 1 writes them at
+   * LESSON end only (classroom isolation: one DB touchpoint, fire-and-forget). A class
+   * aborted before the final stage loses companion fields — documented in
+   * docs/migration/mvp-to-phase1.md; per-stage writes arrive with the Phase 2 workspace
+   * (DF-v2-14). Completion semantics are ATTENDANCE-based: every student present in the
+   * session at the final-stage transition gets the lesson recorded (see the runbook).
+   *
+   * Per-student isolation: one failure never stops the others; errors are traced with
+   * code/name only (NO raw messages — PII discipline). Degraded or missing companion
+   * content is FLAGGED in the trace — never a silent normal path (AGENTS.md).
+   */
+  private async writeBackProfiles(
+    sessionId: string,
+    completed: { lessonId: string; students: Record<string, StudentRuntimeState> },
+    mode: "lesson_end" | "late_prepare" = "lesson_end",
+  ): Promise<void> {
+    const { lessonId, students } = completed;
+    if (!this.identity) {
+      this.trace.record(
+        this.mkTrace("stage_transition", {
+          reason: "profile_writeback_skipped_identity_not_wired",
+          sessionId,
+          lessonId,
+          studentCount: Object.keys(students).length,
+        }),
+      );
+      return;
+    }
+    // Stages whose interaction pre-generates the birth speech (config-driven, not "birth").
+    const speechStageIds = new Set(
+      this.lesson.stages
+        .filter((st) => (st.interaction ?? st.variants?.[0]?.interaction)?.type === "birth_speech")
+        .map((st) => st.stageId),
+    );
+    // Lesson-001 coupling, traced when absent: the avatar profile field maps to this
+    // declared output key (a per-lesson output→profile map is future work, see DF-v2-14).
+    const AVATAR_OUTPUT_KEY = "avatarUrl";
+    const avatarExpected = this.lesson.declaredOutputs.includes(AVATAR_OUTPUT_KEY);
+
+    for (const [studentId, s] of Object.entries(students)) {
+      try {
+        const geniusX: { avatarUrl?: string; birthdaySpeech?: string } = {};
+        const avatar = s.outputs[AVATAR_OUTPUT_KEY];
+        if (typeof avatar === "string" && avatar !== "") geniusX.avatarUrl = avatar;
+        // Select among the speech-stage prepared entries; PREFER non-degraded content.
+        const candidates = Object.values(s.prepared).filter(
+          (p) => speechStageIds.has(p.stageId) && p.ready && typeof p.output.text === "string" && p.output.text !== "",
+        );
+        const chosen = candidates.find((p) => !p.degraded) ?? candidates[0];
+        if (chosen) geniusX.birthdaySpeech = chosen.output.text as string;
+        await this.identity.recordLessonCompletion(studentId, lessonId, geniusX);
+        this.trace.record(
+          this.mkTrace("stage_transition", {
+            reason: "profile_writeback_ok",
+            mode,
+            sessionId,
+            studentId,
+            lessonId,
+            // Operator-visible content quality (degradation principle): a preset/fallback
+            // line persisted as the speech, or expected fields absent, must be countable.
+            ...(chosen?.degraded && { degraded: true }),
+            ...(speechStageIds.size > 0 && !chosen && { birthdaySpeechMissing: true }),
+            ...(avatarExpected && geniusX.avatarUrl === undefined && { avatarUrlMissing: true }),
+          }),
+        );
+      } catch (err) {
+        this.trace.record(
+          this.mkTrace("stage_transition", {
+            reason: "profile_writeback_failed",
+            mode,
+            sessionId,
+            studentId,
+            lessonId,
+            error: err instanceof IdentityServiceError ? err.code : String((err as Error)?.name ?? err),
+          }),
+        );
+      }
+    }
   }
 
   /** Resolve a CALL_INTERACTION: call the gateway, then ATOMICALLY (only if still pending + current
@@ -236,16 +345,31 @@ export class ClassroomController {
       degraded = true;
     }
 
-    const accepted = await this.store.update<{ ok: boolean; traces: TraceEvent[] }>(sessionId, async (session) => {
+    const accepted = await this.store.update<{ ok: boolean; traces: TraceEvent[]; late?: { lessonId: string; you: StudentRuntimeState } }>(sessionId, async (session) => {
       const guard = this.guardSession(session, sessionId);
       if (guard) return { out: { ok: false, traces: [guard] } };
-      const result = this.reducer(session as ClassSession, { type: "PREPARE_DONE", studentId, stageId, preparedId, output, outputKind, degraded }, this.clock.now());
+      const s = session as ClassSession;
+      const result = this.reducer(s, { type: "PREPARE_DONE", studentId, stageId, preparedId, output, outputKind, degraded }, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");
       const traces = result.commands.filter((c): c is Extract<EngineCommand, { type: "TRACE" }> => c.type === "TRACE").map((c) => c.event);
-      return { next: persist ? result.state : undefined, out: { ok: persist, traces } };
+      // A slow prepare can resolve AFTER the class already transitioned into the final stage —
+      // the lesson-end write-back snapshot missed this speech. Flag it for a supplemental,
+      // idempotent single-student write (outside the mutex) so the speech is never lost.
+      const finalStageId = this.lesson.stages[this.lesson.stages.length - 1]!.stageId;
+      const late =
+        persist && result.state.currentStageId === finalStageId
+          ? { lessonId: s.lessonId, you: result.state.students[studentId]! }
+          : undefined;
+      return { next: persist ? result.state : undefined, out: { ok: persist, traces, ...(late && { late }) } };
     });
     for (const t of accepted.traces) this.trace.record(t);
     if (accepted.ok) this.emit.toStudent(sessionId, studentId, { type: "AI_READY", studentId, stageId, preparedId, outputKind });
+    if (accepted.late) {
+      const { lessonId, you } = accepted.late;
+      void this.writeBackProfiles(sessionId, { lessonId, students: { [studentId]: you } }, "late_prepare").catch((err: unknown) =>
+        this.trace.record(this.mkTrace("stage_transition", { reason: "profile_writeback_crashed", error: String((err as Error)?.name ?? err), sessionId })),
+      );
+    }
   }
 
   /** Replay a pre-generated output — ONLY if it's the current stage and the entry is ready. Never

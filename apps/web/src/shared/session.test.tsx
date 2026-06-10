@@ -16,6 +16,7 @@ function makeFakeSocket() {
     connect: (): void => {},
     status: (_s: ConnectionStatus): void => {},
   };
+  let connectRegistered = false;
   const socket: ClassroomSocket = {
     send: (m) => sent.push(m),
     onMessage: (h) => {
@@ -24,6 +25,7 @@ function makeFakeSocket() {
     },
     onConnect: (h) => {
       handlers.connect = h;
+      connectRegistered = true;
       return () => {};
     },
     onStatus: (h) => {
@@ -36,7 +38,13 @@ function makeFakeSocket() {
     socket,
     sent,
     emit: (m: ServerMessage) => act(() => handlers.message(m)),
-    fireConnect: () => act(() => handlers.connect()),
+    // The provider registers onConnect in an effect AFTER phase flips to live — firing
+    // before registration would hit the no-op default and silently swallow the connect
+    // (a CI-timing flake). Wait for the real handler first.
+    fireConnect: async () => {
+      await waitFor(() => expect(connectRegistered).toBe(true));
+      act(() => handlers.connect());
+    },
     fireStatus: (s: ConnectionStatus) => act(() => handlers.status(s)),
   };
 }
