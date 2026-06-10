@@ -88,7 +88,7 @@ Define the contract in `docs/contracts/` **before** relying on the field.
 | A | Assistant / control surface | `apps/web/src/assistant` |
 | B | Student classroom flow | `apps/web/src/student` |
 | C | Course runtime (state machine, WS, API) | `apps/server` |
-| D | AI gateway (safety, budget, routing, fallback) | `packages/ai-gateway` |
+| D | AI gateway (safety, budget, routing, fallback, **brand-style injection** — every image call carries the versioned style contract) | `packages/ai-gateway` |
 | E | Contracts, schema, docs, **test harness** | `packages/contracts`, `docs/`, smoke harness |
 | F | Platform shadow (CMS, auth, Langfuse, promptfoo) — pluggable | `apps/cms`, `packages/auth`, `tools/` |
 
@@ -97,10 +97,18 @@ Define the contract in `docs/contracts/` **before** relying on the field.
 | Agent | Owns | Directory |
 | --- | --- | --- |
 | G | Identity & enrollment (student/parent/tenant) | `apps/server/src/identity` (or future `apps/identity-service`) |
-| H | Student workspace (works, interactions, memories) | `apps/server/src/workspace` (or future `apps/workspace-service`) |
-| I | Agent service (context building, memory retrieval) | `apps/server/src/agent` (or future `apps/agent-service`) |
-| J | Content pipeline (media storage, processing) | `apps/server/src/content` (or future `apps/content-service`) |
+| H | Student workspace (works, interactions, memories, **IP character entity & version history**) | `apps/server/src/workspace` (or future `apps/workspace-service`) |
+| I | Agent service (context building, memory retrieval, **in-scene multi-round running context**) | `apps/server/src/agent` (or future `apps/agent-service`) |
+| J | Content pipeline (media storage, processing, **brand-style conformance checks**) | `apps/server/src/content` (or future `apps/content-service`) |
 | K | Parent surfaces (H5, miniapp, co-working) | `apps/web/src/parent` |
+
+**Anchor reframe (2026-06-09, founder-ratified)**: the development anchor is the evolving
+personal **IP character** (the child's AI friend, brand-recognizable, continuously refined);
+the birth certificate is lesson-001's ritual = the character's v1.0 snapshot. Decisions and
+design principles (AI-first schema validation over closed vocabularies; layered IP model —
+locked base canon / refinable surface / temporary skins; broad instrumentation without
+scoring; premium-over-cost) live in `docs/product/ip-character-concept-decisions.md` —
+read it before designing any Phase 4+ feature.
 
 Avoid two agents editing the same contract or schema unless one lead owns the merge.
 Each handoff: changed files, what was validated, residual risk, next step.

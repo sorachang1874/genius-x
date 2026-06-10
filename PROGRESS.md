@@ -92,13 +92,23 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 1** | Persistent identity & enrollment | 2-3 weeks | ✅ Complete (2026-06-09) |
 | **Phase 2** | Student workspace foundation | 3-4 weeks | ✅ Complete (2026-06-09) |
 | **Phase 3** | Parent read-only artifact | 2 weeks | ✅ Complete (2026-06-09) |
-| **Phase 4** | Agent service with memory | 4-5 weeks | 📋 Planned |
-| **Phase 5** | Tool registry & tool-calling | 3-4 weeks | 📋 Planned |
+| **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | 📋 Planned |
+| **Phase 4.5** | **IP character entity & versioning** (new): canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | 📋 Planned |
+| **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; **absorbs brand-style slice** (style-v0 gateway injection BEFORE first tool-produced works) | 3-4 weeks | 📋 Planned |
 | **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
-| **Phase 7** | Rich media pipeline | 4-5 weeks | 📋 Planned |
+| **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
 
-**Total estimated**: ~6-7 months for full architecture (Phases 1-8).
+**Total estimated**: ~6-7 months for full architecture (Phases 1-8; +2-3 weeks from the
+2026-06-09 IP-concept realignment — see
+[`docs/product/ip-character-concept-decisions.md`](docs/product/ip-character-concept-decisions.md)).
+
+**Anchor reframe (2026-06-09, founder-ratified)**: the development anchor is the
+**evolving personal IP character** (the child's AI friend, continuously refined across
+lessons, brand-recognizable); the birth certificate remains lesson-001's ritual =
+the IP character's v1.0 snapshot. All decisions + design principles (AI-first schema
+validation, layered IP model, broad instrumentation without scoring, premium-over-cost)
+are recorded in `docs/product/ip-character-concept-decisions.md`.
 
 **Critical path**: Phases 1-3 (identity + workspace + parent) make parent feature scalable.
 Phases 4-8 are incremental expansions.
