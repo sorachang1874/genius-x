@@ -73,11 +73,13 @@ describe("ClassroomController", () => {
     }
   });
 
-  it("HELLO from a new student registers them and persists", async () => {
+  it("HELLO from an UNKNOWN student is denied with a join_rejected trace — never minted (Phase 1)", async () => {
     await store.save(seed("intro", {}));
     await controller.onMessage("s1", { type: "HELLO", studentId: "newk" });
-    expect((await store.load("s1"))!.students.newk).toBeDefined();
-    expect(emit.student[0]!.msg.type).toBe("RESUME_STATE");
+    expect((await store.load("s1"))!.students.newk).toBeUndefined(); // no phantom student
+    expect(emit.student).toHaveLength(0); // no RESUME_STATE for a denied resume
+    const denied = trace.events.find((e) => e.kind === "join_rejected");
+    expect(denied?.payload).toMatchObject({ denied: true, reason: "resume_unknown_student", studentId: "newk" });
   });
 
   it("STAGE_COMPLETE selection persists the output", async () => {

@@ -18,6 +18,8 @@ export interface IdentityDbOptions {
   idleTimeoutMillis?: number;
   /** Fail fast when the DB is unreachable — loud failure, not a hanging join. */
   connectionTimeoutMillis?: number;
+  /** Bound IN-FLIGHT queries too — connectionTimeout only covers ACQUIRING a client. */
+  queryTimeoutMillis?: number;
 }
 
 export function createIdentityPool(databaseUrl: string, opts: IdentityDbOptions = {}): pg.Pool {
@@ -26,6 +28,11 @@ export function createIdentityPool(databaseUrl: string, opts: IdentityDbOptions 
     max: opts.max ?? 10,
     idleTimeoutMillis: opts.idleTimeoutMillis ?? 30_000,
     connectionTimeoutMillis: opts.connectionTimeoutMillis ?? 5_000,
+    // Without this, a half-open connection (DB host dies without RST mid-class-start)
+    // leaves `await getStudent()` hanging for minutes — the child sits on the joining
+    // screen and the contract's loud DB-down 5xx never fires. A bounded query rejects
+    // into the join's catch → loud 503 IDENTITY_UNAVAILABLE.
+    query_timeout: opts.queryTimeoutMillis ?? 5_000,
   });
   // node-postgres emits 'error' on the pool when an IDLE client's backend dies (Postgres
   // restart, network blip). Without a listener that is an unhandled 'error' event — it would

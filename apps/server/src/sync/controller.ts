@@ -337,12 +337,15 @@ export class ClassroomController {
       const guard = this.guardSession(session, sessionId);
       if (guard) return { out: { trace: guard } };
       const s = session as ClassSession;
-      let you = s.students[studentId];
-      let next: ClassSession | undefined;
+      const you = s.students[studentId];
       if (!you) {
-        you = freshStudentState();
-        s.students[studentId] = you;
-        next = s;
+        // Phase 1 (Step 5): NEVER mint on HELLO. An unknown studentId here would recreate
+        // the ephemeral fallback the enrollment contract forbids — over the WS, bypassing
+        // the join's identity lookup and tenant check — and a phantom student would wedge
+        // class-wide `allStudents` advance. Operator-visible deny; no RESUME_STATE.
+        return {
+          out: { trace: this.mkTrace("join_rejected", { denied: true, reason: "resume_unknown_student", studentId, sessionId }) },
+        };
       }
       const msg: ServerMessage = {
         type: "RESUME_STATE",
@@ -351,7 +354,7 @@ export class ClassroomController {
         lessonConfigVersion: s.lessonConfigVersion,
         you,
       };
-      return { next, out: { msg } };
+      return { out: { msg } };
     });
     if (result.trace) this.trace.record(result.trace);
     if (result.msg) this.emit.toStudent(sessionId, studentId, result.msg);

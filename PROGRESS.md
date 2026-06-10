@@ -2,11 +2,11 @@
 
 ## Last updated
 
-2026-06-09 (Phase 1 Steps 1-4 complete: contracts + schema + IdentityService + HTTP API)
+2026-06-09 (Phase 1 Steps 1-5 complete: identity stack + persistent classroom join)
 
 ## Current state
 
-**M4d complete, Architecture v2.0 designed ✅, Phase 1 in progress (Steps 1-4 of 7 done)**
+**M4d complete, Architecture v2.0 designed ✅, Phase 1 in progress (Steps 1-5 of 7 done)**
 
 Complete 6-stage classroom flow (intro → icebreak → shape → talent → birth → closure) validated.
 Multi-role real-time collaboration (student/assistant/teacher) verified. Technical architecture
@@ -34,11 +34,11 @@ tool-calling framework, rich media, and multi-city deployment.
 
 ### Test coverage
 
-✅ **Unit tests** (203 total):
+✅ **Unit tests** (221 total):
 - ai-gateway: 19/19
-- server: 135/135 (incl. 22 PGlite migration/runner tests + 74 identity service/route tests —
+- server: 145/145 (incl. 22 PGlite migration/runner tests + 74 identity tests + persistent-join suite —
   the contract preflights, identity semantics, and HTTP error discipline as a permanent CI gate)
-- web: 49/49
+- web: 57/57
 
 ✅ **E2E tests**:
 - Single student: `tools/demo-e2e-test.mjs`
@@ -88,7 +88,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | Phase | Focus | Duration | Status |
 | --- | --- | --- | --- |
 | **Phase 0** | Architecture design | 1 week | ✅ Complete |
-| **Phase 1** | Persistent identity & enrollment | 2-3 weeks | 🔄 In progress (Steps 1-4/7 ✅) |
+| **Phase 1** | Persistent identity & enrollment | 2-3 weeks | 🔄 In progress (Steps 1-5/7 ✅) |
 | **Phase 2** | Student workspace foundation | 3-4 weeks | 📋 Planned |
 | **Phase 3** | Parent read-only artifact | 2 weeks | 📋 Planned |
 | **Phase 4** | Agent service with memory | 4-5 weeks | 📋 Planned |
@@ -226,7 +226,16 @@ See `docs/migration-wsl2-to-mac.md`:
    shutdown + configurable CORS_ORIGIN. Real-PG16 HTTP smoke green. Adversarial review
    (probe-verified): 2 majors (parser bypass, PII leak channel) + 5 minors + 3 nits all fixed.
    enrollment.md v1.1: off-registry 500 note (lead-serialized).
-5. 📋 Step 5: Classroom join → persistent studentId (incl. live/production fail-closed tenant)
+5. ✅ **Step 5: Classroom join → persistent studentId** (2026-06-09) — student joins now
+   LOOKUP (never mint): studentId required → identity lookup → 400/404/403/503, displayName
+   from the profile (client name ignored), idempotent re-join (state kept, name refreshed),
+   rejected joins persist nothing. WS HELLO resume DENIES unknown students (the ephemeral
+   backdoor is closed; `join_rejected` traces count every refusal — contracts TraceEvent
+   +kind, lead-serialized). TENANT_ID fail-closed + value-preflighted in live/production;
+   pg query_timeout bounds the join path. Web: enrollment-link join (?studentId=), warm
+   child-facing rejection (pinned by JoinScreen tests + banned-wording scan). Demo scripts
+   + demo-start.sh migrated to seeded students. Adversarial review: 1 blocker (WS phantom
+   mint) + 4 majors + 5 minors + 2 nits all fixed. Real-PG16 join smoke green.
 6. 📋 Step 6: End-to-end validation (enroll → join → class → profile persists)
 7. 📋 Step 7: Documentation & cleanup (DEFERRED.md DF-v2-1, migration guide)
 
@@ -249,5 +258,5 @@ All shadow systems remain pluggable and will not block classroom runtime per AGE
 
 ---
 
-_Last milestone: Phase 1 Steps 1-4 — identity stack complete (contracts → schema → service → HTTP)_
-_Next milestone: Phase 1 Step 5 — classroom join → persistent studentId_
+_Last milestone: Phase 1 Steps 1-5 — persistent identity live end-to-end (enroll → join → classroom)_
+_Next milestone: Phase 1 Step 6 — end-to-end validation + Step 7 docs_

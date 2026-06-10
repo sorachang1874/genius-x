@@ -45,12 +45,20 @@ function waitFor(check, timeoutMs = 5000) {
   });
 }
 
-async function joinSession(roomCode, role = "student", name) {
+// Phase 1: students join with a PERSISTENT studentId from enrollment (seeded demo
+// students: apps/server/migrations/001_phase1_identity_seed.sql). The server must run
+// with DATABASE_URL set (compose postgres) — see demo-start.sh.
+const SEEDED_XIAOMING = "33333333-3333-4333-8333-000000000001"; // 小明, demo tenant
+
+async function joinSession(roomCode, role = "student", studentId) {
   const res = await fetch(`${SERVER_URL}/session/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ roomCode, role, name }),
+    body: JSON.stringify({ roomCode, role, ...(studentId && { studentId }) }),
   });
+  if (!res.ok) {
+    throw new Error(`join failed (${res.status}): ${await res.text()} — is the server running with DATABASE_URL + migrate:seed applied?`);
+  }
   return res.json();
 }
 
@@ -118,7 +126,7 @@ async function main() {
     // Step 3: Student joins
     log("STEP", "3️⃣  Student joins classroom", colors.yellow);
     const startStudent = Date.now();
-    const studentJoin = await joinSession(ROOM_CODE, "student", "小明");
+    const studentJoin = await joinSession(ROOM_CODE, "student", SEEDED_XIAOMING);
     timings.studentJoin = Date.now() - startStudent;
     log("SUCCESS", `Student joined (${timings.studentJoin}ms)`, colors.green);
     log("INFO", `  Student ID: ${studentJoin.studentId}`, colors.blue);

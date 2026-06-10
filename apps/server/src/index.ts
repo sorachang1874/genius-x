@@ -43,11 +43,39 @@ async function main(): Promise<void> {
     }
   }
 
+  // Step 5: sessions bind to an EXPLICIT tenant in live/production — DEFAULT_DEMO_TENANT_ID
+  // is dev/demo-only, never a silent production fallback (fail closed; PHANDBOOK Step 5.6).
+  // The VALUE is validated too: a typo'd tenant would boot green and then 403 every child
+  // at class start — same deploy-time-failure principle as the DB preflight above.
+  const tenantId = process.env.TENANT_ID?.trim() || undefined;
+  if (liveLike && !tenantId) {
+    throw new Error(
+      "TENANT_ID is required in live/production mode — sessions must bind to an explicit " +
+        "tenant (the demo tenant default is dev-only).",
+    );
+  }
+  if (tenantId) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(tenantId)) {
+      throw new Error(`TENANT_ID is not a UUID: "${tenantId}"`);
+    }
+    if (pool) {
+      try {
+        const found = await pool.query("SELECT 1 FROM tenants WHERE id = $1", [tenantId]);
+        if (found.rows.length === 0) throw new Error(`TENANT_ID ${tenantId} does not exist in the tenants table`);
+      } catch (err) {
+        if (liveLike) throw err instanceof Error ? err : new Error(String(err));
+        console.error("[bootstrap] TENANT_ID preflight FAILED (continuing in dev mode):", (err as Error).message);
+      }
+    }
+  }
+
   const handle = await startClassroomServer({
     port: Number(process.env.PORT ?? 3000),
     host: process.env.HOST ?? "0.0.0.0",
     store,
     ...(identity && { identity }),
+    ...(tenantId && { tenantId }),
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
   });
   console.log(`genius-x server (mode=${config.mode}, identity=${identity ? "on" : "OFF"}) listening on ${handle.url}`);

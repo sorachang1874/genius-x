@@ -25,7 +25,8 @@ async function test() {
   const studentRes = await fetch(`${SERVER_URL}/session/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ roomCode: ROOM_CODE, role: "student", name: "测试" }),
+    // Phase 1: persistent studentId from the seeded demo students (DATABASE_URL + migrate:seed required).
+    body: JSON.stringify({ roomCode: ROOM_CODE, role: "student", studentId: "33333333-3333-4333-8333-000000000001" }),
   });
   const { studentId } = await studentRes.json();
   console.log(`✓ Student joined: ${studentId}`);
