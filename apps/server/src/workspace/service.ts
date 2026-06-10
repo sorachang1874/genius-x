@@ -466,6 +466,50 @@ export class WorkspaceService {
   }
 
   /** Importance-first (importance DESC, created_at DESC, id DESC keyset). */
+  /**
+   * COLD-path retrieval (agent-context.md, consumed by the Agent-I ContextBuilder):
+   * semantic = latest-per-key (DF-v2-15 — duplicate rows are contract-accepted in storage,
+   * the READER dedups), then importance-ranked top K; episodes = the reserved kind,
+   * importance+recency top K. Separate from the paginated operator reads on purpose —
+   * this is the model-context projection, not a browse surface.
+   */
+  async retrieveContextMemories(
+    studentId: string,
+    opts: { semanticTopK: number; episodeTopK: number },
+  ): Promise<{ semantic: StudentMemory[]; episodes: StudentMemory[] }> {
+    requireUuid(studentId, "studentId");
+    const semantic = await this.db.query(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (key) ${MEMORY_COLUMNS} FROM memories
+         WHERE student_id = $1 AND key <> $3
+         ORDER BY key, created_at DESC, id DESC
+       ) latest
+       ORDER BY importance DESC, created_at DESC, id DESC LIMIT $2`,
+      [studentId, opts.semanticTopK, EPISODE_MEMORY_KEY],
+    );
+    const episodes = await this.db.query(
+      `SELECT ${MEMORY_COLUMNS} FROM memories
+       WHERE student_id = $1 AND key = $3
+       ORDER BY importance DESC, created_at DESC, id DESC LIMIT $2`,
+      [studentId, opts.episodeTopK, EPISODE_MEMORY_KEY],
+    );
+    return {
+      semantic: (semantic.rows as MemoryRow[]).map(toMemory),
+      episodes: (episodes.rows as MemoryRow[]).map(toMemory),
+    };
+  }
+
+  /** Retrieval write-back (fields pre-built in Phase 2) — callers fire-and-forget. */
+  async markMemoriesAccessed(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    for (const id of ids) requireUuid(id, "memory id");
+    await this.db.query(
+      `UPDATE memories SET last_accessed_at = NOW(), access_count = access_count + 1
+       WHERE id = ANY($1::uuid[])`,
+      [ids],
+    );
+  }
+
   async listMemories(studentId: string, query: WorkspaceListQuery = {}): Promise<ListMemoriesResponse> {
     requireUuid(studentId, "studentId");
     await this.requireStudent(studentId);

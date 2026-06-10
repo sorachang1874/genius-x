@@ -910,3 +910,219 @@ describe("consolidation/sweep ordering (review-proven race fix)", () => {
     expect(episodes.sort()).toEqual(["k1", "k2"]); // BOTH children keep their memory
   });
 });
+
+// --- P4 Step 4: cold path — CROSS-LESSON continuity (the concept's heart) ---
+
+describe("cold context (canon + cross-lesson memories reach the prompt)", () => {
+  it("a returning child's call carries canon + remembered facts from PAST lessons", async () => {
+    const llmSeen: CtlLlmReq[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { llmSeen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "我们继续聊", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    // identity returns a student whose companion already HAS a persona (lesson 1 happened);
+    // workspace returns last lesson's memories + an episode.
+    const identity = {
+      async getStudent() {
+        return {
+          id: "k1", tenantId: "t", parentId: "p", displayName: "回来娃", age: 7,
+          geniusX: { name: "小泥", personalityTag: "勇敢", backgroundSetting: "彩虹城堡" },
+          progress: { completedLessonIds: ["lesson-001"], currentPhase: 1, badges: [] },
+          createdAt: NOW, updatedAt: NOW,
+        };
+      },
+    };
+    const ws = {
+      async retrieveContextMemories() {
+        return {
+          semantic: [{ id: "33333333-3333-4333-8333-00000000000a", studentId: "k1", tenantId: "t", key: "favorite_toy", value: "积木", context: { lessonId: "lesson-001", stageId: "talent" }, importance: 0.5, lastAccessedAt: NOW, accessCount: 0, createdAt: NOW }],
+          episodes: [{ id: "33333333-3333-4333-8333-00000000000b", studentId: "k1", tenantId: "t", key: "episode", value: '{"summary":"上次聊了恐龙","tags":["恐龙"]}', context: { lessonId: "lesson-001", stageId: "talent" }, importance: 0.5, lastAccessedAt: NOW, accessCount: 0, createdAt: NOW }],
+        };
+      },
+      async markMemoriesAccessed() {},
+      async recordWork() { return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, gw,
+      identity as never, ws as unknown as WorkspaceService,
+    );
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => llmSeen.length === 1);
+    const ctxBlock = llmSeen[0]!.context;
+    expect(ctxBlock).toBeDefined();
+    expect(ctxBlock!.version).toBe("context_v1");
+    expect(ctxBlock!.text).toContain("小泥"); // canon: the friend knows its own name
+    expect(ctxBlock!.text).toContain("勇敢");
+    expect(ctxBlock!.text).toContain("favorite_toy: 积木"); // semantic memory
+    expect(ctxBlock!.text).toContain("上次聊了恐龙"); // last lesson's episode
+  });
+
+  it("a BRAND-NEW child (empty profile, no memories) is correctly context-less — no canon-miss noise", async () => {
+    const llmSeen: CtlLlmReq[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { llmSeen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "你好", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const identity = {
+      async getStudent() {
+        return { id: "k1", tenantId: "t", parentId: "p", displayName: "新娃", age: 6, geniusX: {}, progress: { completedLessonIds: [], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+      },
+    };
+    const ws = {
+      async retrieveContextMemories() { return { semantic: [], episodes: [] }; },
+      async markMemoriesAccessed() {},
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, gw, identity as never, ws as unknown as WorkspaceService);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => llmSeen.length === 1);
+    expect(llmSeen[0]!.context).toBeUndefined(); // empty ≠ miss
+    expect(trace.events.filter((e) => e.payload.reason === "context_canon_miss")).toHaveLength(0); // no noise
+  });
+
+  it("workspace retrieval failure ⇒ context_cold_miss trace, call proceeds (shadow rule)", async () => {
+    const llmSeen: CtlLlmReq[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { llmSeen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "你好", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const identity = {
+      async getStudent() {
+        return { id: "k1", tenantId: "t", parentId: "p", displayName: "娃", age: 7, geniusX: { name: "小泥" }, progress: { completedLessonIds: [], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+      },
+    };
+    const ws = {
+      async retrieveContextMemories() { throw new Error("db down"); },
+      async markMemoriesAccessed() {},
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, gw, identity as never, ws as unknown as WorkspaceService);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => llmSeen.length === 1);
+    expect(llmSeen[0]!.context).toBeDefined(); // canon still serves
+    expect(llmSeen[0]!.context!.text).toContain("小泥");
+    expect(trace.events.some((e) => e.payload.reason === "context_cold_miss")).toBe(true); // operator sees it
+  });
+});
+
+describe("cold-context trace taxonomy + privacy (Step-4 review fixes)", () => {
+  function ctxGateway(seen: CtlLlmReq[], transcript = "我们继续聊") {
+    return new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { seen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript, meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+  }
+
+  it("a FAILED canon lookup traces reason=context_canon_miss (exact, contract-named) with a cause", async () => {
+    const seen: CtlLlmReq[] = [];
+    const identity = { async getStudent(): Promise<never> { throw new Error("db down"); } };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, ctxGateway(seen), identity as never);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    const t = trace.events.find((e) => e.payload.reason === "context_canon_miss"); // EXACT contract reason
+    expect(t).toBeDefined();
+    expect(t!.payload.cause).toBe("lookup_failed"); // the why rides `cause`, never clobbers `reason`
+  });
+
+  it("NOT-WIRED absences trace ONCE per builder, not per call (the once-per-session discipline)", async () => {
+    const seen: CtlLlmReq[] = [];
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, ctxGateway(seen)); // no identity, no workspace
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r2", input: { kind: "voice", audioRef: "ref://b" } });
+    await untilTrue(() => seen.length === 2);
+    expect(trace.events.filter((e) => e.payload.reason === "context_canon_miss" && e.payload.cause === "identity_not_wired")).toHaveLength(1);
+    expect(trace.events.filter((e) => e.payload.reason === "context_cold_miss" && e.payload.cause === "workspace_not_wired")).toHaveLength(1);
+  });
+
+  it("GOLDEN context_v1 text — any change here is a context_v2 (bump CONTEXT_VERSION first)", async () => {
+    const seen: CtlLlmReq[] = [];
+    const identity = {
+      async getStudent() {
+        return { id: "k1", tenantId: "t", parentId: "p", displayName: "回来娃", age: 7, geniusX: { name: "小泥", personalityTag: "勇敢", backgroundSetting: "彩虹城堡" }, progress: { completedLessonIds: ["lesson-001"], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+      },
+    };
+    const ws = {
+      async retrieveContextMemories() {
+        return {
+          semantic: [{ id: "33333333-3333-4333-8333-00000000000a", studentId: "k1", tenantId: "t", key: "favorite_toy", value: "积木", context: { lessonId: "lesson-001", stageId: "talent" }, importance: 0.5, lastAccessedAt: NOW, accessCount: 0, createdAt: NOW }],
+          episodes: [{ id: "33333333-3333-4333-8333-00000000000b", studentId: "k1", tenantId: "t", key: "episode", value: '{"summary":"上次聊了恐龙","tags":["恐龙"]}', context: { lessonId: "lesson-001", stageId: "talent" }, importance: 0.5, lastAccessedAt: NOW, accessCount: 0, createdAt: NOW }],
+        };
+      },
+      async markMemoriesAccessed() {},
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, ctxGateway(seen), identity as never, ws as unknown as WorkspaceService);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    expect(seen[0]!.context!.text).toBe(
+      "【你的伙伴设定】\n你的名字：小泥\n你的性格：勇敢\n你来自：彩虹城堡\n孩子的名字：回来娃\n\n【你记得关于这个孩子的事】\nfavorite_toy: 积木\n\n【你们一起经历过的时刻】\n1. 上次聊了恐龙",
+    );
+    // context_served telemetry: counts only, never text
+    const served = trace.events.find((e) => e.payload.reason === "context_served");
+    expect(served!.payload).toMatchObject({ hasCanon: true, semantic: 1, episodes: 1 });
+    expect(JSON.stringify(served!.payload)).not.toContain("小泥");
+  });
+
+  it("PRIVACY PIN (cold block): memory values + displayName reach the PROVIDER but never a client or the snapshot", async () => {
+    const MARKER_MEMORY = "绝密的记忆标记值";
+    const MARKER_NAME = "绝密名字标记";
+    const seen: CtlLlmReq[] = [];
+    const identity = {
+      async getStudent() {
+        return { id: "k1", tenantId: "t", parentId: "p", displayName: MARKER_NAME, age: 7, geniusX: { name: "小泥" }, progress: { completedLessonIds: [], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+      },
+    };
+    const ws = {
+      async retrieveContextMemories() {
+        return { semantic: [{ id: "33333333-3333-4333-8333-00000000000c", studentId: "k1", tenantId: "t", key: "secret_thing", value: MARKER_MEMORY, context: { lessonId: "lesson-001", stageId: "talent" }, importance: 0.5, lastAccessedAt: NOW, accessCount: 0, createdAt: NOW }], episodes: [] };
+      },
+      async markMemoriesAccessed() {},
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, ctxGateway(seen), identity as never, ws as unknown as WorkspaceService);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    expect(seen[0]!.context!.text).toContain(MARKER_MEMORY); // provider sees it…
+    await c.onMessage("s1", { type: "HELLO", studentId: "k1" });
+    await untilTrue(() => emit.student.some((m) => m.msg.type === "RESUME_STATE"));
+    const clientBound = JSON.stringify([...emit.student.map((m) => m.msg), ...emit.session.map((m) => m.msg)]);
+    expect(clientBound).not.toContain(MARKER_MEMORY); // …no client ever does
+    expect(clientBound).not.toContain(MARKER_NAME); // (beyond profile surfaces it already owns — the CONTEXT block never rides the wire)
+    expect(JSON.stringify(await store.load("s1"))).not.toContain(MARKER_MEMORY);
+    const traceJson = JSON.stringify(trace.events);
+    expect(traceJson).not.toContain(MARKER_MEMORY); // traces carry counts/ids, never context text
+  });
+});

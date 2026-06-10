@@ -98,7 +98,7 @@ choice; semantics identical):
    exempt from any decay/forgetting — the friend never forgets who it is.
 2. **Semantic memories**: latest-per-key dedup (DF-v2-15 — duplicate rows are
    contract-accepted in storage; the READER dedups), importance-ranked, top K (default 12).
-3. **Episodic memories**: recency + importance ranked, top K (default 3) summaries.
+3. **Episodic memories**: importance-ranked, recency tie-break, top K (default 3) summaries.
 4. Retrieval **writes back** `lastAccessedAt`/`accessCount` (fields pre-built in Phase 2),
    fire-and-forget.
 
@@ -169,7 +169,7 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 | `LlmRequest.history` | Gateway (D) | per-call | bounded array | from turn buffer | provider adapters | absent ⇒ stateless | n/a | fakes pass unchanged (back-compat test) |
 | `key="episode"` memories | Agent service (I) writes via workspace (H) | `memories` table (model type `StudentMemory`; carve-out in workspace.md v1.1) | schema-bound JSON value | end-of-scene consolidation | cold retrieval; parent: DENIED pending decision (parent-share.md v1.2) | extraction fail ⇒ no episode, traced | workspace retention | validator rejects lessons declaring `episode` (**implemented**, validate.ts); schema test at both boundaries (Phase 4) |
 | `InteractionRecord.safety` | Workspace (H) | `interactions` column | `ok\|input_filtered\|output_filtered` | set at record time | context builder, curation | default `ok` | with row | migration backfills `ok` |
-| Canon injection | Agent service (I) | `ip-character.md` record | see ip-character.md | read per context build | every contextual LLM call | absent ⇒ no canon block, traced `context_canon_miss` | never decays | ip-character preflights |
+| Canon injection | Agent service (I) | `ip-character.md` record | see ip-character.md | read per context build | every contextual LLM call (Phase-4 scope: the three conversational input kinds; the prepare path joins later — deliberate) | service/record absent or lookup failed ⇒ no canon block, traced `context_canon_miss` (+ `cause`; not-wired causes once per builder); an EMPTY profile (first lesson) ⇒ correctly context-less, untraced | never decays | ip-character preflights |
 | Round-cap enforcement | Course runtime (C) | lesson config | declared caps | `interactionCounts` vs config | INTERACT path | cap ⇒ deny-with-trace + warm client UX | n/a | config caps > 0 validated |
 
 ---
@@ -203,6 +203,22 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 ---
 
 ## Changelog
+
+- **v1 + Step-4 annotations** (2026-06-10, lead-serialized): COLD path IMPLEMENTED —
+  `ContextBuilder` (`apps/server/src/agent/context.ts`, Agent I's first module): canon
+  from the pre-4.5 source (`GeniusXProfile`; `ip_characters` replaces it behind the same
+  seam at Phase 4.5), semantic latest-per-key dedup (DF-v2-15, reader-side) importance-
+  ranked top 12, episodes top 3, access write-back fire-and-forget; `context_v1` versioned
+  assembly rides `LlmRequest.context` — gateway defensively input-reviews it (filtered ⇒
+  DROPPED + traced, call proceeds) and stamps `contextVersion`. An EMPTY profile is
+  correctly context-less (a first lesson), NOT a traced miss; service-absent/lookup-failed
+  ⇒ `context_canon_miss` / `context_cold_miss` (reason exact; `cause` carries why;
+  not-wired causes trace ONCE per builder — the once-per-session discipline);
+  `context_served` (counts only) per contextful call; `context_episode_malformed` per
+  corrupted row. Canon includes the child's `displayName` — a lead-serialized consumer
+  addition on identity.md's row (provider-facing, transcripts-to-provider posture).
+  INTERIM: cold retrieval runs per call
+  (2–3 indexed queries; caching folds into the Step-5 operational floor).
 
 - **v1 + Step-3 annotations** (2026-06-10, lead-serialized): episodic path IMPLEMENTED —
   `gateway.extractEpisode` (input safety → call → `parseEpisodeValue` schema → output
