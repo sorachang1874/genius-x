@@ -64,7 +64,23 @@ different failures; the author has blind spots (proven: the v1 lesson-runtime de
 
 **How we run it (Codex / gpt-5.5):** every review prompt starts with `docs/agents/REVIEW_BRIEF.md`
 (standing context: principles, goals, constraints, output format), then names the changed
-files + change-specific questions, at `-c model_reasoning_effort="xhigh"`.
+files + change-specific questions, at **xhigh reasoning + fast mode**:
+
+```bash
+codex exec --sandbox read-only \
+  -c model_reasoning_effort="xhigh" -c service_tier="fast" \
+  "<REVIEW_BRIEF + files + questions>" < /dev/null > review.out 2>&1
+```
+
+- **Fast mode (`service_tier="fast"`) is ON for review gates** (founder decision,
+  2026-06-09): xhigh keeps review depth; fast serving cuts wall-clock. Verified working
+  end-to-end on this machine (`-m gpt-5.5-fast` is NOT valid on ChatGPT-account Codex —
+  the service tier is the correct knob; key/value probe-validated via `--strict-config`).
+- Quota rationale: Claude Code is the primary dev driver, so Codex quota is spent almost
+  entirely on reviews — fast-tier consumption is affordable and worth the latency win.
+- `model = "gpt-5.5"` + `model_reasoning_effort = "xhigh"` + `service_tier = "fast"` are
+  also set as defaults in `~/.codex/config.toml` (machine-level; per-invocation `-c`
+  overrides still apply).
 
 Operational rules (root-caused the hard way — a `codex exec` "22-min hang" was NOT network or
 xhigh-slowness: codex was **blocked reading stdin** ("Reading additional input from stdin…"),
