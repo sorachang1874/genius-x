@@ -15,3 +15,6 @@ export * from "./errors";
 // Phase 1 — persistent identity & enrollment (docs/contracts/identity.md, enrollment.md).
 export * from "./identity";
 export * from "./enrollment";
+// Phase 2 — student workspace (docs/contracts/workspace.md).
+export * from "./workspace";
+export * from "./workspace-api";

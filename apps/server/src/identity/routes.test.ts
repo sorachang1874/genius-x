@@ -21,7 +21,7 @@ const CONSENT_V1 = { consentVersion: "v1.0", dataRetentionAgreed: true };
 beforeAll(async () => {
   ctx = await newIdentityTestContext();
   tenant = await ctx.makeTenant("路由租户");
-  app = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro", undefined, ctx.service);
+  app = buildHttp(new InMemorySessionStore(), { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", identity: ctx.service });
 });
 
 afterAll(async () => {
@@ -360,7 +360,7 @@ describe("error sanitization + deployment modes", () => {
   it("unexpected service error → 500 INTERNAL with NO PII in body or logs", async () => {
     const boom = new Error("boom 小明 +8613800000001"); // simulated raw error carrying PII
     const stub = { getStudent: async () => { throw boom; } } as unknown as IdentityService;
-    const stubApp = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro", undefined, stub);
+    const stubApp = buildHttp(new InMemorySessionStore(), { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", identity: stub });
     const logged: unknown[][] = [];
     const errSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
       logged.push(args);
@@ -381,7 +381,7 @@ describe("error sanitization + deployment modes", () => {
   });
 
   it("identity absent ⇒ NONE of the six endpoints are registered (404)", async () => {
-    const bare = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro");
+    const bare = buildHttp(new InMemorySessionStore(), { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro" });
     try {
       const id = "99999999-9999-4999-8999-999999999984";
       const probes = [

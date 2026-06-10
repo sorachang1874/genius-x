@@ -7,6 +7,7 @@ import { loadConfig } from "@genius-x/config";
 import { InMemorySessionStore, RedisSessionStore, type SessionStore } from "./session/store";
 import { createIdentityPool } from "./identity/db";
 import { IdentityService } from "./identity/service";
+import { WorkspaceService } from "./workspace/service";
 import { startClassroomServer } from "./server";
 
 async function main(): Promise<void> {
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
   // be internet-exposed in Phase 1 (operator-bounded deployment; pin CORS_ORIGIN).
   const pool = config.databaseUrl ? createIdentityPool(config.databaseUrl) : undefined;
   const identity = pool ? new IdentityService(pool) : undefined;
+  const workspace = pool ? new WorkspaceService(pool) : undefined; // same pool, same lifecycle
   if (!identity) {
     console.warn(
       "[bootstrap] identity routes DISABLED — no DATABASE_URL configured " +
@@ -75,6 +77,7 @@ async function main(): Promise<void> {
     host: process.env.HOST ?? "0.0.0.0",
     store,
     ...(identity && { identity }),
+    ...(workspace && { workspace }),
     ...(tenantId && { tenantId }),
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
   });

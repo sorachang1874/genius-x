@@ -41,6 +41,10 @@ node tools/enroll-student.mjs --name 小美 --age 6 --phone +8613800001234 --roo
   internet-expose them (operator-bounded deployment)
 - `enroll-student.mjs`: pass `--tenant $TENANT_ID` (the demo-tenant default exists only in dev)
 
+**Deploy note (lessonConfigVersion bumps)**: sessions resume only against an EXACT version
+match (fail closed). Deploying a build with a bumped lesson version (e.g. 1.1.0→1.2.0)
+mid-class bricks in-flight sessions loudly — drain/finish live classes before deploying.
+
 ## Failure modes (operator view)
 
 | Symptom | Meaning | Where it shows |

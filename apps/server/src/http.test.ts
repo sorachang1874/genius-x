@@ -37,7 +37,7 @@ beforeAll(async () => {
 });
 
 function makeApp(store = new InMemorySessionStore()) {
-  return { store, app: buildHttp(store, "lesson-001", "1.0.0", "intro", tenant, ctx.service) };
+  return { store, app: buildHttp(store, { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", tenantId: tenant, identity: ctx.service }) };
 }
 
 describe("POST /session/join — persistent student join (Phase 1)", () => {
@@ -136,7 +136,7 @@ describe("POST /session/join — persistent student join (Phase 1)", () => {
   });
 
   it("identity service absent → student join 503 IDENTITY_UNAVAILABLE (loud); assistants unaffected", async () => {
-    const bare = buildHttp(new InMemorySessionStore(), "lesson-001", "1.0.0", "intro", tenant); // no identity
+    const bare = buildHttp(new InMemorySessionStore(), { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", tenantId: tenant }); // no identity
     const student = await bare.inject({
       method: "POST",
       url: "/session/join",
@@ -159,7 +159,7 @@ describe("POST /session/join — operator visibility + hardening (Step-5 review 
   it("every rejection is COUNTED via join_rejected traces and logged (contract: 400/404/403 + count)", async () => {
     const trace = new FakeTrace();
     const store = new InMemorySessionStore();
-    const app = buildHttp(store, "lesson-001", "1.0.0", "intro", tenant, ctx.service, "*", trace);
+    const app = buildHttp(store, { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", tenantId: tenant, identity: ctx.service, trace });
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "t1" } }); // 400 missing
@@ -191,7 +191,7 @@ describe("POST /session/join — operator visibility + hardening (Step-5 review 
   it("identity PRESENT but DB down → 503 IDENTITY_UNAVAILABLE (the loud 5xx contract row)", async () => {
     const broken = new IdentityService({ query: () => Promise.reject(new Error("ECONNREFUSED 127.0.0.1:5432")) });
     const store = new InMemorySessionStore();
-    const app = buildHttp(store, "lesson-001", "1.0.0", "intro", tenant, broken);
+    const app = buildHttp(store, { lessonId: "lesson-001", lessonConfigVersion: "1.0.0", firstStageId: "intro", tenantId: tenant, identity: broken });
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await app.inject({
@@ -253,14 +253,13 @@ describe("POST /session/join — operator visibility + hardening (Step-5 review 
     // The controller's guardSession fail-closes on lessonConfigVersion mismatch, so the
     // session must be created with the REAL lesson001 metadata for resume to serve it.
     const store = new InMemorySessionStore();
-    const app = buildHttp(
-      store,
-      lesson001.lessonId,
-      lesson001.lessonConfigVersion,
-      lesson001.stages[0]!.stageId,
-      tenant,
-      ctx.service,
-    );
+    const app = buildHttp(store, {
+      lessonId: lesson001.lessonId,
+      lessonConfigVersion: lesson001.lessonConfigVersion,
+      firstStageId: lesson001.stages[0]!.stageId,
+      tenantId: tenant,
+      identity: ctx.service,
+    });
     await app.inject({ method: "POST", url: "/session/join", payload: { roomCode: "ws1", studentId: enrolled.id } });
 
     const sent: { studentId: string; msg: ServerMessage }[] = [];

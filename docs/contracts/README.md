@@ -31,7 +31,7 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | --- | --- | --- | --- |
 | [`identity.md`](identity.md) | Student/parent persistent identity, tenant model, guardian consent | **frozen v1** | Phase 1 |
 | [`enrollment.md`](enrollment.md) | Enrollment API surface, error codes, classroom-join migration | **frozen v1** | Phase 1 |
-| `workspace.md` | Student workspace: works, interactions, memories | planned — not yet authored | Phase 2 |
+| [`workspace.md`](workspace.md) | Student workspace: works, interactions, memories | **frozen v1** | Phase 2 |
 | `agent.md` | Per-student AI agent: context building, memory retrieval | planned — not yet authored | Phase 4 |
 | `tool.md` | Tool registry and tool-calling framework | planned — not yet authored | Phase 5 |
 | `parent-share.md` | Parent read-only artifact + co-working | planned — not yet authored | Phase 3/6 |

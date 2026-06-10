@@ -29,7 +29,7 @@ function freshStudent(over: Partial<StudentRuntimeState> = {}): StudentRuntimeSt
 
 function seed(currentStageId: string, students: Record<string, StudentRuntimeState>): ClassSession {
   return {
-    sessionId: "s1", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.1.0", classId: "c1",
+    sessionId: "s1", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.2.0", classId: "c1",
     currentStageId, global: "active", stageStartTime: NOW, students, assistants: ["a1"],
   };
 }
@@ -68,7 +68,7 @@ describe("ClassroomController", () => {
     expect(msg.type).toBe("RESUME_STATE");
     if (msg.type === "RESUME_STATE") {
       expect(msg.currentStageId).toBe("shape");
-      expect(msg.lessonConfigVersion).toBe("1.1.0");
+      expect(msg.lessonConfigVersion).toBe("1.2.0");
       expect(msg.you.outputs.avatarUrl).toBe("u1");
     }
   });
@@ -294,5 +294,177 @@ describe("lesson-end profile write-back", () => {
     expect(typeof late.geniusX.birthdaySpeech).toBe("string");
     expect(late.geniusX.birthdaySpeech!.length).toBeGreaterThan(0); // the late speech LANDS
     expect(trace.events.some((e) => e.payload.reason === "profile_writeback_ok" && e.payload.mode === "late_prepare")).toBe(true);
+  });
+});
+
+// --- Phase 2: per-stage workspace writes (edge discipline; happy path = the e2e) ---
+
+import type { WorkspaceService } from "../workspace/service";
+import { WorkspaceServiceError } from "../workspace/service";
+
+class FakeWorkspace {
+  works: { studentId: string; type: string }[] = [];
+  interactions: { studentId: string; stageId: string }[] = [];
+  failNext = false;
+  async recordWork(req: { studentId: string; type: string }): Promise<{ id: string }> {
+    if (this.failNext) throw new WorkspaceServiceError("INVALID_INPUT", "injected");
+    this.works.push({ studentId: req.studentId, type: req.type });
+    return { id: "w1" };
+  }
+  async recordInteraction(req: { studentId: string; context: { stageId: string } }): Promise<{ id: string }> {
+    if (this.failNext) throw new WorkspaceServiceError("INVALID_INPUT", "injected");
+    this.interactions.push({ studentId: req.studentId, stageId: req.context.stageId });
+    return { id: "i1" };
+  }
+  async recordMemory(): Promise<{ id: string }> {
+    return { id: "m1" };
+  }
+}
+
+describe("workspace per-stage writes (Phase 2)", () => {
+  function withWorkspace(ws: FakeWorkspace): ClassroomController {
+    return new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService,
+    );
+  }
+
+  it("a completed stage with a declared artifact records a Work (shape → avatar_image)", async () => {
+    const ws = new FakeWorkspace();
+    const c = withWorkspace(ws);
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } });
+    await untilTrue(() => ws.works.length === 1);
+    expect(ws.works[0]).toEqual({ studentId: "k1", type: "avatar_image" });
+  });
+
+  it("artifact with NO buildable content is skipped with an operator trace (not silent)", async () => {
+    const ws = new FakeWorkspace();
+    const c = withWorkspace(ws);
+    // Complete birth WITHOUT prepared speech/avatar — certificate is still buildable (blank
+    // fields), so use the avatar case instead: complete shape via kind=done (no avatarUrl set).
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "done" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "workspace_work_skipped_no_content"));
+    expect(ws.works).toHaveLength(0);
+  });
+
+  it("write failures are traced (typed code, no PII) and never break the flow", async () => {
+    const ws = new FakeWorkspace();
+    ws.failNext = true;
+    const c = withWorkspace(ws);
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "workspace_write_failed"));
+    const failed = trace.events.find((e) => e.payload.reason === "workspace_write_failed");
+    expect(failed?.payload.error).toBe("INVALID_INPUT");
+    expect((await store.load("s1"))!.students.k1!.outputs.avatarUrl).toBe("u1"); // classroom state fine
+  });
+
+  it("workspace absent → ONE skip trace per SESSION (each class stays countable)", async () => {
+    await store.save(seed("shape", { k1: freshStudent(), k2: freshStudent() })); // default controller: no workspace
+    await controller.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } });
+    await controller.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k2", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u2" } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(trace.events.filter((e) => e.payload.reason === "workspace_writes_skipped_not_wired")).toHaveLength(1);
+    // A SECOND session gets its own loud skip trace.
+    const s2 = { ...seed("shape", { k9: freshStudent() }), sessionId: "s2", classId: "s2" };
+    await store.save(s2);
+    await controller.onMessage("s2", { type: "STAGE_COMPLETE", studentId: "k9", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u9" } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(trace.events.filter((e) => e.payload.reason === "workspace_writes_skipped_not_wired")).toHaveLength(2);
+  });
+});
+
+describe("partial birth certificate (amended contract: blanks ⇒ degraded)", () => {
+  it("a certificate missing required fields records degraded:true; a full one keeps the speech's flag", async () => {
+    const captured: { type: string; degraded: boolean; json?: Record<string, unknown> | undefined }[] = [];
+    const ws = {
+      async recordWork(req: { type: string; contentJson?: Record<string, unknown>; metadata: { degraded: boolean } }) {
+        captured.push({ type: req.type, degraded: req.metadata.degraded, json: req.contentJson });
+        return { id: "w" };
+      },
+      async recordInteraction() { return { id: "i" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService,
+    );
+    // PARTIAL: no avatar/speech/personality → degraded:true
+    await store.save(seed("birth", { k1: freshStudent({ stageStatus: {} }) }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "done" } });
+    await untilTrue(() => captured.length === 1);
+    expect(captured[0]!.type).toBe("birth_certificate");
+    expect(captured[0]!.degraded).toBe(true);
+
+    // FULL: everything present, non-degraded speech → degraded:false
+    captured.length = 0;
+    await store.save(seed("birth", {
+      k2: freshStudent({
+        displayName: "全娃",
+        outputs: { avatarUrl: "u1" },
+        memories: { personality_tag: "勇敢", background_setting: "森林" },
+        prepared: { p1: { stageId: "birth", outputKind: "audio", ready: true, output: { text: "你好" }, degraded: false, preparedAt: NOW } },
+      }),
+    }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k2", stageId: "birth", payload: { kind: "done" } });
+    await untilTrue(() => captured.length === 1);
+    expect(captured[0]!.degraded).toBe(false);
+    expect(captured[0]!.json).toMatchObject({ studentName: "全娃", personalityTag: "勇敢" });
+  });
+});
+
+describe("round-2 review mandates (divergence visibility + image outputs)", () => {
+  it("avatar RE-pick after completion traces workspace_work_stale_recomplete (countable divergence)", async () => {
+    const ws = new FakeWorkspace();
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService,
+    );
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "first" } });
+    await untilTrue(() => ws.works.length === 1);
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "second" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "workspace_work_stale_recomplete"));
+    expect(ws.works).toHaveLength(1); // one-Work-per-completion stays the rule
+  });
+
+  it("FORCE_ADVANCE past an artifact stage leaves a COUNTABLE hole trace at lesson end", async () => {
+    // Student at birth, NOT completed; teacher unlock closure cannot pass the gate, so use
+    // FORCE_ADVANCE — the documented operator escape hatch that creates the hole.
+    await store.save(seed("birth", { k1: freshStudent({ stageStatus: { shape: "completed" } }) }));
+    await controller.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "closure", assistantId: "a1" });
+    await untilTrue(() =>
+      trace.events.some(
+        (e) => e.payload.reason === "workspace_work_skipped_stage_not_completed" && e.payload.type === "birth_certificate",
+      ),
+    );
+    const holes = trace.events.filter((e) => e.payload.reason === "workspace_work_skipped_stage_not_completed");
+    // shape WAS completed → no avatar hole; ONLY the skipped birth certificate is a hole.
+    expect(holes.map((h) => h.payload.type)).toEqual(["birth_certificate"]);
+  });
+
+  it("doodle/image exchanges persist the candidate URLs (canonical JSON, refs never bytes)", async () => {
+    const recorded: { input: { kind: string; text?: string }; output: { kind: string; text?: string } }[] = [];
+    const ws = {
+      async recordInteraction(req: { input: { kind: string; text?: string }; output: { kind: string; text?: string } }) {
+        recorded.push({ input: req.input, output: req.output });
+        return { id: "i1" };
+      },
+      async recordWork() { return { id: "w1" }; },
+      async recordMemory() { return { id: "m1" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService,
+    );
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "ix1", variantId: "drawing", input: { kind: "doodle", doodleRef: "ref://doodle-1" } });
+    await untilTrue(() => recorded.length === 1);
+    expect(recorded[0]!.output.kind).toBe("images");
+    const urls = JSON.parse(recorded[0]!.output.text!) as string[];
+    expect(urls.length).toBeGreaterThanOrEqual(1); // FakeProvider's 3 candidates persisted
+    expect(recorded[0]!.input).toMatchObject({ kind: "doodle" });
   });
 });
