@@ -98,3 +98,28 @@ export const EPISODE_TAG_MAX_CHARS = 20;
 
 /** Safety status of a recorded exchange (additive workspace column, Phase 4 migration). */
 export type InteractionSafetyStatus = "ok" | "input_filtered" | "output_filtered";
+
+/**
+ * Parse + schema-validate an episode JSON (the ONE validator both boundaries use —
+ * gateway output parsing AND the workspace write path — so they can never drift).
+ * Returns null on ANY violation: not-JSON, wrong shape, oversize summary/tags. Callers
+ * trace the rejection (never a silent truncation — the contract forbids it).
+ */
+export function parseEpisodeValue(json: string): EpisodeValue | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (o === null || typeof o !== "object" || Array.isArray(o)) return null;
+  // CLOSED schema (fail closed — silently accepting unknown keys is the forbidden
+  // fallback): exactly {summary, tags}, nothing smuggled alongside.
+  const keys = Object.keys(o as Record<string, unknown>);
+  if (keys.length !== 2 || !keys.includes("summary") || !keys.includes("tags")) return null;
+  const e = o as { summary?: unknown; tags?: unknown };
+  if (typeof e.summary !== "string" || e.summary === "" || e.summary.length > EPISODE_SUMMARY_MAX_CHARS) return null;
+  if (!Array.isArray(e.tags) || e.tags.length > EPISODE_MAX_TAGS) return null;
+  if (!e.tags.every((t) => typeof t === "string" && t !== "" && t.length <= EPISODE_TAG_MAX_CHARS)) return null;
+  return { summary: e.summary, tags: e.tags as string[] };
+}

@@ -16,7 +16,7 @@ import type {
   TraceSink,
   TurnBufferEntry,
 } from "@genius-x/contracts";
-import { boundTurnBuffer } from "@genius-x/contracts";
+import { boundTurnBuffer, parseEpisodeValue, type EpisodeValue } from "@genius-x/contracts";
 import type {
   ProviderAdapter,
   LlmRequest,
@@ -32,6 +32,15 @@ export interface ExtractMemoryRequest {
   transcript: string;
   allowedKeys: string[];
   promptVersion: string;
+  studentId?: string;
+  stageId?: string;
+}
+
+/** End-of-scene consolidation input (agent-context.md episodic memory). */
+export interface ExtractEpisodeRequest {
+  /** The drained scene buffer — the conversation as the child experienced it. */
+  rounds: TurnBufferEntry[];
+  promptVersion: string; // e.g. "episode_v1"
   studentId?: string;
   stageId?: string;
 }
@@ -210,6 +219,43 @@ export class AiGateway {
     } catch (e) {
       this.emit("fallback", { capability: "extract_memory", reason: reason(e) });
       return { key: null, value: null };
+    }
+  }
+
+  /**
+   * Consolidate a scene's rounds into ONE schema-validated episode (agent-context.md):
+   * input safety → call → SCHEMA validation (parseEpisodeValue — the same validator the
+   * workspace boundary uses) → output safety on the summary+tags. null on ANY failure
+   * (traced) — an oversize/unsafe episode is REJECTED, never silently truncated.
+   */
+  async extractEpisode(req: ExtractEpisodeRequest): Promise<EpisodeValue | null> {
+    const joined = req.rounds.map((r) => `${r.role === "child" ? "孩子" : "朋友"}：${r.text}`).join("\n");
+    const input = this.d.safety.reviewInput(joined);
+    if (!input.ok) {
+      this.emit("safety", { capability: "extract_episode", reasons: input.reasons, stage: "input" });
+      return null;
+    }
+    try {
+      const r = await withTimeout(
+        this.d.provider.llm({ promptVersion: req.promptVersion, input: joined }),
+        this.timeout("llm"),
+      );
+      assertLlm(r);
+      const episode = parseEpisodeValue(r.text);
+      if (episode === null) {
+        this.emit("interaction", { reason: "episode_schema_miss", promptVersion: req.promptVersion });
+        return null;
+      }
+      const out = this.d.safety.reviewOutput(`${episode.summary} ${episode.tags.join(" ")}`);
+      if (!out.ok) {
+        this.emit("safety", { capability: "extract_episode", reasons: out.reasons, stage: "output" });
+        return null;
+      }
+      this.emit("ai_response", { capability: "extract_episode", promptVersion: req.promptVersion });
+      return episode;
+    } catch (e) {
+      this.emit("fallback", { capability: "extract_episode", reason: reason(e) });
+      return null;
     }
   }
 

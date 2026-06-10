@@ -83,6 +83,7 @@ const stageConfig = z.object({
     })
     .optional(),
   output: z.string().optional(),
+  episodicMemory: z.boolean().optional(), // Phase 4: STAGE-scoped (agent-context.md)
 });
 
 const lessonConfig = z.object({
@@ -128,6 +129,19 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
   const parsed = lessonConfig.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
+  }
+  // episodicMemory is STAGE-scoped (agent-context.md). Zod silently STRIPS unknown keys,
+  // so a misplaced interaction-level flag would otherwise vanish — exactly the silent
+  // fallback the rules forbid. Inspect the RAW config and fail closed.
+  {
+    const rawStages = (raw as { stages?: unknown[] })?.stages ?? [];
+    for (const rs of rawStages) {
+      const st = rs as { stageId?: unknown; interaction?: Record<string, unknown>; variants?: { interaction?: Record<string, unknown> }[] };
+      const ixs = [st.interaction, ...(st.variants ?? []).map((v) => v?.interaction)];
+      if (ixs.some((i) => i !== undefined && i !== null && Object.prototype.hasOwnProperty.call(i, "episodicMemory"))) {
+        return { ok: false, errors: [`stage "${String(st.stageId)}": episodicMemory is STAGE-scoped — it must not appear on an interaction (agent-context.md)`] };
+      }
+    }
   }
   const lesson = parsed.data;
   const errors: string[] = [];

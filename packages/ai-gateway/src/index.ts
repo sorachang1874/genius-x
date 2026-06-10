@@ -4,7 +4,7 @@
  * providers. Real Tencent adapters + 天御 moderation, and the interaction wiring (M2b), follow.
  */
 export { AiGateway } from "./gateway";
-export type { GatewayDeps, ExtractMemoryRequest } from "./gateway";
+export type { GatewayDeps, ExtractMemoryRequest, ExtractEpisodeRequest } from "./gateway";
 export { KeywordSafetyFilter } from "./safety";
 export type { SafetyFilter } from "./safety";
 export { PresetFallbackLibrary } from "./fallback";

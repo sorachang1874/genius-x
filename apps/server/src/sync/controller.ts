@@ -19,7 +19,7 @@ import type {
   ArtifactType,
   InteractionRecord,
 } from "@genius-x/contracts";
-import { PROMPT_ASSEMBLY_TOKEN_RE, clampTurnText } from "@genius-x/contracts";
+import { EPISODE_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE, clampTurnText } from "@genius-x/contracts";
 import type { LlmTextResult, TurnBufferEntry } from "@genius-x/contracts";
 import type { AiGateway } from "@genius-x/ai-gateway";
 import type { TurnBufferStore } from "../session/turnbuffer";
@@ -84,6 +84,8 @@ interface Effects {
   completed?: { lessonId: string; students: Record<string, StudentRuntimeState> };
   /** Stage completions that produce a lesson-declared artifact (Phase 2 workspace works). */
   artifacts?: { studentId: string; stageId: string; type: ArtifactType; you: StudentRuntimeState }[];
+  /** Set on ANY class-wide stage transition — the exited SCENE (Phase 4 consolidation). */
+  sceneExited?: { stageId: string; studentIds: string[] };
 }
 
 /** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
@@ -126,6 +128,10 @@ export class ClassroomController {
 
   private readonly workspaceSkipTraced = new Set<string>();
   private readonly turnBufferSkipTraced = new Set<string>();
+  /** In-flight scene consolidations per session — the lesson-end sweep MUST wait for these
+   *  (review-proven race: clearSession could delete buffers before consolidation drained
+   *  them — silent episode loss). Fire-and-forget relative to the classroom throughout. */
+  private readonly inflightConsolidations = new Map<string, Set<Promise<void>>>();
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
     if (msg.type === "HELLO") {
@@ -170,6 +176,12 @@ export class ClassroomController {
         persist && before.currentStageId !== finalStageId && result.state.currentStageId === finalStageId
           ? { lessonId: before.lessonId, students: result.state.students }
           : undefined;
+      // Phase 4 (agent-context.md): ANY class-wide stage exit is a SCENE exit — captured
+      // here (consistent snapshot), consolidated outside the mutex (fire-and-forget).
+      const sceneExited =
+        persist && before.currentStageId !== result.state.currentStageId
+          ? { stageId: before.currentStageId, studentIds: Object.keys(result.state.students) }
+          : undefined;
       // Phase 2: a student COMPLETING a stage that declares an artifact (stage.output)
       // produces a workspace Work — captured here (consistent snapshot), written outside.
       const artifacts: Effects["artifacts"] = [];
@@ -205,7 +217,7 @@ export class ClassroomController {
       }
       return {
         next: persist ? result.state : undefined,
-        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }) },
+        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }), ...(sceneExited && { sceneExited }) },
       };
     });
     for (const t of effects.traces) this.trace.record(t);
@@ -224,6 +236,18 @@ export class ClassroomController {
     for (const artifact of effects.artifacts ?? []) {
       void this.recordStageWork(sessionId, artifact);
     }
+    // Phase 4: end-of-scene episodic consolidation (fire-and-forget; per-student isolation;
+    // failure = trace, the classroom never blocks — agent-context.md). Tracked per session
+    // so the lesson-end sweep can sequence AFTER all in-flight consolidations.
+    if (effects.sceneExited) {
+      const inflight = this.inflightConsolidations.get(sessionId) ?? new Set<Promise<void>>();
+      this.inflightConsolidations.set(sessionId, inflight);
+      const p = this.consolidateScene(sessionId, effects.sceneExited).catch((err: unknown) =>
+        this.trace.record(this.mkTrace("interaction", { reason: "episode_consolidation_crashed", error: String((err as Error)?.name ?? err), sessionId })),
+      );
+      inflight.add(p);
+      void p.finally(() => inflight.delete(p));
+    }
     // Phase 1 (Step 6): persistent profile write-back at lesson end — fire-and-forget,
     // NEVER blocks the classroom; every skip/failure is an operator-visible trace.
     if (effects.completed) {
@@ -231,10 +255,16 @@ export class ClassroomController {
         this.trace.record(this.mkTrace("stage_transition", { reason: "profile_writeback_crashed", error: String((err as Error)?.name ?? err), sessionId })),
       );
       // Phase 4 (owner-matrix deletion clause): lesson end sweeps the session's turn
-      // buffers (per-scene drain-on-exit arrives with Step-3 consolidation). Fire-and-forget.
-      void this.turnBuffer?.clearSession(sessionId).catch((err: unknown) =>
-        this.trace.record(this.mkTrace("interaction", { reason: "context_sweep_failed", error: String((err as Error)?.name ?? err), sessionId })),
-      );
+      // buffers — AFTER every in-flight scene consolidation settles (review-proven race:
+      // an eager sweep deleted not-yet-drained buffers ⇒ silent episode loss). Still
+      // fire-and-forget relative to the classroom.
+      const inflight = this.inflightConsolidations.get(sessionId);
+      void Promise.allSettled(inflight ? [...inflight] : [])
+        .then(() => this.turnBuffer?.clearSession(sessionId))
+        .then(() => this.inflightConsolidations.delete(sessionId))
+        .catch((err: unknown) =>
+          this.trace.record(this.mkTrace("interaction", { reason: "context_sweep_failed", error: String((err as Error)?.name ?? err), sessionId })),
+        );
       // Phase 3: parent share links (per attending student; same isolation discipline).
       if (this.shareMinter) {
         const { lessonId, students } = effects.completed;
@@ -380,9 +410,10 @@ export class ClassroomController {
         }
         return { out: { ok: false, traces: [trace] } };
       }
-      // NOTE: artifact/lesson-end detection lives ONLY in applyEvent — safe because the
-      // reducer never completes a stage nor advances the class from INTERACTION_DONE
-      // (counts only). If that ever changes, route these effects through applyEvent.
+      // NOTE: artifact/lesson-end/SCENE-EXIT detection lives ONLY in applyEvent — safe
+      // because the reducer never completes a stage nor advances the class from
+      // INTERACTION_DONE (counts only). If that ever changes, route these effects
+      // through applyEvent.
       const result = this.reducer(s, { type: "INTERACTION_DONE", studentId, stageId, interactionId, degraded }, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");
       const traces = result.commands.filter((c): c is Extract<EngineCommand, { type: "TRACE" }> => c.type === "TRACE").map((c) => c.event);
@@ -396,8 +427,13 @@ export class ClassroomController {
 
     // Phase 2: persist the exchange (fire-and-forget; resolves to undefined on failure so
     // the memory write below can still link when it succeeded).
+    // Safety status from the gateway's signal (agent-context.md safety parity item 3):
+    // the recorder marks filtered exchanges so future readers can exclude/re-review them.
+    const safety = round?.llm.meta.filtered === "input" ? "input_filtered" as const
+      : round?.llm.meta.filtered === "output" ? "output_filtered" as const
+      : "ok" as const;
     const recorded = accepted.ok
-      ? this.recordInteractionToWorkspace(sessionId, studentId, stageId, input, output, degraded, transcript)
+      ? this.recordInteractionToWorkspace(sessionId, studentId, stageId, input, output, degraded, transcript, safety)
       : Promise.resolve(undefined);
 
     // Memory extraction (contracts-v1.4): for an extracting talent input, reuse the ASR transcript
@@ -594,6 +630,54 @@ export class ClassroomController {
       default: {
         const _exhaustive: never = input;
         return _exhaustive;
+      }
+    }
+  }
+
+  /**
+   * End-of-scene episodic consolidation (agent-context.md): for each student, DRAIN the
+   * exited scene's turn buffer (exactly once) and — when the stage declares
+   * `episodicMemory` — summarize it into ONE schema-validated episode written to the
+   * workspace under the RESERVED `key="episode"`. Per-student isolation: one failure
+   * never stops the others; every skip/failure is a countable trace.
+   */
+  private async consolidateScene(sessionId: string, exited: { stageId: string; studentIds: string[] }): Promise<void> {
+    if (!this.turnBuffer) return; // absence already traced once per session
+    const stage = stageById(this.lesson, exited.stageId);
+    const episodic = stage?.episodicMemory === true;
+    const hasWorkspace = episodic ? this.ensureWorkspace(sessionId) : false;
+    // NOTE (interim, agent-context.md changelog): consolidation is SERIAL per student —
+    // no provider burst; bounded parallelism arrives with the Step-5 gateway queue.
+    for (const studentId of exited.studentIds) {
+      const key = { sessionId, studentId, stageId: exited.stageId };
+      try {
+        // Drain UNCONDITIONALLY on scene exit (the deletion clause: buffers clear at scene
+        // exit, episodic or not) — gates below decide whether the drained scene becomes an
+        // episode, and an episodic scene discarded for a missing workspace is COUNTED.
+        const entries = await this.turnBuffer.drain(key);
+        if (entries.length === 0) continue; // nothing said this scene — nothing to remember
+        if (!episodic) continue; // non-episodic scene: drained (cleanup), no episode by design
+        if (!hasWorkspace) {
+          this.trace.record(this.mkTrace("interaction", { reason: "episode_skipped_workspace_absent", ...key }));
+          continue;
+        }
+        const episode = await this.gateway.extractEpisode({ rounds: entries, promptVersion: "episode_v1", studentId, stageId: exited.stageId });
+        if (episode === null) {
+          // The gateway already traced WHY (schema miss / safety); count the lost episode.
+          this.trace.record(this.mkTrace("interaction", { reason: "episode_consolidation_failed", ...key }));
+          continue;
+        }
+        await this.workspace!.recordMemory({
+          studentId,
+          key: EPISODE_MEMORY_KEY,
+          value: JSON.stringify(episode),
+          context: { lessonId: this.lesson.lessonId, stageId: exited.stageId, sessionId },
+        });
+        this.trace.record(this.mkTrace("interaction", { reason: "episode_consolidated", entries: entries.length, ...key }));
+      } catch (err) {
+        this.trace.record(this.mkTrace("interaction", {
+          reason: "episode_consolidation_failed", error: String((err as Error)?.name ?? err), ...key,
+        }));
       }
     }
   }
@@ -805,6 +889,7 @@ export class ClassroomController {
     output: ClientAiOutput,
     degraded: boolean,
     transcript: string | undefined,
+    safety: "ok" | "input_filtered" | "output_filtered" = "ok",
   ): Promise<InteractionRecord | undefined> {
     if (!this.ensureWorkspace(sessionId)) return undefined;
     try {
@@ -833,6 +918,7 @@ export class ClassroomController {
           ...(outputText && { text: outputText }),
           degraded,
         },
+        safety,
       });
     } catch (err) {
       this.traceWorkspaceFailure("interaction", sessionId, studentId, err);

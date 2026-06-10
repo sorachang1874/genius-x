@@ -61,8 +61,20 @@ beforeAll(async () => {
   // Canned gateway content: the LLM text doubles as the memory-extraction JSON, so the
   // talent interaction deterministically mines favorite_toy=积木 (and the birth speech
   // becomes the same string — content realism is irrelevant here, plumbing is the point).
+  // The canned LLM text doubles as memory-extraction JSON for memory/speech calls; the
+  // EPISODE call must yield a schema-valid EpisodeValue instead — switch by promptVersion
+  // (the fake's scripted episode default applies when no llmText overrides it).
+  const memoryFake = new FakeProvider({}, { llmText: '{"key":"favorite_toy","value":"积木"}', transcript: "我最喜欢积木" });
+  class PromptSwitchingFake extends FakeProvider {
+    override llm(req: Parameters<FakeProvider["llm"]>[0]): ReturnType<FakeProvider["llm"]> {
+      // episode_v1 falls through to the fake's scripted VALID episode; everything else
+      // gets the canned memory JSON.
+      return req.promptVersion === "episode_v1" ? super.llm(req) : memoryFake.llm(req);
+    }
+  }
+  const provider = new PromptSwitchingFake({}, { transcript: "我最喜欢积木" });
   const gateway = new AiGateway({
-    provider: new FakeProvider({}, { llmText: '{"key":"favorite_toy","value":"积木"}', transcript: "我最喜欢积木" }),
+    provider,
     safety: new KeywordSafetyFilter(),
     fallback: new PresetFallbackLibrary(),
     trace: { record: (e) => traces.push(e) },
@@ -232,6 +244,9 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       expect(voice).toBeDefined();
       expect(voice!.input.text).toBe("我最喜欢积木"); // ASR transcript, the allowed textual form
       expect(voice!.output.degraded).toBe(false);
+      // Phase 4: leaving 才艺互动 consolidated the scene's rounds into ONE episode — the
+      // trace IS the completion event (deterministic, no count races).
+      await waitFor(() => traces.find((t) => t.payload.reason === "episode_consolidated"));
       // Memories: mined + LINKED into its source interaction record.
       const memories = await get<ListMemoriesResponse>(`/students/${student.id}/memories`);
       const toy = memories.memories.find((m) => m.key === "favorite_toy");
@@ -242,11 +257,19 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       expect(sourceId).toBeDefined();
       const linked = interactions.interactions.find((i) => i.id === sourceId);
       expect(linked?.memoriesExtracted).toContain(toy!.id);
+      // Phase 4 episodic memory: schema-valid EpisodeValue under the RESERVED key.
+      const episode = memories.memories.find((m) => m.key === "episode");
+      expect(episode).toBeDefined();
+      const ep = JSON.parse(episode!.value) as { summary: string; tags: string[] };
+      expect(ep.summary.length).toBeGreaterThan(0);
+      expect(episode!.context.stageId).toBe("talent");
+      // Interactions carry the Phase-4 safety status (clean rounds ⇒ "ok").
+      expect(voice!.safety).toBe("ok");
       // Summary counts line up.
       const summary = await get<WorkspaceSummaryResponse>(`/students/${student.id}/workspace`);
       expect(summary.workCount).toBe(2); // exact: a duplicate-write regression must fail here
       expect(summary.interactionCount).toBe(2);
-      expect(summary.memoryCount).toBe(1);
+      expect(summary.memoryCount).toBe(2); // favorite_toy + the talent episode
 
       // 7. PARENT SHARE (Phase 3): lesson end auto-minted a capability link (the sink IS
       // the event) — open it over REAL HTTP and verify the filtered view.
@@ -266,6 +289,10 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       for (const denied of ["aiParams", "degraded", "sessionId", "stageId", "studentId", "tenantId", "parentId"]) {
         expect(shareJson).not.toContain(denied);
       }
+      // parent-share v1.2: episodic memories (raw OR curated) never reach the parent —
+      // pinned with the CONTENT of this run's actual episode, not just key names.
+      expect(shareJson).not.toContain(ep.summary);
+      expect(shareJson).not.toContain("episode");
       expect(traces.some((t) => t.payload.reason === "share_mint_ok")).toBe(true); // counted
     } finally {
       sock?.disconnect();

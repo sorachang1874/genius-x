@@ -19,6 +19,7 @@
  * Pure TypeScript types only — zod/wire validation lives at the service boundary.
  */
 import type { ArtifactType, MemoryKey, StageId } from "./enums";
+import type { InteractionSafetyStatus } from "./agent-context";
 
 // --- Work (a creative output the child produced) ---
 
@@ -98,6 +99,12 @@ export interface InteractionRecord {
   output: InteractionOutputRecord;
   /** StudentMemory ids extracted from this exchange (filled async; often empty). */
   memoriesExtracted: string[];
+  /**
+   * Phase 4 (agent-context.md safety parity): set by the recorder from the gateway's
+   * AiMeta.filtered. Pre-migration rows carry the backfill DEFAULT "ok" — a labeling
+   * default, NOT evidence of review (readers must exclude/re-review degraded rows).
+   */
+  safety: InteractionSafetyStatus;
   createdAt: string; // ISO
 }
 
@@ -150,6 +157,8 @@ export interface RecordInteractionRequest {
   context: InteractionContext;
   input: InteractionInputRecord;
   output: InteractionOutputRecord;
+  /** Defaults to "ok"; the classroom recorder sets it from AiMeta.filtered (Phase 4). */
+  safety?: InteractionSafetyStatus;
 }
 
 export interface RecordMemoryRequest {

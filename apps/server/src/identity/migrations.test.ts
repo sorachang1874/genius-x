@@ -31,6 +31,10 @@ const migration003: MigrationFile = {
   name: "003_phase3_share_tokens.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "003_phase3_share_tokens.sql"), "utf8"),
 };
+const migration004: MigrationFile = {
+  name: "004_phase4_interaction_safety.sql",
+  sql: readFileSync(join(MIGRATIONS_DIR, "004_phase4_interaction_safety.sql"), "utf8"),
+};
 const seed: MigrationFile = {
   name: "001_phase1_identity_seed.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "001_phase1_identity_seed.sql"), "utf8"),
@@ -68,7 +72,7 @@ async function count(text: string, params?: unknown[]): Promise<number> {
 beforeAll(async () => {
   db = new PGlite(); // fresh in-memory Postgres
   sql = adapter(db);
-  await applyMigrations(sql, [migration, migration002, migration003], quiet); // same path as the production CLI
+  await applyMigrations(sql, [migration, migration002, migration003, migration004], quiet); // same path as the production CLI
   await applySeeds(sql, [seed], quiet);
 });
 
@@ -79,6 +83,7 @@ describe("001_phase1_identity migration + seed (via the runner)", () => {
       { filename: migration.name, checksum: sha256(migration.sql) },
       { filename: migration002.name, checksum: sha256(migration002.sql) },
       { filename: migration003.name, checksum: sha256(migration003.sql) },
+      { filename: migration004.name, checksum: sha256(migration004.sql) },
     ]);
     expect(await count("SELECT COUNT(*)::int AS n FROM tenants WHERE id = $1", [DEFAULT_DEMO_TENANT_ID])).toBe(1);
     expect(await count("SELECT COUNT(*)::int AS n FROM parents WHERE id = ANY($1)", [[PARENT_1, PARENT_2]])).toBe(2);
@@ -96,7 +101,7 @@ describe("001_phase1_identity migration + seed (via the runner)", () => {
   });
 
   it("re-applying is safe: migration skips via journal, seed is idempotent", async () => {
-    await applyMigrations(sql, [migration, migration002, migration003], quiet); // skip path (checksum match)
+    await applyMigrations(sql, [migration, migration002, migration003, migration004], quiet); // skip path (checksum match)
     await applySeeds(sql, [seed], quiet); // ON CONFLICT DO NOTHING
     expect(await count("SELECT COUNT(*)::int AS n FROM students WHERE id = ANY($1)", [SEED_STUDENTS])).toBe(4);
     expect(await count("SELECT COUNT(*)::int AS n FROM guardian_consents WHERE student_id = ANY($1)", [SEED_STUDENTS])).toBe(4);
