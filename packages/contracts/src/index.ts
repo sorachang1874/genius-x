@@ -18,3 +18,5 @@ export * from "./enrollment";
 // Phase 2 — student workspace (docs/contracts/workspace.md).
 export * from "./workspace";
 export * from "./workspace-api";
+// Phase 3 — parent read-only share artifact (docs/contracts/parent-share.md).
+export * from "./parent-share";

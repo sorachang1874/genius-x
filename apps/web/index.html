@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- The parent share capability token rides in the query string; legacy WeChat/X5
+         webviews can send full URLs in Referer to cross-origin media. No fetch here needs
+         a Referer, so: never send one (parent-share.md Transport row). -->
+    <meta name="referrer" content="no-referrer" />
     <title>Genius X</title>
   </head>
   <body>

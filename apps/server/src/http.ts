@@ -18,6 +18,8 @@ import { IdentityServiceError, type IdentityService } from "./identity/service";
 import { registerIdentityRoutes } from "./identity/routes";
 import type { WorkspaceService } from "./workspace/service";
 import { registerWorkspaceRoutes } from "./workspace/routes";
+import type { ShareService } from "./share/service";
+import { registerPublicShareRoute, registerOperatorShareRoutes } from "./share/routes";
 import { freshStudentState } from "./sync/controller";
 
 const ROLES: ReadonlySet<string> = new Set(["student", "assistant", "teacher", "parent", "admin"] satisfies Role[]);
@@ -47,6 +49,13 @@ export interface HttpOptions {
   identity?: IdentityService;
   /** Workspace Service (Phase 2). Absent ⇒ workspace READ endpoints not registered (404). */
   workspace?: WorkspaceService;
+  /** Share Service (Phase 3). Absent ⇒ GET /share/:token not registered (404). */
+  share?: ShareService;
+  /**
+   * Parent web origin for the mint route's composed capability URL (the server is the
+   * SINGLE URL composer — parent-share.md). Default: dev Vite origin.
+   */
+  webBaseUrl?: string;
   /**
    * CORS origin. "*" for dev (separate Vite/Fastify origins); pin via CORS_ORIGIN in
    * operator deployments — identity/workspace endpoints carry child PII, no auth until P3.
@@ -61,7 +70,7 @@ export interface HttpOptions {
 }
 
 export function buildHttp(store: SessionStore, options: HttpOptions): FastifyInstance {
-  const { lessonId, lessonConfigVersion, firstStageId, identity, workspace, trace } = options;
+  const { lessonId, lessonConfigVersion, firstStageId, identity, workspace, share, trace } = options;
   const tenantId = options.tenantId ?? DEFAULT_DEMO_TENANT_ID;
   const corsOrigin = options.corsOrigin ?? "*";
   const app = Fastify();
@@ -83,8 +92,15 @@ export function buildHttp(store: SessionStore, options: HttpOptions): FastifyIns
     return reply.code(500).send({ error: "INTERNAL" });
   });
 
+  // EXPOSURE POSTURES (parent-share.md "Deployment exposure rule"): everything below until
+  // the public share route is OPERATOR-bounded (unauthenticated child PII — never
+  // internet-exposed until Better Auth); GET /share/:token is the ONE route an
+  // internet-facing proxy may forward (plus the static H5).
   if (identity) registerIdentityRoutes(app, identity);
   if (workspace) registerWorkspaceRoutes(app, workspace);
+  if (share) registerOperatorShareRoutes(app, share, options.webBaseUrl ?? "http://localhost:5173");
+  // --- public surface ---
+  if (share) registerPublicShareRoute(app, share);
 
   /** Fresh session shell (create-if-absent), bound to this server's tenant. */
   const newSession = (sessionId: string): ClassSession => ({

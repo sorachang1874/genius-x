@@ -45,6 +45,7 @@ Models: see `workspace.ts` (authoritative). Key semantics:
 | --- | --- |
 | `Work.type` | Opaque `ArtifactType`, must be in the lesson's `declaredArtifactTypes` (validated at write) — **divergence from architecture §2.2's closed enum, lead-serialized** (lesson-extensible per enums.ts philosophy) |
 | Work content | At least one of `contentUrl`/`contentText`/`contentJson` present (no empty works) |
+| `Work.contentJson` is **parent-visible by contract** | Phase 3 serves it verbatim in the share view ([parent-share.md](parent-share.md)) — writers must keep it free of operator metadata / internal ids; the share service deep-scrubs denied keys as defense-in-depth (traced) |
 | `InteractionRecord.input` | REF or short text only — **raw audio/doodle bytes are never stored** (privacy contract) |
 | `output.degraded` / `WorkMetadata.degraded` | Operator-visible end-to-end; parents/children never see it |
 | `StudentMemory` | Persistent twin of the runtime memory; keys ∈ `declaredMemoryKeys`; importance baseline 0.5 (Phase 4 scores) |

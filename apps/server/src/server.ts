@@ -11,6 +11,7 @@ import { validateLessonConfig } from "./engine/validate";
 import { InMemorySessionStore, type SessionStore } from "./session/store";
 import type { IdentityService } from "./identity/service";
 import type { WorkspaceService } from "./workspace/service";
+import { consoleNotificationSink, LessonShareMinter, type NotificationSink, type ShareService } from "./share/service";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
 import { buildHttp } from "./http";
@@ -31,6 +32,12 @@ export interface ServerOptions {
   workspace?: WorkspaceService;
   /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content). */
   gateway?: AiGateway;
+  /** Share Service (Phase 3). Absent ⇒ share endpoint + lesson-end minting disabled (traced). */
+  share?: ShareService;
+  /** Parent web origin for capability URLs (default dev Vite origin). */
+  webBaseUrl?: string;
+  /** Notification seam (default: console — operator forwards the link manually). */
+  notify?: NotificationSink;
   /** CORS origin ("*" default for dev; pin in operator deployments — see buildHttp). */
   corsOrigin?: string;
 }
@@ -63,6 +70,7 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     trace,
     now: () => clock.now(),
   });
+  const webBaseUrl = opts.webBaseUrl ?? "http://localhost:5173";
   const app = buildHttp(store, {
     lessonId: lesson.lessonId,
     lessonConfigVersion: lesson.lessonConfigVersion,
@@ -70,13 +78,18 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     ...(opts.tenantId && { tenantId: opts.tenantId }),
     ...(opts.identity && { identity: opts.identity }),
     ...(opts.workspace && { workspace: opts.workspace }),
+    ...(opts.share && { share: opts.share }),
+    webBaseUrl,
     ...(opts.corsOrigin && { corsOrigin: opts.corsOrigin }),
     trace,
   });
+  const shareMinter = opts.share
+    ? new LessonShareMinter(opts.share, opts.notify ?? consoleNotificationSink, webBaseUrl)
+    : undefined;
   // Same origin policy as HTTP (note: CORS cannot gate non-browser WS clients — the real
   // guard is the controller's deny-unknown-student resume, Phase 1 Step 5).
   const io = new Server(app.server, { cors: { origin: opts.corsOrigin ?? "*" } });
-  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity, opts.workspace);
+  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity, opts.workspace, shareMinter);
   attachSocket(io, controller);
 
   const host = opts.host ?? "0.0.0.0";

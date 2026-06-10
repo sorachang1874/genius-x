@@ -91,7 +91,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 0** | Architecture design | 1 week | ✅ Complete |
 | **Phase 1** | Persistent identity & enrollment | 2-3 weeks | ✅ Complete (2026-06-09) |
 | **Phase 2** | Student workspace foundation | 3-4 weeks | ✅ Complete (2026-06-09) |
-| **Phase 3** | Parent read-only artifact | 2 weeks | 📋 Planned |
+| **Phase 3** | Parent read-only artifact | 2 weeks | ✅ Complete (2026-06-09) |
 | **Phase 4** | Agent service with memory | 4-5 weeks | 📋 Planned |
 | **Phase 5** | Tool registry & tool-calling | 3-4 weeks | 📋 Planned |
 | **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
@@ -141,7 +141,9 @@ Phase 1+ contracts:
 - `identity.md`: Student/parent persistent identity, tenant model — **frozen v1**
 - `enrollment.md`: Enrollment API surface, error codes, join migration — **frozen v1**
 - `workspace.md`: works/interactions/memories + read API — **frozen v1** (Phase 2)
-- `agent.md` / `tool.md` / `parent-share.md` / `content.md`: planned — not yet authored
+- `parent-share.md`: capability-URL share + privacy DENY list + deployment exposure rule —
+  **frozen v1.1** (Phase 3; v1.1 = security-review amendments, lead-serialized)
+- `agent.md` / `tool.md` / `content.md`: planned — not yet authored
 
 ---
 
@@ -263,4 +265,14 @@ All shadow systems remain pluggable and will not block classroom runtime per AGE
 ---
 
 _Last milestone: PHASE 2 COMPLETE — student workspace (contracts → schema 002 → service/API → per-stage classroom writes → e2e)_
-_Next milestone: Phase 3 — parent read-only artifact (H5 + WeChat notification)_
+**Phase 3 delivered** (2026-06-09, branch `phase3/parent-share`): capability-token share
+(256-bit, hash-only storage, 90-day expiry, uniform 404), lesson-end auto-mint with
+operator notification seam (console default; WeChat sink = seam-ready, needs 资质),
+privacy-filtered `GET /share/:token` (DENY-list serialization-pinned + deep contentJson
+scrub), parent H5 (`?share=` route: certificate hero + works gallery + warm empty/failure
+states), operator tool `tools/parent-link.mjs`, expiry+30d retention sweep, BINDING
+deployment exposure rule (proxy allowlist; DF-v2-16 = process-enforced split). Adversarial
+security review: 1 blocker + 4 majors + 7 minors + 4 nits — ALL confirmed findings fixed
+with tests (202 server / 63 web green; real-PG16 smoke green).
+
+_Next milestone: Phase 4 — agent service with memory (context building, retrieval)_
