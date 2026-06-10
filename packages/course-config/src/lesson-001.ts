@@ -11,7 +11,7 @@ import type { LessonConfig } from "@genius-x/contracts";
 export const lesson001: LessonConfig = {
   lessonId: "lesson-001",
   lessonTitle: "认识我的 AI 好朋友",
-  lessonConfigVersion: "1.2.0", // 1.2.0: shape declares the avatar_image artifact (Phase 2 workspace)
+  lessonConfigVersion: "1.3.0", // 1.3.0: promptAssembly carries SCENE content only — the brand style suffix moved to the gateway-level brand contract (docs/contracts/brand-style.md). OPS: bumping this fails-closed ALL persisted sessions on every message (guardSession) — deploy outside class hours; flush/reseed Redis sessions.
   totalDuration: 60,
   unlockPolicy: "classWide",
   declaredOutputs: ["avatarUrl"],
@@ -99,12 +99,16 @@ export const lesson001: LessonConfig = {
             promptTemplate: "shape_dialogue_v1",
             questions: [
               { id: "ears", text: "我的耳朵应该是尖尖的还是圆圆的？", options: ["尖耳", "圆耳"] },
+              // NOTE: "nose" is deliberately unreferenced by promptAssembly (pre-existing;
+              // the dialogue beat matters, the image doesn't render noses well) — keep the
+              // omission a conscious lesson-author choice, not an accident.
               { id: "nose", text: "我的鼻子要长一点还是小一点？", options: ["长鼻", "小鼻"] },
               { id: "accessory", text: "我想带一个配饰，是帽子还是眼镜？", options: ["帽子", "眼镜"] },
               { id: "background", text: "我身后的背景是大森林还是太空？", options: ["森林", "太空"] },
             ],
-            promptAssembly:
-              "一只可爱的 {ears} 卡通动物角色，{accessory}，{background}背景，儿童插画风格，鲜艳色彩，白色背景",
+            // SCENE content only (brand-style.md): the brand style suffix is injected by
+            // the AI gateway — no lesson config may carry brand-style language.
+            promptAssembly: "一只可爱的 {ears} 卡通动物角色，{accessory}，{background}背景",
           },
           writesOutputs: ["avatarUrl"],
         },

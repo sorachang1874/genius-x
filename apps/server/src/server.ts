@@ -4,7 +4,7 @@
  */
 import { Server } from "socket.io";
 import type { LessonConfig } from "@genius-x/contracts";
-import { AiGateway, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
+import { AiGateway, BRAND_STYLE_V0, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
 import { lesson001 } from "@genius-x/course-config";
 import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
@@ -30,7 +30,9 @@ export interface ServerOptions {
   identity?: IdentityService;
   /** Workspace Service (Phase 2). Absent ⇒ workspace reads disabled + classroom writes skipped (traced). */
   workspace?: WorkspaceService;
-  /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content). */
+  /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content).
+   *  The injected gateway owns ALL its deps INCLUDING brandStyle — omitting brandStyle is
+   *  loud (`brand_style_absent` traced per image call), never silently unstyled. */
   gateway?: AiGateway;
   /** Share Service (Phase 3). Absent ⇒ share endpoint + lesson-end minting disabled (traced). */
   share?: ShareService;
@@ -69,6 +71,9 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     fallback: new PresetFallbackLibrary(),
     trace,
     now: () => clock.now(),
+    // brand-style.md: every image call carries the versioned brand style (v0 placeholder,
+    // DF-v2-18). A gateway without it traces brand_style_absent per call.
+    brandStyle: BRAND_STYLE_V0,
   });
   const webBaseUrl = opts.webBaseUrl ?? "http://localhost:5173";
   const app = buildHttp(store, {

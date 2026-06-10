@@ -7,6 +7,11 @@
  */
 import { z } from "zod";
 import type { StudentPredicate, AdvanceCondition, LessonConfig } from "@genius-x/contracts";
+import { EPISODE_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
+
+/** Brand-style language is the GATEWAY's job (brand-style.md): the enumerated denylist a
+ *  lesson's promptAssembly must not contain — scene content only, fail closed. */
+const BRAND_STYLE_VOCABULARY_RE = /风格|色彩|插画|画风|水彩|像素/;
 
 const studentPredicate: z.ZodType<StudentPredicate> = z.union([
   z.object({ kind: z.literal("stageStatus"), is: z.enum(["waiting", "in_progress", "completed"]) }),
@@ -130,6 +135,12 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
   const artifacts = new Set(lesson.declaredArtifactTypes);
   const memoryKeys = new Set(lesson.declaredMemoryKeys);
 
+  // agent-context.md: "episode" is the RESERVED schema-validated memory kind — a lesson
+  // declaring it would let child-derived free values flow under the reserved key.
+  if (memoryKeys.has(EPISODE_MEMORY_KEY)) {
+    errors.push(`declaredMemoryKeys must not contain the reserved key "${EPISODE_MEMORY_KEY}" (agent-context.md)`);
+  }
+
   // certificate labels/order must reference declared memory keys (fail closed — contracts-v1.4)
   for (const k of Object.keys(lesson.certificate?.memoryLabels ?? {})) {
     if (!memoryKeys.has(k)) errors.push(`certificate.memoryLabels references undeclared memory key "${k}"`);
@@ -160,6 +171,37 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
     const hasAppState = st.appState !== undefined && Object.keys(st.appState).length > 0;
     if (!hasVariants && !st.interaction && !hasAppState) {
       errors.push(`stage "${st.stageId}" is a no-op (no interaction, variants, or appState)`);
+    }
+
+    // brand-style.md preflights (fail closed — the same shared token regex the runtime
+    // assembler uses, so validator and controller can never drift):
+    //   1. template tokens must reference declared question ids;
+    //   2. question ids must be TOKENIZABLE (ASCII word chars) when a template exists —
+    //      a CJK/hyphenated id would never match a token, silently un-templating it;
+    //   3. no residual braces after token extraction (malformed tokens like "{ ears }"
+    //      would ship to the image provider as literal brace text);
+    //   4. no brand-style vocabulary — scene content only, the brand suffix is gateway-injected.
+    for (const i of [st.interaction, ...(st.variants ?? []).map((v) => v.interaction)]) {
+      if (i?.type === "structured_qa" && i.promptAssembly !== undefined) {
+        const ids = new Set(i.questions.map((q) => q.id));
+        for (const m of i.promptAssembly.matchAll(PROMPT_ASSEMBLY_TOKEN_RE)) {
+          if (!ids.has(m[1]!)) {
+            errors.push(`stage "${st.stageId}" promptAssembly references unknown question id "${m[1]}"`);
+          }
+        }
+        for (const q of i.questions) {
+          if (!/^[A-Za-z0-9_]+$/.test(q.id)) {
+            errors.push(`stage "${st.stageId}" question id "${q.id}" is not tokenizable (promptAssembly requires /^[A-Za-z0-9_]+$/ ids)`);
+          }
+        }
+        const residue = i.promptAssembly.replace(PROMPT_ASSEMBLY_TOKEN_RE, "");
+        if (/[{}]/.test(residue)) {
+          errors.push(`stage "${st.stageId}" promptAssembly contains malformed token text (residual braces)`);
+        }
+        if (BRAND_STYLE_VOCABULARY_RE.test(i.promptAssembly)) {
+          errors.push(`stage "${st.stageId}" promptAssembly contains brand-style language (brand-style.md: scene content only — the brand suffix is injected by the gateway)`);
+        }
+      }
     }
   }
 

@@ -19,6 +19,7 @@ import type {
   ArtifactType,
   InteractionRecord,
 } from "@genius-x/contracts";
+import { PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
 import type { AiGateway } from "@genius-x/ai-gateway";
 import type { Reducer } from "../engine";
 import { stageById } from "../engine/nextStage";
@@ -339,7 +340,7 @@ export class ClassroomController {
     let degraded: boolean;
     let transcript: string | undefined;
     try {
-      ({ output, degraded, transcript } = await this.callGateway(stageId, input));
+      ({ output, degraded, transcript } = await this.callGateway(sessionId, cmd));
     } catch (err) {
       // gateway methods shouldn't throw, but be defensive — degrade + still complete
       this.trace.record(this.mkTrace("fallback", { reason: "gateway_threw", error: String(err), interactionId, studentId }));
@@ -518,7 +519,11 @@ export class ClassroomController {
   }
 
   /** Map an interaction input to gateway calls → a child-renderable output + degraded flag. */
-  private async callGateway(stageId: string, input: Extract<EngineCommand, { type: "CALL_INTERACTION" }>["input"]): Promise<{ output: ClientAiOutput; degraded: boolean; transcript?: string }> {
+  private async callGateway(
+    sessionId: string,
+    cmd: Extract<EngineCommand, { type: "CALL_INTERACTION" }>,
+  ): Promise<{ output: ClientAiOutput; degraded: boolean; transcript?: string }> {
+    const { stageId, input } = cmd;
     const promptVersion = this.promptFor(stageId);
     let degraded = false;
     const mark = (m: { degraded: boolean }): void => { if (m.degraded) degraded = true; };
@@ -540,7 +545,10 @@ export class ClassroomController {
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
       case "answers": {
-        const img = await this.gateway.imageGen({ kind: "text2img", source: JSON.stringify(input.answersByQuestionId), count: 3 }); mark(img.meta);
+        // brand-style.md: the lesson's promptAssembly is a SCENE template ({questionId} →
+        // chosen option), assembled here; the BRAND suffix is the gateway's job, never ours.
+        const source = this.assembleImagePrompt(sessionId, cmd, input.answersByQuestionId);
+        const img = await this.gateway.imageGen({ kind: "text2img", source, count: 3 }); mark(img.meta);
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
       case "playPrepared":
@@ -559,6 +567,59 @@ export class ClassroomController {
     const stage = stageById(this.lesson, stageId);
     const i = stage?.interaction ?? stage?.variants?.[0]?.interaction;
     return i && "promptTemplate" in i ? i.promptTemplate : "generic_v1";
+  }
+
+  /**
+   * Assemble the structured_qa scene prompt: substitute each {questionId} token with the
+   * child's chosen option (brand-style.md "Scene-content assembly"). The interaction is
+   * resolved from the command's variantId (first-structured_qa scan only as the
+   * no-variantId fallback). Substituted values are validated against the question's
+   * DECLARED options — client free-text never reaches the image prompt (the gateway
+   * additionally input-reviews the assembled source; layered defense). Every anomaly is a
+   * countable trace with ids only (never answer values — child content stays out of logs).
+   */
+  private assembleImagePrompt(
+    sessionId: string,
+    cmd: Extract<EngineCommand, { type: "CALL_INTERACTION" }>,
+    answers: Record<string, string>,
+  ): string {
+    const { stageId, studentId, interactionId, variantId } = cmd;
+    const ids = { sessionId, stageId, studentId, interactionId };
+    const stage = stageById(this.lesson, stageId);
+    const fromVariant = variantId ? stage?.variants?.find((v) => v.id === variantId)?.interaction : undefined;
+    const candidates = fromVariant
+      ? [fromVariant]
+      : [stage?.interaction, ...(stage?.variants?.map((v) => v.interaction) ?? [])];
+    const qa = candidates.find((i) => i?.type === "structured_qa");
+    if (!qa || qa.type !== "structured_qa" || qa.promptAssembly === undefined) {
+      this.trace.record(this.mkTrace("interaction", { reason: "prompt_assembly_absent", ...ids }));
+      return JSON.stringify(answers);
+    }
+    const questionById = new Map(qa.questions.map((q) => [q.id, q]));
+    const missing: string[] = [];
+    const notAnOption: string[] = [];
+    const assembled = qa.promptAssembly.replace(PROMPT_ASSEMBLY_TOKEN_RE, (_m, id: string) => {
+      const v = answers[id];
+      if (v === undefined) {
+        missing.push(id);
+        return "";
+      }
+      const q = questionById.get(id);
+      if (!q || !q.options.includes(v)) {
+        // Client-supplied value outside the declared options: NEVER substituted (free text
+        // must not reach the provider prompt). Trace carries the question id only.
+        notAnOption.push(id);
+        return "";
+      }
+      return v;
+    });
+    if (missing.length > 0) {
+      this.trace.record(this.mkTrace("interaction", { reason: "prompt_assembly_missing_answer", missing, ...ids }));
+    }
+    if (notAnOption.length > 0) {
+      this.trace.record(this.mkTrace("interaction", { reason: "prompt_assembly_answer_not_an_option", questionIds: notAnOption, ...ids }));
+    }
+    return assembled;
   }
 
   async resume(sessionId: string, studentId: string): Promise<void> {

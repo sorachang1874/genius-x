@@ -51,7 +51,7 @@ function makeFakeSession(): ClassSession {
     currentStageId: "intro",
     stageStartTime: "2026-06-05T00:00:00Z",
     global: "active",
-    lessonConfigVersion: "1.2.0",
+    lessonConfigVersion: "1.3.0",
     assistants: ["a1"],
     students: {},
   };

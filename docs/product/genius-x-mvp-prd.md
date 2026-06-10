@@ -496,7 +496,8 @@ interface ClassSession {
     { "id": "accessory", "text": "我想带一个配饰，是帽子还是眼镜？", "options": ["帽子", "眼镜"] },
     { "id": "background", "text": "我身后的背景是在大森林里还是在太空里？", "options": ["森林", "太空"] }
   ],
-  "promptAssembly": "一只可爱的 {ears} 卡通动物角色，{accessory}，{background}背景，儿童插画风格，鲜艳色彩，白色背景"
+  "promptAssembly": "一只可爱的 {ears} 卡通动物角色，{accessory}，{background}背景"
+  // 场景内容 ONLY — 品牌风格后缀由 AI 网关统一注入（docs/contracts/brand-style.md，课程配置禁止携带风格语言）
 }
 ```
 

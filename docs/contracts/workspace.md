@@ -1,11 +1,13 @@
 # Workspace Contract (Phase 2)
 
-**Status**: Frozen v1
+**Status**: Frozen v1.1 (v1 + Phase-4/4.5 pending amendments, lead-serialized — see Changelog)
 **Owner**: Workspace Service (Agent H)
 **Phase**: Phase 2 — Student workspace foundation
 **Typed realization**: `packages/contracts/src/workspace.ts` + `workspace-api.ts`
 **Companion contracts**: [`identity.md`](identity.md) (the Student the workspace belongs to),
-[`data-and-privacy.md`](data-and-privacy.md) (retention/privacy rules this contract obeys)
+[`data-and-privacy.md`](data-and-privacy.md) (retention/privacy rules this contract obeys),
+[`agent-context.md`](agent-context.md) (Phase-4 reader + the `episode` carve-out below),
+[`ip-character.md`](ip-character.md) (Phase-4.5 lineage fields below)
 **Last updated**: 2026-06-09
 
 ---
@@ -86,7 +88,7 @@ All fields new in v1 (Migration = new v1).
 | `Work.metadata.degraded` | Classroom Service | `works.degraded` | boolean | from gateway result | operators (quality audit) | none | with work | degraded works countable by query |
 | `InteractionRecord.input.contentRef` | Classroom Service | `interactions.input_ref` | opaque ref, NEVER raw bytes | from wire input | Phase-4 agent context | none | retention policy | no value larger than a ref (length ≤ 512) |
 | `InteractionRecord.context.initiatedBy` | Writer | `interactions.initiated_by` | `student` \| `parent` | classroom = student | Phase-6 co-work tagging, parent filters | none | with row | enum CHECK |
-| `StudentMemory.key` | Lesson config | `memories.key` | ∈ `declaredMemoryKeys` | extraction | Agent (P4), parent summary (P3) | none — write rejected | importance decay (P4) / retention | no row with undeclared key for its lesson |
+| `StudentMemory.key` | Lesson config | `memories.key` | ∈ `declaredMemoryKeys` **OR the reserved `"episode"` kind** (v1.1 carve-out, [`agent-context.md`](agent-context.md): schema-validated episodic memories; a lesson may never DECLARE `episode` — validator fails closed; the workspace write path accepts it only with a schema-valid `EpisodeValue` JSON value, Phase-4 implementation) | extraction; episode = end-of-scene consolidation | Agent (P4), parent summary (P3 — episodes NOT parent-served, see parent-share.md v1.2) | none — write rejected | importance decay (P4; episodes decay, CANON never — canon lives in ip-character.md, not here) / retention | no row with undeclared key for its lesson **excluding `key='episode'`** |
 | `StudentMemory.importance` | Agent Service (P4); Phase 2 writes baseline | `memories.importance` | 0..1 | default 0.5 | retrieval ordering | none | decay archive (P4) | 0 ≤ x ≤ 1 CHECK |
 | `*.createdAt/occurredAt` | Writer | table columns | ISO/timestamptz | classroom clock (`occurredAt`) vs DB clock (`createdAt`); `occurredAt` sanity-bounded (≥2024-01-01, ≤ createdAt+1d) | ordering, retention | none | with row | CHECK bounds |
 | `InteractionRecord.output.workId` / `StudentMemory.context.sourceInteractionId` | Writer | FK columns | SAME-student row only (composite FK `(ptr, student_id)`) | classroom write | Phase-3 renders, Phase-4 context | none — write rejected | with row | cross-student pointer preflights below = 0 |
@@ -207,4 +209,24 @@ Intentional drops/changes vs the design sketch — deferrals, not oversights:
 
 ---
 
-_Workspace Contract · Phase 2 · Frozen v1 · 2026-06-09_
+## Pending amendments (frozen v1.1 — implementation lands with Phase 4 / 4.5)
+
+Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-context.md`](agent-context.md),
+[`ip-character.md`](ip-character.md)); each is an ADDITIVE migration owned by H:
+
+| Field | Owner | Allowed values | Notes / preflight | Lands |
+| --- | --- | --- | --- | --- |
+| `StudentMemory.key = "episode"` carve-out | H (write path), I (producer) | schema-valid `EpisodeValue` JSON only | see the amended `StudentMemory.key` row above; undeclared-key preflight excludes `episode` | Phase 4 |
+| `InteractionRecord.safety` | H | `ok \| input_filtered \| output_filtered` | additive column; **backfill `"ok"` is a labeling DEFAULT, not evidence of review** — readers injecting pre-migration transcripts into model context must exclude/re-review rows with `output.degraded = true` | Phase 4 |
+| `WorkMetadata.ipCharacterVersion?` | H (column), 4.5 writers | positive int (version pointer) | links artifacts to the character version they depict; absence traced `work_lineage_missing` (accept-with-trace, back-compat) | Phase 4.5 |
+| Works lifecycle rev: one Work per completion **EVENT** | H + C | — | replaces lifecycle rule 3 ("first completion only"); MUST ship in the same lead serialization as the parent-share curation rev (decision ② — else drafts flood the parent gallery) | Phase 4.5 |
+
+## Changelog
+
+- **v1.1** (2026-06-09, lead-serialized with the Phase-4 contract freeze): `episode`
+  reserved-kind carve-out on `StudentMemory.key` (+ preflight exclusion); pending-amendments
+  table (`safety` column, `ipCharacterVersion` lineage, works-lifecycle rev pointer);
+  companion links to agent-context.md / ip-character.md.
+- **v1** (2026-06-09): initial freeze.
+
+_Workspace Contract · Phase 2 · Frozen v1.1 · 2026-06-09_

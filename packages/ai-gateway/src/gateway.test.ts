@@ -184,3 +184,105 @@ describe("AiGateway — hardened boundary", () => {
     expect(events.some((e) => e.kind === "safety")).toBe(true);
   });
 });
+
+// --- brand style injection (docs/contracts/brand-style.md, P4 Step 1b) ---
+
+import type { BrandStyleContract } from "@genius-x/contracts";
+import type { ImageGenRequest } from "./providers/types";
+import { BRAND_STYLE_V0 } from "./brand-style";
+
+describe("brand style injection (brand-style.md)", () => {
+  function brandGateway(brandStyle?: BrandStyleContract, failSubmit = false) {
+    const submitted: ImageGenRequest[] = [];
+    const provider = stub({
+      imageSubmit: async (r: ImageGenRequest) => {
+        submitted.push(r);
+        if (failSubmit) throw new Error("provider down");
+        return { jobId: "j" };
+      },
+    });
+    const events: TraceEvent[] = [];
+    const deps: GatewayDeps = {
+      provider,
+      safety: new KeywordSafetyFilter(),
+      fallback: new PresetFallbackLibrary(),
+      trace: { record: (e) => events.push(e) },
+      now: () => NOW,
+      ...(brandStyle && { brandStyle }),
+    };
+    return { gw: new AiGateway(deps), events, submitted };
+  }
+
+  it("text2img gets the versioned suffix appended; styleVersion stamped in ai_response", async () => {
+    const { gw, events, submitted } = brandGateway(BRAND_STYLE_V0);
+    await gw.imageGen({ kind: "text2img", source: "一只可爱的 尖耳 卡通动物角色", count: 3 });
+    expect(submitted[0]!.source).toBe(`一只可爱的 尖耳 卡通动物角色，${BRAND_STYLE_V0.promptSuffix}`);
+    const ok = events.find((e) => e.kind === "ai_response" && (e.payload as { capability?: string }).capability === "image_gen");
+    expect((ok!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0");
+  });
+
+  it("img2img source is untouched (no prompt to suffix) but stays brand-attributed in traces", async () => {
+    const { gw, events, submitted } = brandGateway(BRAND_STYLE_V0);
+    await gw.imageGen({ kind: "img2img", source: "ref://doodle", count: 3 });
+    expect(submitted[0]!.source).toBe("ref://doodle"); // refs are not prompts
+    const ok = events.find((e) => e.kind === "ai_response" && (e.payload as { capability?: string }).capability === "image_gen");
+    expect((ok!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0");
+  });
+
+  it("FALLBACK traces carry styleVersion too — degraded generations stay brand-attributed", async () => {
+    const { gw, events } = brandGateway(BRAND_STYLE_V0, true);
+    const img = await gw.imageGen({ kind: "text2img", source: "x", count: 3 });
+    expect(img.meta.degraded).toBe(true);
+    const fb = events.find((e) => e.kind === "fallback" && (e.payload as { capability?: string }).capability === "image_gen");
+    expect((fb!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0");
+  });
+
+  it("a gateway WITHOUT a brand contract traces brand_style_absent per call (loud, never silent)", async () => {
+    const { gw, events, submitted } = brandGateway(undefined);
+    await gw.imageGen({ kind: "text2img", source: "x", count: 3 });
+    expect(submitted[0]!.source).toBe("x"); // unstyled — and the operator can see it:
+    expect(events.some((e) => (e.payload as { note?: string }).note === "brand_style_absent")).toBe(true);
+  });
+});
+
+describe("image pre-submit input review (brand-style.md / agent-context.md safety parity)", () => {
+  it("an unsafe text2img source NEVER reaches the provider — fallback images + safety trace", async () => {
+    let submitted = false;
+    const provider = stub({ imageSubmit: async () => { submitted = true; return { jobId: "j" }; } });
+    const events: TraceEvent[] = [];
+    const gw = new AiGateway({ provider, safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace: { record: (e) => events.push(e) }, now: () => NOW, brandStyle: BRAND_STYLE_V0 });
+    const img = await gw.imageGen({ kind: "text2img", source: "一个暴力的角色", count: 3 });
+    expect(submitted).toBe(false); // blocked BEFORE submit
+    expect(img.meta.degraded).toBe(true);
+    expect(img.imageUrls.length).toBeGreaterThan(0); // the child still gets images
+    expect(events.some((e) => e.kind === "safety" && (e.payload as { capability?: string }).capability === "image_gen")).toBe(true);
+    const fb = events.find((e) => e.kind === "fallback" && (e.payload as { reason?: string }).reason === "input_filtered");
+    expect((fb!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0"); // brand-attributed degradation
+  });
+
+  it("img2img refs are NOT input-reviewed (refs are not prose) and still submit", async () => {
+    let submitted = false;
+    const provider = stub({ imageSubmit: async () => { submitted = true; return { jobId: "j" }; } });
+    const gw = new AiGateway({ provider, safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace: { record: () => {} }, now: () => NOW, brandStyle: BRAND_STYLE_V0 });
+    await gw.imageGen({ kind: "img2img", source: "ref://doodle-暴力", count: 3 }); // a ref CONTAINING a banned substring is still a ref
+    expect(submitted).toBe(true);
+  });
+
+  it("a moderation-BLOCKED generation emits a brand-attributed fallback trace (image_moderation_failed)", async () => {
+    const events: TraceEvent[] = [];
+    const gw = new AiGateway({
+      provider: stub({}),
+      safety: new KeywordSafetyFilter(),
+      fallback: new PresetFallbackLibrary(),
+      trace: { record: (e) => events.push(e) },
+      now: () => NOW,
+      brandStyle: BRAND_STYLE_V0,
+      imageModerator: async () => ({ ok: false, reasons: ["nsfw"] }),
+    });
+    const img = await gw.imageGen({ kind: "text2img", source: "正常的角色", count: 3 });
+    expect(img.meta.degraded).toBe(true);
+    const fb = events.find((e) => e.kind === "fallback" && (e.payload as { reason?: string }).reason === "image_moderation_failed");
+    expect(fb).toBeDefined();
+    expect((fb!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0");
+  });
+});
