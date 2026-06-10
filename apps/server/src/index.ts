@@ -5,6 +5,7 @@
 import { Redis } from "ioredis";
 import { loadConfig } from "@genius-x/config";
 import { InMemorySessionStore, RedisSessionStore, type SessionStore } from "./session/store";
+import { RedisTurnBufferStore } from "./session/turnbuffer";
 import { createIdentityPool } from "./identity/db";
 import { IdentityService } from "./identity/service";
 import { WorkspaceService } from "./workspace/service";
@@ -14,9 +15,11 @@ import { startClassroomServer } from "./server";
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   const liveLike = config.mode === "live" || config.mode === "production";
-  const store: SessionStore = liveLike
-    ? new RedisSessionStore(new Redis(config.redisUrl!))
-    : new InMemorySessionStore();
+  // ONE Redis connection serves both classroom-tier stores (sessions + Phase-4 turn
+  // buffers) — same lifecycle, same availability class (agent-context.md hot path).
+  const redis = liveLike ? new Redis(config.redisUrl!) : undefined;
+  const store: SessionStore = redis ? new RedisSessionStore(redis) : new InMemorySessionStore();
+  const turnBuffer = redis ? new RedisTurnBufferStore(redis) : undefined; // dev default = server.ts in-memory
 
   // Identity (Phase 1): CORE dependency for enrollment/admin API (and Step-5 student joins).
   // Absence is a visible deployment state, never a silent fallback. loadConfig already
@@ -95,6 +98,7 @@ async function main(): Promise<void> {
     ...(process.env.WEB_BASE_URL && { webBaseUrl: process.env.WEB_BASE_URL }),
     ...(tenantId && { tenantId }),
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
+    ...(turnBuffer && { turnBuffer }),
   });
   console.log(`genius-x server (mode=${config.mode}, identity=${identity ? "on" : "OFF"}) listening on ${handle.url}`);
 
