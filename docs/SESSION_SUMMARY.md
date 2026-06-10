@@ -1,3 +1,5 @@
+> **HISTORICAL — superseded.** Phase 1 was completed 2026-06-09; see PROGRESS.md and docs/migration/mvp-to-phase1.md. Kept for planning history only.
+
 # Session Summary: Scalable Architecture v2.0 Documentation
 
 **Date**: 2026-06-08

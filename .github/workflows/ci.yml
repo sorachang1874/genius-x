@@ -30,3 +30,46 @@ jobs:
         run: pnpm typecheck
       - name: Unit tests
         run: pnpm -r run test
+
+  # Closes the PGlite-version skew (PGlite embeds PG 18; deploy target is PG 16): apply the
+  # real migrations + seed + contract preflights against a genuine postgres:16 on every PR.
+  verify-postgres16:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: geniusx
+          POSTGRES_PASSWORD: geniusx
+          POSTGRES_DB: geniusx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U geniusx"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://geniusx:geniusx@localhost:5432/geniusx
+      PGPASSWORD: geniusx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations + seed against real PG16
+        run: pnpm --filter @genius-x/server migrate:seed
+      - name: Re-run is idempotent (checksum skip path)
+        run: pnpm --filter @genius-x/server migrate:seed
+      - name: Contract preflights (identity.md / enrollment.md — expect 0s + 4 students)
+        run: |
+          psql -h localhost -U geniusx -d geniusx -tA -c "SELECT COUNT(*) FROM students;" | grep -qx 4
+          psql -h localhost -U geniusx -d geniusx -tA -c "SELECT COUNT(*) FROM students WHERE tenant_id NOT IN (SELECT id FROM tenants);" | grep -qx 0
+          psql -h localhost -U geniusx -d geniusx -tA -c "SELECT COUNT(*) FROM students s WHERE NOT EXISTS (SELECT 1 FROM guardian_consents gc WHERE gc.student_id = s.id);" | grep -qx 0
+          psql -h localhost -U geniusx -d geniusx -tA -c "SELECT COUNT(*) FROM students s JOIN parents p ON s.parent_id = p.id WHERE s.tenant_id != p.tenant_id;" | grep -qx 0
+          echo "PG16 preflights green"

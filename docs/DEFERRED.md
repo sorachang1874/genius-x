@@ -14,7 +14,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-2 | Image moderation (天御 IMS) | half-built | `imageModerator` seam; absent ⇒ traces `moderation_deferred_m6` | inject real 天御 IMS moderator | required before any public/real-AI demo with children | D · **M6** |
 | DF-3 | Memory extraction in talent | **resolved (M4a)** | talent voice/answer interactions mine a memory via `extractMemory` (reusing the runner's ASR transcript), written to `you.memories` (declared-key validated) | — | done in contracts-v1.4 + server | C/D · ✅ |
 | DF-4 | Birth pre-generation + `playPrepared` + `AI_READY{preparedId,outputKind}` | **resolved (M4a)** | `playPrepared` back in `InteractionInput`; `AI_READY{preparedId,outputKind}` reshaped; birth pre-generates on settled memories (contracts-v1.4) | — | done | C/D · ✅ |
-| DF-5 | `REQUEST_PROJECTION` → teacher big-screen | deferred-feature | controller returns early (no-op); `PROJECT` message defined | teacher-screen UI | wire when assistant/teacher projection is built | A/C · **M4/M5** |
+| DF-5 | ~~`REQUEST_PROJECTION` → teacher big-screen~~ | **✅ RESOLVED (M4a/M4b)** | Implemented: assistant-gated projection validated under the mutex + teacher screen shipped | — | see DF-M4-4 | A/C · ✅ |
 | DF-6 | Session mutex (concurrency) | temp-fallback | in-process `KeyedMutex` (single server instance only) | multi-instance deploy | replace with Redis lock/CAS when >1 server instance | C · scale-out |
 | DF-7 | Course authoring | shadow | hand-authored `lesson-001.ts` (git) | Payload CMS (`apps/cms`) | when authoring Lesson 2+; CMS export must conform to `LessonConfig` | F · fast-follow |
 | DF-8 | Auth / RBAC | shadow | lightweight room-code/QR join; role from message type (trusted) | Better Auth | enforce connection-role verification when auth lands | F · fast-follow |
@@ -28,7 +28,7 @@ New deferrals for the student-centric persistent architecture. See `docs/archite
 
 | ID | Item | Kind | What we do now | Replace / complete trigger | Notes |
 | --- | --- | --- | --- | --- | --- |
-| DF-v2-1 | Persistent student identity | deferred-feature | Students are ephemeral (room-code join) | Phase 1: parent enrollment creates permanent `studentId` before class | Enables workspace, agent, parent co-work |
+| DF-v2-1 | ~~Persistent student identity~~ | **✅ RESOLVED (2026-06-09, Phase 1)** | Parent enrollment creates permanent `studentId`; classroom join + WS resume are lookup-only; lesson completion writes back to the profile | — | See `docs/migration/mvp-to-phase1.md` |
 | DF-v2-2 | Student workspace | deferred-feature | Class artifacts lost after Redis expiry | Phase 2: PostgreSQL + object storage persistent workspace | Works, interactions, memories persist |
 | DF-v2-3 | AI agent long-term memory | deferred-feature | No cross-lesson memory | Phase 4: agent service with importance-scored memories | Agent co-evolves with child |
 | DF-v2-4 | Tool-calling framework | deferred-feature | No discoverable tools | Phase 5: tool registry + agent suggestions | Children call tools to create IPs |
@@ -40,6 +40,8 @@ New deferrals for the student-centric persistent architecture. See `docs/archite
 | DF-v2-10 | Physical souvenir ordering | deferred-feature | None | M7+: order service + fulfillment partner integration | 3D printed figurines, printed books |
 | DF-v2-11 | `pg` version convergence (pnpm catalog) | deferred-infra | `pg`/`@types/pg`/PGlite declared only in `apps/server` (sole consumer; "who uses, declares") | A second Postgres consumer appears (e.g. extracted `apps/identity-service`, CMS direct-connect) → move shared versions to a pnpm catalog | PGlite is pure WASM (no postinstall) — no build-script allowlist needed |
 | DF-v2-12 | Per-room/class tenant resolution | deferred-feature | ONE tenant per server process (`TENANT_ID`, fail-closed in live/production; demo default dev-only) | Multi-tenant single deployment: resolve the session's tenant from the room/class record at creation | Step-5 scoping decision; distinct from DF-v2-7 (Phase 8 multi-city infra) |
+| DF-v2-13 | Write-back crash window (at-most-once) | deferred-hardening | Lesson-end profile write is fire-and-forget; a crash between the closure persist and the write loses it (no trace) | Phase 2: outbox/`writebackPending` flag persisted with the transition, re-fired on load | Recovery SQL documented in mvp-to-phase1.md |
+| DF-v2-14 | Stage-level companion writes + output→profile map | deferred-feature | geniusX written once at lesson end; avatar key `avatarUrl` and birth_speech stage matching are lesson-001 couplings (absence traced) | Phase 2 workspace writes artifacts per stage — move companion writes there; declare a per-lesson output→profile-field map | Lead-serialized divergence from identity.md lifecycle (see mvp-to-phase1.md) |
 
 ## M3 (frontend) entries — add when M3 starts
 

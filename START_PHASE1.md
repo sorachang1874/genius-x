@@ -1,3 +1,5 @@
+> **HISTORICAL — superseded.** Phase 1 was completed 2026-06-09; see PROGRESS.md and docs/migration/mvp-to-phase1.md. Kept for planning history only.
+
 # 🚀 START PROMPT FOR NEXT SESSION (Phase 1 Implementation)
 
 Copy and paste this prompt to start Phase 1 implementation in your next Claude Code session:
