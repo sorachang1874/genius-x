@@ -26,6 +26,7 @@ import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
 import { WorkspaceServiceError, type WorkspaceService } from "../workspace/service";
+import type { LessonShareMinter } from "../share/service";
 
 export interface Emitter {
   toSession(sessionId: string, msg: ServerMessage): void;
@@ -107,6 +108,11 @@ export class ClassroomController {
      * failures are operator traces and NEVER touch the classroom.
      */
     private readonly workspace?: WorkspaceService,
+    /**
+     * Phase 3: parent share link minted at lesson end (fire-and-forget; mint failure =
+     * operator trace, sink failure swallowed inside the minter — lesson never affected).
+     */
+    private readonly shareMinter?: LessonShareMinter,
   ) {}
 
   private readonly workspaceSkipTraced = new Set<string>();
@@ -214,6 +220,30 @@ export class ClassroomController {
       void this.writeBackProfiles(sessionId, effects.completed).catch((err: unknown) =>
         this.trace.record(this.mkTrace("stage_transition", { reason: "profile_writeback_crashed", error: String((err as Error)?.name ?? err), sessionId })),
       );
+      // Phase 3: parent share links (per attending student; same isolation discipline).
+      if (this.shareMinter) {
+        const { lessonId, students } = effects.completed;
+        for (const [studentId, you] of Object.entries(students)) {
+          // A student who completed NO artifact stage (force-advance past both, late join)
+          // gets a HOLLOW link — minted anyway (the view is a live read; works may land
+          // later), but flagged in the trace AND the sink so the operator never forwards
+          // an empty page unknowingly (degradation principle: countable, not silent).
+          const hasArtifacts = this.lesson.stages.some(
+            (st) => st.output !== undefined && you.stageStatus[st.stageId] === "completed",
+          );
+          void this.shareMinter
+            .mintAndNotify({ studentId, studentDisplayName: you.displayName ?? "", lessonId, hasArtifacts })
+            .then(() => this.trace.record(this.mkTrace("stage_transition", { reason: "share_mint_ok", sessionId, studentId, lessonId, hasArtifacts })))
+            .catch((err: unknown) =>
+              this.trace.record(this.mkTrace("stage_transition", {
+                reason: "share_mint_failed", sessionId, studentId, lessonId,
+                error: String((err as Error)?.name ?? err),
+              })),
+            );
+        }
+      } else {
+        this.trace.record(this.mkTrace("stage_transition", { reason: "share_mint_skipped_not_wired", sessionId, lessonId: effects.completed.lessonId }));
+      }
     }
   }
 
@@ -699,7 +729,16 @@ export class ClassroomController {
         );
         return;
       }
-      const { degraded, ...body } = content;
+      const { degraded, skippedMemoryKeys, ...body } = content;
+      if (skippedMemoryKeys && skippedMemoryKeys.length > 0) {
+        // Mined memory keys the lesson's certificate.memoryLabels does NOT cover: excluded
+        // from the parent-visible certificate (a raw snake_case key must never render as a
+        // label on the parent surface) — countable, never silent.
+        this.trace.record(this.mkTrace("stage_transition", {
+          reason: "workspace_certificate_memory_unlabeled",
+          keys: skippedMemoryKeys, sessionId, studentId: artifact.studentId, stageId: artifact.stageId,
+        }));
+      }
       await this.workspace!.recordWork(
         {
           studentId: artifact.studentId,
@@ -721,7 +760,7 @@ export class ClassroomController {
   private buildWorkContent(
     type: ArtifactType,
     you: StudentRuntimeState,
-  ): { contentUrl?: string; contentText?: string; contentJson?: Record<string, unknown>; degraded: boolean } | null {
+  ): { contentUrl?: string; contentText?: string; contentJson?: Record<string, unknown>; degraded: boolean; skippedMemoryKeys?: string[] } | null {
     if (type === "avatar_image") {
       const url = you.outputs["avatarUrl"];
       return typeof url === "string" && url !== "" ? { contentUrl: url, degraded: false } : null;
@@ -741,12 +780,18 @@ export class ClassroomController {
       );
       const chosen = candidates.find((p) => !p.degraded) ?? candidates[0];
       const avatarUrl = you.outputs["avatarUrl"];
+      // Only LABELLED memory keys reach the certificate (DF-M4-3: "renders available
+      // labelled memories") — an unlabeled key would leak its raw snake_case identifier as
+      // a parent-visible label. Skipped keys are returned for an operator trace.
+      const skippedMemoryKeys = Object.keys(you.memories).filter((k) => labels[k] === undefined);
       const certificate = {
         studentName: you.displayName ?? "",
         avatarUrl: typeof avatarUrl === "string" ? avatarUrl : "",
         personalityTag: you.memories["personality_tag"] ?? "",
         backgroundSetting: you.memories["background_setting"] ?? "",
-        memories: Object.entries(you.memories).map(([key, value]) => ({ label: labels[key] ?? key, value })),
+        memories: Object.entries(you.memories)
+          .filter(([key]) => labels[key] !== undefined)
+          .map(([key, value]) => ({ label: labels[key]!, value })),
         birthdaySpeech: chosen?.output.text ?? "",
         generatedAt: this.clock.now(),
         lessonId: this.lesson.lessonId,
@@ -760,7 +805,11 @@ export class ClassroomController {
         certificate.personalityTag === "" ||
         certificate.backgroundSetting === "" ||
         certificate.studentName === "";
-      return { contentJson: certificate, degraded: partial || (chosen?.degraded ?? false) };
+      return {
+        contentJson: certificate,
+        degraded: partial || (chosen?.degraded ?? false),
+        ...(skippedMemoryKeys.length > 0 && { skippedMemoryKeys }),
+      };
     }
     return null;
   }

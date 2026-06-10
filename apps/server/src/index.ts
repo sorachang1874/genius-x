@@ -8,6 +8,7 @@ import { InMemorySessionStore, RedisSessionStore, type SessionStore } from "./se
 import { createIdentityPool } from "./identity/db";
 import { IdentityService } from "./identity/service";
 import { WorkspaceService } from "./workspace/service";
+import { ShareService } from "./share/service";
 import { startClassroomServer } from "./server";
 
 async function main(): Promise<void> {
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   const pool = config.databaseUrl ? createIdentityPool(config.databaseUrl) : undefined;
   const identity = pool ? new IdentityService(pool) : undefined;
   const workspace = pool ? new WorkspaceService(pool) : undefined; // same pool, same lifecycle
+  const share = pool ? new ShareService(pool) : undefined;
   if (!identity) {
     console.warn(
       "[bootstrap] identity routes DISABLED — no DATABASE_URL configured " +
@@ -42,6 +44,17 @@ async function main(): Promise<void> {
     } catch (err) {
       if (liveLike) throw new Error(`identity DB preflight failed: ${(err as Error).name}`);
       console.error("[bootstrap] identity DB preflight FAILED (continuing in dev mode):", (err as Error).name);
+    }
+  }
+
+  // Phase 3 retention sweep (parent-share.md: share tokens purge at expiry+30d). Boot-time
+  // is the scheduled-job stand-in; the count is logged so deletions are operator-visible.
+  if (share) {
+    try {
+      const purged = await share.purgeExpired();
+      if (purged > 0) console.log(`[share] retention sweep: purged ${purged} share token(s) past expiry+30d`);
+    } catch (err) {
+      console.error("[share] retention sweep FAILED (continuing; tokens purge on next boot):", (err as Error).name);
     }
   }
 
@@ -78,6 +91,8 @@ async function main(): Promise<void> {
     store,
     ...(identity && { identity }),
     ...(workspace && { workspace }),
+    ...(share && { share }),
+    ...(process.env.WEB_BASE_URL && { webBaseUrl: process.env.WEB_BASE_URL }),
     ...(tenantId && { tenantId }),
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
   });

@@ -34,7 +34,7 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | [`workspace.md`](workspace.md) | Student workspace: works, interactions, memories | **frozen v1** | Phase 2 |
 | `agent.md` | Per-student AI agent: context building, memory retrieval | planned — not yet authored | Phase 4 |
 | `tool.md` | Tool registry and tool-calling framework | planned — not yet authored | Phase 5 |
-| `parent-share.md` | Parent read-only artifact + co-working | planned — not yet authored | Phase 3/6 |
+| [`parent-share.md`](parent-share.md) | Parent read-only share artifact (capability URL, privacy filter, deployment exposure rule) | **frozen v1.1** | Phase 3 (co-working = Phase 6) |
 | `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 |
 
 **Contract freeze protocol**: Phase N contracts are authored and frozen by the lead

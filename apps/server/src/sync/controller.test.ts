@@ -413,6 +413,36 @@ describe("partial birth certificate (amended contract: blanks ⇒ degraded)", ()
     expect(captured[0]!.degraded).toBe(false);
     expect(captured[0]!.json).toMatchObject({ studentName: "全娃", personalityTag: "勇敢" });
   });
+
+  it("memory keys WITHOUT a certificate label are excluded (no raw snake_case on the parent surface) + traced", async () => {
+    // lesson-001 labels all 8 declared keys, so the leak arrives silently with lesson-002 —
+    // pin the behavior: unlabeled key ⇒ not on the certificate, countable operator trace.
+    const captured: { json?: Record<string, unknown> | undefined }[] = [];
+    const ws = {
+      async recordWork(req: { contentJson?: Record<string, unknown> }) {
+        captured.push({ json: req.contentJson });
+        return { id: "w" };
+      },
+      async recordInteraction() { return { id: "i" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService,
+    );
+    await store.save(seed("birth", {
+      k1: freshStudent({ memories: { personality_tag: "勇敢", raw_internal_key: "泄漏值" } }),
+    }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "birth", payload: { kind: "done" } });
+    await untilTrue(() => captured.length === 1);
+    const memories = captured[0]!.json!.memories as { label: string; value: string }[];
+    expect(memories.map((m) => m.label)).not.toContain("raw_internal_key"); // never the raw key as a label
+    expect(memories.some((m) => m.value === "泄漏值")).toBe(false); // the whole entry is excluded
+    expect(memories.some((m) => m.value === "勇敢")).toBe(true); // labelled keys still render
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "workspace_certificate_memory_unlabeled"));
+    const t = trace.events.find((e) => e.payload.reason === "workspace_certificate_memory_unlabeled")!;
+    expect(t.payload.keys).toEqual(["raw_internal_key"]); // countable, never silent
+  });
 });
 
 describe("round-2 review mandates (divergence visibility + image outputs)", () => {

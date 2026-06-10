@@ -20,6 +20,7 @@ import { AiGateway, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } f
 import { InMemorySessionStore } from "./session/store";
 import { startClassroomServer, type ServerHandle } from "./server";
 import { WorkspaceService } from "./workspace/service";
+import { ShareService, type NotificationSink } from "./share/service";
 import { newIdentityTestContext, type IdentityTestContext } from "./identity/identity.testutil";
 
 const ROOM = "phase1-e2e";
@@ -50,6 +51,9 @@ let tenant: string;
 let handle: ServerHandle;
 /** Event-driven completion signal: the write-back emits traces — no DB polling needed. */
 const traces: { kind: string; payload: Record<string, unknown> }[] = [];
+/** Phase 3: the notification sink IS the share-ready event. */
+const shareLinks: { studentId: string; studentDisplayName: string; lessonId: string; url: string; hasArtifacts: boolean }[] = [];
+const captureSink: NotificationSink = { lessonShareReady: (info) => { shareLinks.push(info); } };
 
 beforeAll(async () => {
   ctx = await newIdentityTestContext();
@@ -70,6 +74,9 @@ beforeAll(async () => {
     store: new InMemorySessionStore(),
     identity: ctx.service,
     workspace: new WorkspaceService(ctx.sql),
+    share: new ShareService(ctx.sql),
+    notify: captureSink,
+    webBaseUrl: "http://parent.test",
     gateway,
     tenantId: tenant,
     trace: { record: (e) => traces.push(e) },
@@ -240,6 +247,26 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       expect(summary.workCount).toBe(2); // exact: a duplicate-write regression must fail here
       expect(summary.interactionCount).toBe(2);
       expect(summary.memoryCount).toBe(1);
+
+      // 7. PARENT SHARE (Phase 3): lesson end auto-minted a capability link (the sink IS
+      // the event) — open it over REAL HTTP and verify the filtered view.
+      await waitFor(() => shareLinks.find((l) => l.studentDisplayName === "全链路"));
+      const link = shareLinks.find((l) => l.studentDisplayName === "全链路")!;
+      expect(link.url).toMatch(/^http:\/\/parent\.test\/\?share=[A-Za-z0-9_-]{43}$/);
+      expect(link.hasArtifacts).toBe(true); // completed artifact stages ⇒ not a hollow link
+      const shareToken = new URL(link.url).searchParams.get("share")!;
+      const shareRes = await fetch(`${handle.url}/share/${shareToken}`);
+      expect(shareRes.status).toBe(200);
+      const shareJson = await shareRes.text();
+      const view = JSON.parse(shareJson) as { studentDisplayName: string; certificate?: Record<string, unknown>; works: { type: string }[] };
+      expect(view.studentDisplayName).toBe("全链路");
+      expect(view.certificate).toMatchObject({ studentName: "全链路", avatarUrl: "cos://e2e/avatar.png" });
+      expect(view.works.map((w) => w.type)).toEqual(["avatar_image"]); // cert not repeated
+      // DENY list holds on the real wire (the strictest privacy boundary in the system).
+      for (const denied of ["aiParams", "degraded", "sessionId", "stageId", "studentId", "tenantId", "parentId"]) {
+        expect(shareJson).not.toContain(denied);
+      }
+      expect(traces.some((t) => t.payload.reason === "share_mint_ok")).toBe(true); // counted
     } finally {
       sock?.disconnect();
     }

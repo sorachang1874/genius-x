@@ -27,6 +27,10 @@ const migration002: MigrationFile = {
   name: "002_phase2_workspace.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "002_phase2_workspace.sql"), "utf8"),
 };
+const migration003: MigrationFile = {
+  name: "003_phase3_share_tokens.sql",
+  sql: readFileSync(join(MIGRATIONS_DIR, "003_phase3_share_tokens.sql"), "utf8"),
+};
 const seed: MigrationFile = {
   name: "001_phase1_identity_seed.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "001_phase1_identity_seed.sql"), "utf8"),
@@ -64,7 +68,7 @@ async function count(text: string, params?: unknown[]): Promise<number> {
 beforeAll(async () => {
   db = new PGlite(); // fresh in-memory Postgres
   sql = adapter(db);
-  await applyMigrations(sql, [migration, migration002], quiet); // same path as the production CLI
+  await applyMigrations(sql, [migration, migration002, migration003], quiet); // same path as the production CLI
   await applySeeds(sql, [seed], quiet);
 });
 
@@ -74,6 +78,7 @@ describe("001_phase1_identity migration + seed (via the runner)", () => {
     expect(journal.rows).toEqual([
       { filename: migration.name, checksum: sha256(migration.sql) },
       { filename: migration002.name, checksum: sha256(migration002.sql) },
+      { filename: migration003.name, checksum: sha256(migration003.sql) },
     ]);
     expect(await count("SELECT COUNT(*)::int AS n FROM tenants WHERE id = $1", [DEFAULT_DEMO_TENANT_ID])).toBe(1);
     expect(await count("SELECT COUNT(*)::int AS n FROM parents WHERE id = ANY($1)", [[PARENT_1, PARENT_2]])).toBe(2);
@@ -91,7 +96,7 @@ describe("001_phase1_identity migration + seed (via the runner)", () => {
   });
 
   it("re-applying is safe: migration skips via journal, seed is idempotent", async () => {
-    await applyMigrations(sql, [migration, migration002], quiet); // skip path (checksum match)
+    await applyMigrations(sql, [migration, migration002, migration003], quiet); // skip path (checksum match)
     await applySeeds(sql, [seed], quiet); // ON CONFLICT DO NOTHING
     expect(await count("SELECT COUNT(*)::int AS n FROM students WHERE id = ANY($1)", [SEED_STUDENTS])).toBe(4);
     expect(await count("SELECT COUNT(*)::int AS n FROM guardian_consents WHERE student_id = ANY($1)", [SEED_STUDENTS])).toBe(4);
@@ -517,5 +522,37 @@ describe("002 hardening probes (review mandates)", () => {
       "SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_name IN ('works','interactions','memories')",
     );
     expect((tables.rows[0] as { n: number }).n).toBe(3);
+  });
+});
+
+describe("003_phase3_share_tokens migration", () => {
+  const XIAOMING = "33333333-3333-4333-8333-000000000001";
+  const HASH = "a".repeat(64);
+
+  it("hash-shape CHECK + expiry sanity + tenant composite FK enforced", async () => {
+    await expect(
+      sql.query(
+        "INSERT INTO share_tokens (token_hash, student_id, tenant_id, lesson_id, expires_at) VALUES ('raw-token-not-a-hash', $1, $2, 'lesson-001', NOW() + INTERVAL '1 day')",
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i); // only sha256 hex shapes persist
+    await expect(
+      sql.query(
+        "INSERT INTO share_tokens (token_hash, student_id, tenant_id, lesson_id, expires_at) VALUES ($3, $1, $2, 'lesson-001', NOW() - INTERVAL '1 day')",
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID, HASH],
+      ),
+    ).rejects.toThrow(/check constraint/i); // expiry must be after creation
+    await expect(
+      sql.query(
+        "INSERT INTO share_tokens (token_hash, student_id, tenant_id, lesson_id, expires_at) VALUES ($3, $1, $2, 'lesson-001', NOW() + INTERVAL '1 day')",
+        [XIAOMING, TENANT_B, HASH],
+      ),
+    ).rejects.toThrow(/foreign key/i); // cross-tenant claim impossible
+    // contract preflight: hashes only
+    await sql.query(
+      "INSERT INTO share_tokens (token_hash, student_id, tenant_id, lesson_id, expires_at) VALUES ($3, $1, $2, 'lesson-001', NOW() + INTERVAL '1 day')",
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID, HASH],
+    );
+    expect(await count("SELECT COUNT(*)::int AS n FROM share_tokens WHERE length(token_hash) != 64")).toBe(0);
   });
 });
