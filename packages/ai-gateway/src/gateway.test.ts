@@ -286,3 +286,82 @@ describe("image pre-submit input review (brand-style.md / agent-context.md safet
     expect((fb!.payload as { styleVersion?: string }).styleVersion).toBe("style-v0");
   });
 });
+
+// --- P4 Step 2: history extension + safety parity (agent-context.md) ---
+
+import type { LlmRequest as LlmReq } from "./providers/types";
+
+describe("LlmRequest.history (hot-path context)", () => {
+  function capturing() {
+    const seen: LlmReq[] = [];
+    const provider = stub({
+      llm: async (r: LlmReq) => { seen.push(r); return { capability: "llm", text: "回应", meta: { source: "primary", degraded: false } }; },
+    });
+    const { gw, events } = gatewayWith(provider);
+    return { gw, events, seen };
+  }
+
+  it("history passes through to the provider; absent history = exactly the stateless call", async () => {
+    const { gw, seen } = capturing();
+    await gw.llm({ promptVersion: "talent_v1", input: "继续讲" });
+    expect(seen[0]!.history).toBeUndefined();
+    const history = [{ role: "child" as const, text: "我想要三条尾巴" }, { role: "companion" as const, text: "三条尾巴超酷的！" }];
+    await gw.llm({ promptVersion: "talent_v1", input: "还要会飞", history });
+    expect(seen[1]!.history).toEqual(history); // newest last, untouched
+  });
+
+  it("oversized history truncates oldest-first WITH a trace (never silent)", async () => {
+    const { gw, events, seen } = capturing();
+    const oversized = Array.from({ length: 20 }, (_, i) => ({ role: "child" as const, text: `第${i}句` }));
+    await gw.llm({ promptVersion: "talent_v1", input: "x", history: oversized });
+    expect(seen[0]!.history!.length).toBeLessThan(20);
+    expect(seen[0]!.history![seen[0]!.history!.length - 1]!.text).toBe("第19句"); // newest kept
+    const t = events.find((e) => (e.payload as { reason?: string }).reason === "history_truncated");
+    expect(t).toBeDefined();
+  });
+});
+
+describe("AiMeta.filtered (the buffering/recording signal)", () => {
+  it("input-filtered fallback carries meta.filtered='input'", async () => {
+    const { gw } = makeGateway();
+    const r = await gw.llm({ promptVersion: "talent_v1", input: "讲点暴力的" });
+    expect(r.meta.degraded).toBe(true);
+    expect(r.meta.filtered).toBe("input");
+  });
+
+  it("output-filtered fallback carries meta.filtered='output'; plain failures carry NO filtered", async () => {
+    const { gw } = makeGateway({ llm: { filteredOutput: true } });
+    const r = await gw.llm({ promptVersion: "talent_v1", input: "正常输入" });
+    expect(r.meta.filtered).toBe("output");
+    const { gw: gw2 } = makeGateway({ llm: { fail: true } });
+    const r2 = await gw2.llm({ promptVersion: "talent_v1", input: "正常输入" });
+    expect(r2.meta.degraded).toBe(true);
+    expect(r2.meta.filtered).toBeUndefined(); // provider failure ≠ safety filter
+  });
+});
+
+describe("extractMemory output review (safety parity — the audit hole)", () => {
+  it("a mined VALUE that trips the output filter is dropped + safety-traced, never returned", async () => {
+    const { gw, events } = makeGateway({}, { llmText: '{"key":"favorite_toy","value":"特别暴力的玩具"}' });
+    const m = await gw.extractMemory({ transcript: "正常的话", allowedKeys: ["favorite_toy"], promptVersion: "memory_v1" });
+    expect(m).toEqual({ key: null, value: null });
+    const t = events.find((e) => e.kind === "safety" && (e.payload as { stage?: string }).stage === "output");
+    expect(t).toBeDefined();
+  });
+});
+
+describe("llmHistory adapter capability (history_unsupported — loud, never silent)", () => {
+  it("an adapter declaring 'unsupported' gets NO history; the strip is traced", async () => {
+    const seen: LlmReq[] = [];
+    const provider: ProviderAdapter = {
+      llmHistory: "unsupported",
+      ...stub({ llm: async (r: LlmReq) => { seen.push(r); return { capability: "llm", text: "ok", meta: { source: "primary", degraded: false } }; } }),
+    };
+    const { gw, events } = gatewayWith(provider);
+    await gw.llm({ promptVersion: "talent_v1", input: "x", history: [{ role: "child", text: "上一句" }] });
+    expect(seen[0]!.history).toBeUndefined(); // stripped
+    const t = events.find((e) => (e.payload as { reason?: string }).reason === "history_unsupported");
+    expect(t).toBeDefined();
+    expect((t!.payload as { promptVersion?: string }).promptVersion).toBe("talent_v1"); // attributable
+  });
+});

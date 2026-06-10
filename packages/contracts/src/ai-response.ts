@@ -15,6 +15,15 @@ export interface AiMeta {
   degraded: boolean; // true if not the primary provider's clean output
   promptVersion?: string; // e.g. "icebreak_v1"
   latencyMs?: number;
+  /**
+   * WHY a fallback was served, when safety caused it (Phase 4, agent-context.md): "input"
+   * = the caller's input was filtered (the round must NOT enter any turn buffer / context;
+   * the P4-Step-3 recorder WILL mark InteractionRecord.safety from this — column not yet
+   * migrated); "output" = the model's reply was filtered (the SERVED fallback text is what
+   * the child heard — that buffers). Operator-tier like the rest of AiMeta — never shipped
+   * to the child.
+   */
+  filtered?: "input" | "output";
 }
 
 export interface LlmTextResult {

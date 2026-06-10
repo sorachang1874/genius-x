@@ -34,7 +34,7 @@ are a deliberate quality/safety control (semantic memory slots).
 | | HOT — in-scene turn buffer | COLD — cross-lesson retrieval |
 | --- | --- | --- |
 | What | Last N rounds of THIS student's THIS-scene conversation, content-carrying (`{role: "child" \| "companion", text}`) | Persistent memories (semantic + episodic), IP character canon, recent-work summaries |
-| Source of truth | Session-store tier (Redis/in-memory beside `ClassSession`) — **NOT the workspace** (classroom writes there are fire-and-forget ⇒ racy for synchronous reads). **This tier does not exist yet**: Phase 4 Step 2 adds a keyed `TurnBufferStore` interface beside `SessionStore` (in-memory + Redis impls) — NOT a `ClassSession` field, NOT a workspace table | Workspace (Phase 2 tables) + IP character record |
+| Source of truth | Session-store tier (Redis/in-memory beside `ClassSession`) — **NOT the workspace** (classroom writes there are fire-and-forget ⇒ racy for synchronous reads). **IMPLEMENTED (P4 Step 2)**: `TurnBufferStore` in `apps/server/src/session/turnbuffer.ts` (in-memory + Redis; Redis `drain` uses GETDEL ⇒ **Redis server ≥ 6.2** required) — NOT a `ClassSession` field, NOT a workspace table | Workspace (Phase 2 tables) + IP character record |
 | Availability class | CORE for coherence, classroom-tier: lives where the session lives, works when the workspace is down | SHADOW: workspace down ⇒ cold context absent, **traced**, lesson continues |
 | Failure mode | Buffer read/write fails ⇒ the call proceeds **stateless** (`context_degraded` trace; child sees a normal reply) | Retrieval fails ⇒ hot-only context (`context_cold_miss` trace) |
 | Lifetime | Per (sessionId, studentId, sceneId); TTL = session retention; **cleared on scene exit** after consolidation | Permanent (workspace retention rules) |
@@ -46,20 +46,29 @@ breaks this contract.
 
 ### Turn buffer rules (hot path)
 
-- **Bounded**: max `TURN_BUFFER_MAX_ROUNDS` (default 8) rounds AND max
-  `TURN_BUFFER_MAX_BYTES` (default 16 KB) per buffer; oldest evicted first. Both
+- **Bounded** (IMPLEMENTED — ONE shared pure `boundTurnBuffer` in `@genius-x/contracts`,
+  used by the store AND the gateway so they can never drift): max
+  `TURN_BUFFER_MAX_ROUNDS` (default 8) **rounds — a round is a child+companion PAIR (= up
+  to 16 entries)** AND max `TURN_BUFFER_MAX_BYTES` (default 16 KB) per buffer, oldest
+  evicted first, head re-aligned to a child turn; plus a per-entry clamp
+  `TURN_ENTRY_MAX_BYTES` (default 4 KB — a single oversized turn must not ride every
+  prompt; clamps are traced `turn_entry_truncated`, never silent). All
   operator-configurable per deployment, never per child.
 - **NEVER inside `ClassSession`**: the buffer must not ride `RESUME_STATE` or any
   client-bound message — raw child utterances do not ship to any client (privacy: the
   parent DENY list already bans transcripts; the child client never needs them either). A
   serialization test pins that `RESUME_STATE` carries no turn-buffer content.
-- Writes happen in the interaction runner after ASR (child turn) and after the reply
-  (companion turn); rounds whose **input was safety-filtered are not buffered** (see Safety
-  parity below). A round whose OUTPUT was filtered buffers the **served fallback text**
-  (what the child actually heard — the buffer is the conversation as experienced, never
-  the filtered content). **Image rounds** (image_gen/doodle exchanges) are OUT of buffer
-  scope in Phase 4 — they carry no conversational text; their buffering semantics (e.g.
-  the assembled scene prompt as a companion turn) are defined by Phase 5's `scene.md`.
+- **BOTH turns are written after the reply** — and only for rounds the reducer ACCEPTED
+  (a stale round was never delivered to the child, so it never enters context); the child
+  turn is withheld until filter status is known. Rounds whose **input was safety-filtered
+  are not buffered** (see Safety parity below). A round served from the fallback library
+  for ANY reason (filter OR provider failure) buffers the **served text** — the buffer
+  always records what the child actually heard. An **empty child turn** (degraded ASR)
+  skips the round (`context_round_skipped_empty`, countable). Appends are fire-and-forget;
+  a lost/late append degrades coherence only. **Image rounds** (image_gen/doodle
+  exchanges) are OUT of buffer scope in Phase 4 — they carry no conversational text; their
+  buffering semantics (e.g. the assembled scene prompt as a companion turn) are defined by
+  Phase 5's `scene.md`.
 - Buffer content is ephemeral runtime data: it is NOT a record (the workspace
   `InteractionRecord` remains the persistent transcript); deleting a buffer loses no
   contractual data.
@@ -173,7 +182,8 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 | Workspace down | Hot context unaffected; cold context absent (`context_cold_miss` traced); friend is coherent in-scene but "forgetful" across lessons — operator-visible |
 | Consolidation fails | Episode lost, traced; buffer still cleared; nothing user-visible |
 | extractMemory/Episode output filtered | No memory persisted; `safety` trace; child unaffected |
-| History too large for provider | Gateway truncates oldest-first to provider limit, traces `history_truncated` |
+| History too large | Gateway truncates oldest-first **to the contract bounds** (`boundTurnBuffer`), traces `history_truncated`; per-provider limits fold into the adapter capability surface when real adapters land |
+| Provider cannot carry history | Adapter declares `llmHistory: "unsupported"` ⇒ gateway strips history + traces `history_unsupported` (IMPLEMENTED) — degrade-to-stateless is loud, never silent |
 
 ---
 
@@ -194,7 +204,16 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 
 ## Changelog
 
+- **v1 + Step-2 annotations** (2026-06-09, lead-serialized; no semantic re-freeze): hot
+  path IMPLEMENTED (`TurnBufferStore` in-memory/Redis, `LlmRequest.history`,
+  `AiMeta.filtered`, extractMemory output review). Amendments from the Step-2 adversarial
+  review: bound counts ROUNDS (pairs) — shared `boundTurnBuffer`; `TURN_ENTRY_MAX_BYTES`
+  per-entry clamp (traced); both turns written after the reply, accepted-rounds-only;
+  fallback-for-any-reason buffers served text; empty-child-turn skip; truncation targets
+  the contract bounds (provider limits = adapter capability surface later);
+  `history_unsupported` adapter seam; lesson-end `clearSession` sweep (per-scene drain =
+  Step 3); Redis ≥ 6.2 (GETDEL).
 - **v1** (2026-06-09): initial freeze — hot/cold split, turn-buffer rules, `LlmRequest.history`,
   episodic memory kind, safety parity, budget/concurrency floor.
 
-_Agent Context Contract · Phase 4 · Frozen v1 · 2026-06-09_
+_Agent Context Contract · Phase 4 · Frozen v1 (Step-2 hot path implemented) · 2026-06-09_

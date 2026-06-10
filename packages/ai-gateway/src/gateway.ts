@@ -14,7 +14,9 @@ import type {
   MemoryExtraction,
   TraceEvent,
   TraceSink,
+  TurnBufferEntry,
 } from "@genius-x/contracts";
+import { boundTurnBuffer } from "@genius-x/contracts";
 import type {
   ProviderAdapter,
   LlmRequest,
@@ -60,12 +62,34 @@ export class AiGateway {
 
   async llm(req: LlmRequest): Promise<LlmTextResult> {
     const input = this.d.safety.reviewInput(req.input);
-    if (!input.ok) return this.llmFallback(req.promptVersion, "input_filtered", input.reasons);
+    if (!input.ok) return this.llmFallback(req.promptVersion, "input_filtered", input.reasons, "input");
     try {
-      const r = await withTimeout(this.d.provider.llm(req), this.timeout("llm"));
+      // Defensive history bound (agent-context.md): the turn buffer pre-bounds, but a
+      // caller passing oversized history is truncated oldest-first — TRACED, never silent.
+      // An adapter declaring llmHistory:"unsupported" degrades to stateless, also traced.
+      const { history: rawHistory, ...rest } = req;
+      let bounded: TurnBufferEntry[] | undefined;
+      if (rawHistory && rawHistory.length > 0) {
+        if (this.d.provider.llmHistory === "unsupported") {
+          this.emit("interaction", { capability: "llm", reason: "history_unsupported", promptVersion: req.promptVersion });
+        } else {
+          const b = boundTurnBuffer(rawHistory);
+          bounded = b.entries;
+          if (b.droppedEntries > 0 || b.clampedEntries > 0) {
+            this.emit("interaction", {
+              capability: "llm", reason: "history_truncated", promptVersion: req.promptVersion,
+              dropped: b.droppedEntries, clamped: b.clampedEntries,
+            });
+          }
+        }
+      }
+      const r = await withTimeout(
+        this.d.provider.llm(bounded && bounded.length > 0 ? { ...rest, history: bounded } : rest),
+        this.timeout("llm"),
+      );
       assertLlm(r);
       const out = this.d.safety.reviewOutput(r.text);
-      if (!out.ok) return this.llmFallback(req.promptVersion, "output_filtered", out.reasons);
+      if (!out.ok) return this.llmFallback(req.promptVersion, "output_filtered", out.reasons, "output");
       this.emit("ai_response", { capability: "llm", promptVersion: req.promptVersion });
       return r;
     } catch (e) {
@@ -154,7 +178,7 @@ export class AiGateway {
   async extractMemory(req: ExtractMemoryRequest): Promise<MemoryExtraction> {
     const input = this.d.safety.reviewInput(req.transcript);
     if (!input.ok) {
-      this.emit("safety", { capability: "extract_memory", reasons: input.reasons });
+      this.emit("safety", { capability: "extract_memory", reasons: input.reasons, stage: "input" });
       return { key: null, value: null };
     }
     try {
@@ -171,6 +195,16 @@ export class AiGateway {
       if (parsed.key !== null && !req.allowedKeys.includes(parsed.key)) {
         this.emit("interaction", { reason: "memory_key_not_allowed", key: parsed.key });
         return { key: null, value: null };
+      }
+      // SAFETY PARITY (agent-context.md): the mined VALUE is model output that reaches
+      // child-visible surfaces (certificate labels, future context) — review it like
+      // llm output. Filtered ⇒ no memory, traced; never persisted.
+      if (parsed.value !== null) {
+        const out = this.d.safety.reviewOutput(parsed.value);
+        if (!out.ok) {
+          this.emit("safety", { capability: "extract_memory", reasons: out.reasons, stage: "output" });
+          return { key: null, value: null };
+        }
       }
       return parsed;
     } catch (e) {
@@ -193,9 +227,12 @@ export class AiGateway {
     throw new Error("image_poll_timeout");
   }
 
-  private llmFallback(promptVersion: string, why: string, reasons: string[]): LlmTextResult {
+  private llmFallback(promptVersion: string, why: string, reasons: string[], filtered?: "input" | "output"): LlmTextResult {
     this.emit("fallback", { capability: "llm", promptVersion, why, reasons });
-    return this.d.fallback.llm(promptVersion);
+    const fb = this.d.fallback.llm(promptVersion);
+    // Surface WHY when safety caused it (AiMeta.filtered) — the caller's buffering and
+    // the InteractionRecord.safety column both key off this (agent-context.md).
+    return filtered ? { ...fb, meta: { ...fb.meta, filtered } } : fb;
   }
 
   private timeout(cap: keyof typeof DEFAULT_TIMEOUTS): number {

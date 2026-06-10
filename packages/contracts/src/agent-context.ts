@@ -11,15 +11,71 @@
  * the closed declaredMemoryKeys set remains only for semantic slots.
  */
 
-/** One buffered conversation round (hot path). Newest last. */
+/**
+ * One buffered conversation TURN (hot path). Newest last. A ROUND is a child+companion
+ * PAIR of entries — the contract bound TURN_BUFFER_MAX_ROUNDS counts rounds, not entries.
+ */
 export interface TurnBufferEntry {
   role: "child" | "companion";
   text: string;
 }
 
 /** Turn-buffer bounds (operator-configurable per deployment, never per child). */
-export const TURN_BUFFER_MAX_ROUNDS = 8;
-export const TURN_BUFFER_MAX_BYTES = 16_384;
+export const TURN_BUFFER_MAX_ROUNDS = 8; // rounds = child+companion pairs ⇒ up to 16 entries
+export const TURN_BUFFER_MAX_BYTES = 16_384; // whole-buffer serialized cap
+export const TURN_ENTRY_MAX_BYTES = 4_096; // single-entry text cap (a 16KB+ turn must not ride every prompt)
+
+/** Portable UTF-8 byte length (no TextEncoder/Buffer — this package has no runtime libs). */
+function utf8Bytes(s: string): number {
+  let bytes = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    bytes += cp <= 0x7f ? 1 : cp <= 0x7ff ? 2 : cp <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+/** Byte-safe single-entry clamp. Callers trace when `clamped` (never a silent cut). */
+export function clampTurnText(text: string): { text: string; clamped: boolean } {
+  if (utf8Bytes(text) <= TURN_ENTRY_MAX_BYTES) return { text, clamped: false };
+  let t = text;
+  while (t.length > 0 && utf8Bytes(t) > TURN_ENTRY_MAX_BYTES) {
+    t = t.slice(0, Math.max(1, Math.floor(t.length * 0.9)));
+    if (t.length === 1 && utf8Bytes(t) > TURN_ENTRY_MAX_BYTES) return { text: "", clamped: true };
+  }
+  return { text: t, clamped: true };
+}
+
+/**
+ * THE one turn-buffer bounding algorithm (shared by the server store and the gateway so
+ * the two can never drift): per-entry clamp → keep the newest TURN_BUFFER_MAX_ROUNDS
+ * ROUNDS (= ×2 entries) → whole-buffer byte eviction (oldest first) → re-align the head
+ * to a child turn (history never starts with an orphan companion reply). The returned
+ * buffer is ALWAYS within budget. Pure + portable (no TextEncoder/Buffer).
+ */
+export function boundTurnBuffer(entries: TurnBufferEntry[]): {
+  entries: TurnBufferEntry[];
+  /** Entries whose text was clamped to TURN_ENTRY_MAX_BYTES (callers trace > 0). */
+  clampedEntries: number;
+  /** Total entries evicted (rolling window + byte cap + head realignment) — telemetry. */
+  droppedEntries: number;
+} {
+  let clampedEntries = 0;
+  let out = entries.map((e) => {
+    const c = clampTurnText(e.text);
+    if (c.clamped) clampedEntries++;
+    return c.clamped ? { ...e, text: c.text } : e;
+  });
+  const before = out.length;
+  out = out.slice(-(TURN_BUFFER_MAX_ROUNDS * 2));
+  while (out.length > 0 && utf8Bytes(JSON.stringify(out)) > TURN_BUFFER_MAX_BYTES) {
+    out = out.slice(1);
+  }
+  while (out.length > 0 && out[0]!.role === "companion") {
+    out = out.slice(1);
+  }
+  return { entries: out, clampedEntries, droppedEntries: before - out.length };
+}
 
 /**
  * RESERVED memory kind for episodic memories. Never in a lesson's declaredMemoryKeys

@@ -14,12 +14,21 @@ import type {
   TtsResult,
   AsrResult,
   ImageGenResult,
+  TurnBufferEntry,
 } from "@genius-x/contracts";
 
 export interface LlmRequest {
   promptVersion: string; // e.g. "icebreak_v1"
   input: string;
   maxOutputTokens?: number;
+  /**
+   * Bounded in-scene conversation history, newest last (agent-context.md hot path).
+   * OPTIONAL + backward compatible: absent/empty ⇒ exactly the stateless behavior.
+   * Entries were already input-reviewed when buffered; the gateway re-reviews only
+   * the current `input`. Adapters that cannot carry history degrade to stateless
+   * WITH a trace (`history_unsupported`) — never silently.
+   */
+  history?: TurnBufferEntry[];
 }
 
 export interface TtsRequest {
@@ -47,6 +56,12 @@ export interface ImageJob {
 export type ImagePollResult = ImageGenResult | { status: "pending" };
 
 export interface ProviderAdapter {
+  /**
+   * History capability (agent-context.md): "unsupported" ⇒ the gateway STRIPS history and
+   * traces `history_unsupported` (degrade-to-stateless is loud, never silent). Absent =
+   * "native" (the adapter consumes/forwards req.history).
+   */
+  readonly llmHistory?: "native" | "unsupported";
   llm(req: LlmRequest): Promise<LlmTextResult>;
   tts(req: TtsRequest): Promise<TtsResult>;
   asr(req: AsrRequest): Promise<AsrResult>;

@@ -19,8 +19,10 @@ import type {
   ArtifactType,
   InteractionRecord,
 } from "@genius-x/contracts";
-import { PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
+import { PROMPT_ASSEMBLY_TOKEN_RE, clampTurnText } from "@genius-x/contracts";
+import type { LlmTextResult, TurnBufferEntry } from "@genius-x/contracts";
 import type { AiGateway } from "@genius-x/ai-gateway";
+import type { TurnBufferStore } from "../session/turnbuffer";
 import type { Reducer } from "../engine";
 import { stageById } from "../engine/nextStage";
 import type { SessionStore } from "../session/store";
@@ -114,9 +116,16 @@ export class ClassroomController {
      * operator trace, sink failure swallowed inside the minter — lesson never affected).
      */
     private readonly shareMinter?: LessonShareMinter,
+    /**
+     * Phase 4 (hot path, agent-context.md): the in-scene turn buffer. OPTIONAL — absence
+     * (one trace per session) or any read/append failure degrades the call to STATELESS
+     * (`context_degraded` trace); the classroom never blocks on context.
+     */
+    private readonly turnBuffer?: TurnBufferStore,
   ) {}
 
   private readonly workspaceSkipTraced = new Set<string>();
+  private readonly turnBufferSkipTraced = new Set<string>();
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
     if (msg.type === "HELLO") {
@@ -220,6 +229,11 @@ export class ClassroomController {
     if (effects.completed) {
       void this.writeBackProfiles(sessionId, effects.completed).catch((err: unknown) =>
         this.trace.record(this.mkTrace("stage_transition", { reason: "profile_writeback_crashed", error: String((err as Error)?.name ?? err), sessionId })),
+      );
+      // Phase 4 (owner-matrix deletion clause): lesson end sweeps the session's turn
+      // buffers (per-scene drain-on-exit arrives with Step-3 consolidation). Fire-and-forget.
+      void this.turnBuffer?.clearSession(sessionId).catch((err: unknown) =>
+        this.trace.record(this.mkTrace("interaction", { reason: "context_sweep_failed", error: String((err as Error)?.name ?? err), sessionId })),
       );
       // Phase 3: parent share links (per attending student; same isolation discipline).
       if (this.shareMinter) {
@@ -339,8 +353,9 @@ export class ClassroomController {
     let output: ClientAiOutput;
     let degraded: boolean;
     let transcript: string | undefined;
+    let round: { childText: string; llm: LlmTextResult } | undefined;
     try {
-      ({ output, degraded, transcript } = await this.callGateway(sessionId, cmd));
+      ({ output, degraded, transcript, round } = await this.callGateway(sessionId, cmd));
     } catch (err) {
       // gateway methods shouldn't throw, but be defensive — degrade + still complete
       this.trace.record(this.mkTrace("fallback", { reason: "gateway_threw", error: String(err), interactionId, studentId }));
@@ -375,6 +390,9 @@ export class ClassroomController {
     });
     for (const t of accepted.traces) this.trace.record(t);
     if (accepted.ok) this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId, output });
+    // HOT-path buffering happens ONLY for ACCEPTED rounds (agent-context.md: "the buffer
+    // is the conversation as experienced" — a stale round was never delivered).
+    if (accepted.ok && round) this.bufferRound(sessionId, cmd, round);
 
     // Phase 2: persist the exchange (fire-and-forget; resolves to undefined on failure so
     // the memory write below can still link when it succeeded).
@@ -522,7 +540,7 @@ export class ClassroomController {
   private async callGateway(
     sessionId: string,
     cmd: Extract<EngineCommand, { type: "CALL_INTERACTION" }>,
-  ): Promise<{ output: ClientAiOutput; degraded: boolean; transcript?: string }> {
+  ): Promise<{ output: ClientAiOutput; degraded: boolean; transcript?: string; round?: { childText: string; llm: LlmTextResult } }> {
     const { stageId, input } = cmd;
     const promptVersion = this.promptFor(stageId);
     let degraded = false;
@@ -531,14 +549,32 @@ export class ClassroomController {
       case "voice":
       case "talentAnswer": {
         const asr = await this.gateway.asr({ audioRef: input.audioRef }); mark(asr.meta);
-        const llm = await this.gateway.llm({ promptVersion, input: asr.transcript }); mark(llm.meta);
+        // HOT context (agent-context.md): prior rounds of THIS student's THIS-scene
+        // conversation shape the reply; any buffer failure ⇒ stateless call, traced.
+        const history = await this.readTurns(sessionId, cmd);
+        const llm = await this.gateway.llm({ promptVersion, input: asr.transcript, ...(history.length > 0 && { history }) }); mark(llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
-        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, transcript: asr.transcript };
+        // The round is buffered by the CALLER only after the reducer ACCEPTS the
+        // completion — a stale round (dropped, never delivered) must not enter context.
+        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, transcript: asr.transcript, round: { childText: asr.transcript, llm } };
       }
       case "talentOption": {
-        const llm = await this.gateway.llm({ promptVersion, input: input.option }); mark(llm.meta);
+        // A talentOption is client-supplied — validate against the stage's DECLARED
+        // options (the answers-fix pattern): undeclared free text neither prompts nor
+        // persists; the trace carries ids only.
+        let option = input.option;
+        const stage = stageById(this.lesson, stageId);
+        const ix = stage?.interaction ?? stage?.variants?.[0]?.interaction;
+        if (ix?.type === "multimodal_talent" && !ix.options.includes(option)) {
+          this.trace.record(this.mkTrace("interaction", {
+            reason: "talent_option_not_declared", sessionId, stageId, studentId: cmd.studentId, interactionId: cmd.interactionId,
+          }));
+          option = "";
+        }
+        const history = await this.readTurns(sessionId, cmd);
+        const llm = await this.gateway.llm({ promptVersion, input: option, ...(history.length > 0 && { history }) }); mark(llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
-        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded };
+        return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, round: { childText: option, llm } };
       }
       case "doodle": {
         const img = await this.gateway.imageGen({ kind: "img2img", source: input.doodleRef, count: 3 }); mark(img.meta);
@@ -560,6 +596,70 @@ export class ClassroomController {
         return _exhaustive;
       }
     }
+  }
+
+  /** Once-per-session loud absence (deployment state, never a silent normal path). */
+  private ensureTurnBuffer(sessionId: string): boolean {
+    if (this.turnBuffer) return true;
+    if (!this.turnBufferSkipTraced.has(sessionId)) {
+      this.turnBufferSkipTraced.add(sessionId);
+      this.trace.record(this.mkTrace("interaction", { reason: "context_buffer_not_wired", sessionId }));
+    }
+    return false;
+  }
+
+  /** HOT-path read (agent-context.md): failure ⇒ stateless call + `context_degraded` trace. */
+  private async readTurns(
+    sessionId: string,
+    cmd: Extract<EngineCommand, { type: "CALL_INTERACTION" }>,
+  ): Promise<TurnBufferEntry[]> {
+    if (!this.ensureTurnBuffer(sessionId)) return [];
+    try {
+      return await this.turnBuffer!.read({ sessionId, studentId: cmd.studentId, stageId: cmd.stageId });
+    } catch (err) {
+      this.trace.record(this.mkTrace("interaction", {
+        reason: "context_degraded", op: "read", error: String((err as Error)?.name ?? err),
+        sessionId, studentId: cmd.studentId, stageId: cmd.stageId,
+      }));
+      return [];
+    }
+  }
+
+  /**
+   * Buffer the ACCEPTED round, both turns after the reply (agent-context.md): an
+   * INPUT-filtered round is excluded entirely (the unsafe utterance must never re-enter a
+   * prompt); an OUTPUT-filtered or provider-failure round buffers the SERVED text — the
+   * buffer is the conversation as the child experienced it. An empty child turn (degraded
+   * ASR) skips the round, countable. Oversized texts are clamped, countable. Appends are
+   * fire-and-forget: failures trace, never block.
+   */
+  private bufferRound(
+    sessionId: string,
+    cmd: Extract<EngineCommand, { type: "CALL_INTERACTION" }>,
+    round: { childText: string; llm: LlmTextResult },
+  ): void {
+    if (!this.turnBuffer) return; // absence already traced once per session at read
+    if (round.llm.meta.filtered === "input") return;
+    const key = { sessionId, studentId: cmd.studentId, stageId: cmd.stageId };
+    if (round.childText === "") {
+      this.trace.record(this.mkTrace("interaction", { reason: "context_round_skipped_empty", ...key }));
+      return;
+    }
+    const child = clampTurnText(round.childText);
+    const companion = clampTurnText(round.llm.text);
+    if (child.clamped || companion.clamped) {
+      this.trace.record(this.mkTrace("interaction", {
+        reason: "turn_entry_truncated", child: child.clamped, companion: companion.clamped, ...key,
+      }));
+    }
+    void this.turnBuffer
+      .append(key, { role: "child", text: child.text })
+      .then(() => this.turnBuffer!.append(key, { role: "companion", text: companion.text }))
+      .catch((err: unknown) =>
+        this.trace.record(this.mkTrace("interaction", {
+          reason: "context_degraded", op: "append", error: String((err as Error)?.name ?? err), ...key,
+        })),
+      );
   }
 
   /** The prompt template a stage's interaction uses (falls back to a generic id). */
