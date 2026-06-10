@@ -70,7 +70,8 @@ export interface TraceEvent {
     | "fallback"
     | "interaction"
     | "stage_transition"
-    | "force_advance"; // operator-visible audit of an assistant override
+    | "force_advance" // operator-visible audit of an assistant override
+    | "join_rejected"; // Phase 1: every refused student join, counted (enrollment.md: "operator sees the real 400/404/403 + count")
   studentId?: string;
   stageId?: string;
   promptVersion?: string;

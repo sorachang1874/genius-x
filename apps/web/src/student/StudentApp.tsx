@@ -27,11 +27,10 @@ export function StudentApp(): React.JSX.Element {
 function StudentClassroom(): React.JSX.Element {
   const session = useSession();
 
-  if (session.phase === "idle" || session.phase === "error") {
+  // JoinScreen stays mounted through "joining" so the typed room code survives a rejected
+  // join (unmount/remount would wipe the child's input on every 404/403/network failure).
+  if (session.phase === "idle" || session.phase === "error" || session.phase === "joining") {
     return <JoinScreen />;
-  }
-  if (session.phase === "joining") {
-    return <Standby copy="正在进入教室……" />;
   }
 
   return (
@@ -68,14 +67,30 @@ function StageView({ stageId }: { stageId?: string | undefined }): React.JSX.Ele
   }
 }
 
-function JoinScreen(): React.JSX.Element {
+/** Exported for tests (banned-wording scan + warm-failure pinning). */
+export function JoinScreen(): React.JSX.Element {
   const { join, phase, error } = useSession();
-  const [roomCode, setRoomCode] = useState("");
-  const [name, setName] = useState("");
+  const joining = phase === "joining";
+  // Phase 1: the child's persistent identity arrives via the enrollment link/QR
+  // (?studentId=...) — never typed in. ?room= optionally prefills the room code.
+  // The name is owned by the enrolled profile now (the server ignores a typed name).
+  const params = new URLSearchParams(window.location.search);
+  const studentId = params.get("studentId") ?? "";
+  const [roomCode, setRoomCode] = useState(params.get("room") ?? "");
+
+  if (!studentId) {
+    // Warm non-failure (frozen child-facing reconciliation): no error state, just guidance.
+    return (
+      <div className="join-screen">
+        <h1>魔法泥人 ✨</h1>
+        <p role="status">请用老师发给你的专属链接或二维码进入教室哦～</p>
+      </div>
+    );
+  }
 
   const onJoin = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (roomCode.trim()) void join(roomCode.trim(), name.trim() || undefined);
+    if (!joining && roomCode.trim()) void join(roomCode.trim(), undefined, studentId);
   };
 
   return (
@@ -83,14 +98,13 @@ function JoinScreen(): React.JSX.Element {
       <h1>魔法泥人 ✨</h1>
       <label>
         房间号
-        <input value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="老师给的房间号" autoFocus />
+        <input value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="老师给的房间号" autoFocus disabled={joining} />
       </label>
-      <label>
-        我的名字（可选）
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="你的名字" />
-      </label>
-      <button type="submit" disabled={!roomCode.trim()}>进入教室</button>
-      {phase === "error" && <p className="join-screen__hint" role="status">没找到教室，问问老师房间号对不对～</p>}
+      <button type="submit" disabled={joining || !roomCode.trim()}>
+        {joining ? "正在进入教室……" : "进入教室"}
+      </button>
+      {/* Any rejection (room/identity/tenant) renders warm — the real code stays operator-side. */}
+      {phase === "error" && <p className="join-screen__hint" role="status">还没进去呢，请老师来帮帮忙吧～</p>}
       {error && <p hidden>{error}</p>}
     </form>
   );

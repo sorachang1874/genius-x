@@ -199,8 +199,11 @@ function newId(): string {
 }
 
 export interface SessionApi extends SessionState {
-  /** Student: POST /session/join then open the socket. Assistant: open the socket on the room code. */
-  join(roomCode: string, name?: string): Promise<void>;
+  /**
+   * Student: POST /session/join (Phase 1: with the persistent `studentId` from the
+   * enrollment link/QR) then open the socket. Assistant: register + open the socket.
+   */
+  join(roomCode: string, name?: string, studentId?: string): Promise<void>;
   /** Send an interaction input (triggers an AI call). Returns the interactionId. No-op if not a student. */
   interact(stageId: StageId, input: InteractionInput, variantId?: string): string | undefined;
   /** Finish/choose for a stage (e.g. avatar selection). Optimistically reflects a selection locally. */
@@ -222,7 +225,7 @@ export interface SessionProviderProps {
   /** Injectable seams (tests pass fakes; defaults hit the real server). */
   deps?: {
     connect?: (opts: ConnectOptions) => ClassroomSocket;
-    join?: (roomCode: string, name?: string) => Promise<SessionJoinResponse>;
+    join?: (roomCode: string, name?: string, role?: Role, studentId?: string) => Promise<SessionJoinResponse>;
     fetchState?: (sessionId: string) => Promise<ClassSession | null>;
     wsUrl?: string;
   };
@@ -236,7 +239,7 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
   // `you` self-refresh effect below depends on doFetchState).
   const injJoin = deps?.join;
   const injFetch = deps?.fetchState;
-  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string, role?: "student" | "assistant" | "teacher" | "parent" | "admin") => joinSession(base, roomCode, name, role)), [injJoin, base]);
+  const doJoin = useMemo(() => injJoin ?? ((roomCode: string, name?: string, role?: "student" | "assistant" | "teacher" | "parent" | "admin", studentId?: string) => joinSession(base, roomCode, name, role, studentId)), [injJoin, base]);
   const doFetchState = useMemo(() => injFetch ?? ((sessionId: string) => fetchSessionState(base, sessionId)), [injFetch, base]);
 
   const [state, dispatch] = useReducer(reduce, {
@@ -250,11 +253,14 @@ export function SessionProvider({ role, assistantId, children, deps }: SessionPr
   const socketRef = useRef<ClassroomSocket | null>(null);
 
   const join = useCallback(
-    async (roomCode: string, name?: string): Promise<void> => {
+    async (roomCode: string, name?: string, studentId?: string): Promise<void> => {
       dispatch({ t: "JOIN_START" });
       try {
         if (role === "student") {
-          const res = await doJoin(roomCode, name);
+          // Phase 1: the persistent studentId (from the enrollment link/QR) rides along;
+          // the server resolves the profile and OWNS the display name — `name` is not sent
+          // (it is ignored server-side; sending it would imply it has effect).
+          const res = await doJoin(roomCode, undefined, undefined, studentId);
           if (!res.studentId) throw new Error("student join did not return studentId");
           dispatch({ t: "JOIN_OK", sessionId: res.sessionId, studentId: res.studentId });
         } else {

@@ -57,6 +57,7 @@ function Probe(): React.JSX.Element {
       <span data-testid="toy">{String(s.you.memories.favorite_toy ?? "")}</span>
       <span data-testid="projected">{s.projected?.studentId ?? ""}</span>
       <button onClick={() => s.join("room-1")}>join</button>
+      <button onClick={() => s.join("room-1", undefined, "persist-9")}>join-persistent</button>
       <button onClick={() => s.interact("icebreak", { kind: "voice", audioRef: "a1" })}>interact</button>
       <button onClick={() => s.complete("shape", { kind: "selection", output: "avatarUrl", value: "u1" })}>complete</button>
       <button onClick={() => s.playPrepared("birth", "prep-1")}>play</button>
@@ -89,6 +90,26 @@ describe("session context (fake socket)", () => {
   it("sends HELLO {studentId} on (re)connect", async () => {
     const { fake } = await setupLiveStudent();
     expect(fake.sent).toContainEqual({ type: "HELLO", studentId: "k1" });
+  });
+
+  it("threads the persistent studentId through to the join call (Phase 1 enrollment link)", async () => {
+    const fake = makeFakeSocket();
+    const joinResp: SessionJoinResponse = { studentId: "persist-9", sessionId: "s1", role: "student" };
+    const deps = {
+      connect: () => fake.socket,
+      join: vi.fn(async () => joinResp),
+      fetchState: vi.fn(async () => null),
+      wsUrl: "ws://test",
+    };
+    render(
+      <SessionProvider role="student" deps={deps}>
+        <Probe />
+      </SessionProvider>,
+    );
+    fireEvent.click(screen.getByText("join-persistent"));
+    await waitFor(() => expect(screen.getByTestId("phase").textContent).toBe("live"));
+    // (roomCode, name, role, studentId) — the persistent id rides in the 4th slot.
+    expect(deps.join).toHaveBeenCalledWith("room-1", undefined, undefined, "persist-9");
   });
 
   it("renders from RESUME_STATE.you and stores lessonConfigVersion", async () => {

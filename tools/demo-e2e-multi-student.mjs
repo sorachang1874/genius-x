@@ -45,12 +45,23 @@ function waitFor(check, timeoutMs = 5000) {
   });
 }
 
-async function joinSession(roomCode, role = "student", name) {
+// Phase 1: students join with PERSISTENT studentIds from enrollment (the seeded demo
+// students; server must run with DATABASE_URL + migrate:seed). 4 are seeded; we use 3.
+const SEEDED_STUDENTS = [
+  { id: "33333333-3333-4333-8333-000000000001", name: "小明" },
+  { id: "33333333-3333-4333-8333-000000000002", name: "朵朵" },
+  { id: "33333333-3333-4333-8333-000000000003", name: "轩轩" },
+];
+
+async function joinSession(roomCode, role = "student", studentId) {
   const res = await fetch(`${SERVER_URL}/session/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ roomCode, role, name }),
+    body: JSON.stringify({ roomCode, role, ...(studentId && { studentId }) }),
   });
+  if (!res.ok) {
+    throw new Error(`join failed (${res.status}): ${await res.text()} — is the server running with DATABASE_URL + migrate:seed applied?`);
+  }
   return res.json();
 }
 
@@ -114,10 +125,10 @@ async function main() {
 
     // Step 3: Multiple students join concurrently
     log("STEP", `3️⃣  ${NUM_STUDENTS} students join concurrently`, colors.yellow);
-    const studentNames = ["小明", "小红", "小刚"];
+    // Names come from the enrolled profiles now (server ignores client names).
 
-    const studentJoinPromises = studentNames.slice(0, NUM_STUDENTS).map((name, i) =>
-      joinSession(ROOM_CODE, "student", name).then(result => ({ ...result, name, index: i }))
+    const studentJoinPromises = SEEDED_STUDENTS.slice(0, NUM_STUDENTS).map((_seed, i) =>
+      joinSession(ROOM_CODE, "student", SEEDED_STUDENTS[i].id).then(result => ({ ...result, name: SEEDED_STUDENTS[i].name, index: i }))
     );
 
     const startJoin = Date.now();

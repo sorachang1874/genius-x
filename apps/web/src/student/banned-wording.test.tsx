@@ -10,6 +10,7 @@ import type { StudentRuntimeState } from "@genius-x/contracts";
 import { Thinking } from "../shared/thinking";
 import { fakeSession, renderWithSession, freshStudentState } from "../test/session-fixture";
 import { Standby } from "./stages/Standby";
+import { JoinScreen } from "./StudentApp";
 import { Intro } from "./stages/Intro";
 import { Icebreak } from "./stages/Icebreak";
 import { Shape } from "./stages/Shape";
@@ -22,7 +23,13 @@ const player: AiOutputPlayer = { play: vi.fn(async () => {}), imageUrls: (o) => 
 const withAvatar: StudentRuntimeState = { ...freshStudentState(), outputs: { avatarUrl: "x" } };
 const withMemories: StudentRuntimeState = { ...freshStudentState(), outputs: { avatarUrl: "x" }, memories: { favorite_toy: "积木" }, displayName: "小明" };
 
+// JoinScreen reads ?studentId= from the URL — pin it for the with-form states.
+window.history.pushState({}, "", "/?studentId=33333333-3333-4333-8333-000000000001");
+
 const cases: Array<[string, ReactNode, ReturnType<typeof fakeSession>]> = [
+  ["join-idle", <JoinScreen key="ji" />, fakeSession()],
+  ["join-joining", <JoinScreen key="jj" />, fakeSession({ phase: "joining" })],
+  ["join-rejected", <JoinScreen key="je" />, fakeSession({ phase: "error", error: "join failed (403)" })],
   ["standby", <Standby key="s" />, fakeSession()],
   ["intro", <Intro key="i" />, fakeSession()],
   ["thinking", <Thinking key="t" />, fakeSession()],

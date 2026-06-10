@@ -39,6 +39,7 @@ New deferrals for the student-centric persistent architecture. See `docs/archite
 | DF-v2-9 | Vector DB semantic search | deferred-feature | Importance-scored list | pgvector or Pinecone when workspace grows large (100+ memories/student) | Optional optimization |
 | DF-v2-10 | Physical souvenir ordering | deferred-feature | None | M7+: order service + fulfillment partner integration | 3D printed figurines, printed books |
 | DF-v2-11 | `pg` version convergence (pnpm catalog) | deferred-infra | `pg`/`@types/pg`/PGlite declared only in `apps/server` (sole consumer; "who uses, declares") | A second Postgres consumer appears (e.g. extracted `apps/identity-service`, CMS direct-connect) → move shared versions to a pnpm catalog | PGlite is pure WASM (no postinstall) — no build-script allowlist needed |
+| DF-v2-12 | Per-room/class tenant resolution | deferred-feature | ONE tenant per server process (`TENANT_ID`, fail-closed in live/production; demo default dev-only) | Multi-tenant single deployment: resolve the session's tenant from the room/class record at creation | Step-5 scoping decision; distinct from DF-v2-7 (Phase 8 multi-city infra) |
 
 ## M3 (frontend) entries — add when M3 starts
 

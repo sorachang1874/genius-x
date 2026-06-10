@@ -99,14 +99,25 @@ export function connectSocket(opts: ConnectOptions): ClassroomSocket {
   };
 }
 
-/** POST /session/join — room code + optional name/role. Returns the assigned studentId + sessionId (+ assistantId if role=assistant). */
+/**
+ * POST /session/join. Students (Phase 1) MUST send their persistent `studentId` (from the
+ * enrollment link/QR) — the server looks it up and pre-fills the display name from the
+ * profile. `name` is currently UNUSED server-side for every role (kept on the wire type
+ * for forward-compat only; assistant display names would be a lead-serialized change).
+ */
 export async function joinSession(
   baseUrl: string,
   roomCode: string,
   name?: string,
   role?: "student" | "assistant" | "teacher" | "parent" | "admin",
+  studentId?: string,
 ): Promise<SessionJoinResponse> {
-  const body: SessionJoinRequest = { roomCode, ...(name && { name }), ...(role && { role }) };
+  const body: SessionJoinRequest = {
+    roomCode,
+    ...(name && { name }),
+    ...(role && { role }),
+    ...(studentId && { studentId }),
+  };
   const res = await fetch(`${baseUrl}/session/join`, {
     method: "POST",
     headers: { "content-type": "application/json" },
