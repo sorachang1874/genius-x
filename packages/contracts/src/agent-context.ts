@@ -99,6 +99,15 @@ export const EPISODE_TAG_MAX_CHARS = 20;
 /** Safety status of a recorded exchange (additive workspace column, Phase 4 migration). */
 export type InteractionSafetyStatus = "ok" | "input_filtered" | "output_filtered";
 
+// --- COLD path (cross-lesson retrieval — agent-context.md) ---
+
+/** The versioned context prompt contract (model-input contract, ONE assembly point). */
+export const CONTEXT_VERSION = "context_v1";
+/** Semantic memories: latest-per-key dedup (DF-v2-15), importance-ranked, top K. */
+export const CONTEXT_SEMANTIC_TOP_K = 12;
+/** Episodic memories: recency+importance ranked, top K. */
+export const CONTEXT_EPISODE_TOP_K = 3;
+
 /**
  * Parse + schema-validate an episode JSON (the ONE validator both boundaries use —
  * gateway output parsing AND the workspace write path — so they can never drift).

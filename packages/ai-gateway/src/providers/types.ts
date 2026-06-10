@@ -29,6 +29,14 @@ export interface LlmRequest {
    * WITH a trace (`history_unsupported`) — never silently.
    */
   history?: TurnBufferEntry[];
+  /**
+   * COLD context block (agent-context.md cold path): the versioned `context_v1`
+   * assembly (canon + semantic memories + episodes). The gateway input-reviews it
+   * defensively (filtered ⇒ DROPPED with a trace, the call proceeds without it) and
+   * stamps `contextVersion` in traces. Adapters decide placement (system prompt vs
+   * prefix); the fakes ignore it.
+   */
+  context?: { version: string; text: string };
 }
 
 export interface TtsRequest {

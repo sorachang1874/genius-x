@@ -410,3 +410,26 @@ describe("extractEpisode (end-of-scene consolidation — AI-first schema validat
     expect(events.some((e) => e.kind === "safety" && (e.payload as { stage?: string }).stage === "input")).toBe(true);
   });
 });
+
+describe("LlmRequest.context (cold path — context_v1)", () => {
+  it("context passes through to the provider; contextVersion stamped in ai_response", async () => {
+    const seen: LlmReq[] = [];
+    const provider = stub({ llm: async (r: LlmReq) => { seen.push(r); return { capability: "llm", text: "回应", meta: { source: "primary", degraded: false } }; } });
+    const { gw, events } = gatewayWith(provider);
+    await gw.llm({ promptVersion: "talent_v1", input: "继续", context: { version: "context_v1", text: "【你的伙伴设定】\n你的名字：小泥" } });
+    expect(seen[0]!.context).toMatchObject({ version: "context_v1" });
+    const ok = events.find((e) => e.kind === "ai_response");
+    expect((ok!.payload as { contextVersion?: string }).contextVersion).toBe("context_v1");
+  });
+
+  it("a FILTERED context block is DROPPED (call proceeds context-less) + safety-traced — never fatal", async () => {
+    const seen: LlmReq[] = [];
+    const provider = stub({ llm: async (r: LlmReq) => { seen.push(r); return { capability: "llm", text: "回应", meta: { source: "primary", degraded: false } }; } });
+    const { gw, events } = gatewayWith(provider);
+    const r = await gw.llm({ promptVersion: "talent_v1", input: "正常输入", context: { version: "context_v1", text: "记得那段暴力的故事" } });
+    expect(r.meta.degraded).toBe(false); // the call itself succeeded
+    expect(seen[0]!.context).toBeUndefined(); // context dropped, not served
+    const t = events.find((e) => e.kind === "safety" && (e.payload as { stage?: string }).stage === "context");
+    expect(t).toBeDefined();
+  });
+});

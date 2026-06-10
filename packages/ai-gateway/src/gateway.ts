@@ -72,11 +72,22 @@ export class AiGateway {
   async llm(req: LlmRequest): Promise<LlmTextResult> {
     const input = this.d.safety.reviewInput(req.input);
     if (!input.ok) return this.llmFallback(req.promptVersion, "input_filtered", input.reasons, "input");
+    // COLD context (agent-context.md): defensively reviewed — a filtered context block is
+    // DROPPED (the call proceeds context-less, traced), never served and never fatal.
+    let context = req.context;
+    if (context) {
+      const ctxReview = this.d.safety.reviewInput(context.text);
+      if (!ctxReview.ok) {
+        this.emit("safety", { capability: "llm", stage: "context", reasons: ctxReview.reasons, contextVersion: context.version });
+        context = undefined;
+      }
+    }
     try {
       // Defensive history bound (agent-context.md): the turn buffer pre-bounds, but a
       // caller passing oversized history is truncated oldest-first — TRACED, never silent.
       // An adapter declaring llmHistory:"unsupported" degrades to stateless, also traced.
-      const { history: rawHistory, ...rest } = req;
+      const { history: rawHistory, context: _rawContext, ...rest } = req;
+      void _rawContext;
       let bounded: TurnBufferEntry[] | undefined;
       if (rawHistory && rawHistory.length > 0) {
         if (this.d.provider.llmHistory === "unsupported") {
@@ -92,14 +103,16 @@ export class AiGateway {
           }
         }
       }
-      const r = await withTimeout(
-        this.d.provider.llm(bounded && bounded.length > 0 ? { ...rest, history: bounded } : rest),
-        this.timeout("llm"),
-      );
+      const provReq: LlmRequest = {
+        ...rest,
+        ...(bounded && bounded.length > 0 && { history: bounded }),
+        ...(context && { context }),
+      };
+      const r = await withTimeout(this.d.provider.llm(provReq), this.timeout("llm"));
       assertLlm(r);
       const out = this.d.safety.reviewOutput(r.text);
       if (!out.ok) return this.llmFallback(req.promptVersion, "output_filtered", out.reasons, "output");
-      this.emit("ai_response", { capability: "llm", promptVersion: req.promptVersion });
+      this.emit("ai_response", { capability: "llm", promptVersion: req.promptVersion, ...(context && { contextVersion: context.version }) });
       return r;
     } catch (e) {
       return this.llmFallback(req.promptVersion, reason(e), []);

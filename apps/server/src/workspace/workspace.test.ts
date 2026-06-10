@@ -255,3 +255,35 @@ describe("episode memory carve-out (schema-validated, never vocabulary-validated
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 });
+
+// --- P4 Step 4: cold-path retrieval (agent-context.md) ---
+
+describe("retrieveContextMemories (the model-context projection)", () => {
+  it("semantic = LATEST-per-key (DF-v2-15 dedup at the reader), importance-ranked; episodes separate", async () => {
+    const parentId = await ctx.makeParent(tenant);
+    const kid = (await ctx.service.enrollStudent({ parentId, displayName: "冷径娃", age: 7, consent: CONSENT_V1 })).id;
+    const c = { lessonId: "lesson-001", stageId: "talent" };
+    await svc.recordMemory({ studentId: kid, key: "favorite_toy", value: "旧的积木", context: c }, {});
+    await ctx.sql.query("UPDATE memories SET created_at = NOW() - INTERVAL '1 day' WHERE student_id = $1", [kid]);
+    await svc.recordMemory({ studentId: kid, key: "favorite_toy", value: "新的恐龙", context: c }, {}); // SAME key, newer
+    await svc.recordMemory({ studentId: kid, key: "favorite_color", value: "蓝色", context: c, importance: 0.9 }, {});
+    await svc.recordMemory({ studentId: kid, key: "episode", value: '{"summary":"聊了恐龙","tags":["恐龙"]}', context: c }, {});
+
+    const r = await svc.retrieveContextMemories(kid, { semanticTopK: 12, episodeTopK: 3 });
+    expect(r.semantic.map((m) => m.key).sort()).toEqual(["favorite_color", "favorite_toy"]); // deduped, no episode
+    expect(r.semantic.find((m) => m.key === "favorite_toy")!.value).toBe("新的恐龙"); // LATEST wins
+    expect(r.semantic[0]!.key).toBe("favorite_color"); // importance 0.9 ranks first
+    expect(r.episodes).toHaveLength(1);
+    expect(JSON.parse(r.episodes[0]!.value)).toMatchObject({ summary: "聊了恐龙" });
+  });
+
+  it("markMemoriesAccessed bumps accessCount (retrieval write-back, pre-built Phase-2 fields)", async () => {
+    const parentId = await ctx.makeParent(tenant);
+    const kid = (await ctx.service.enrollStudent({ parentId, displayName: "回写娃", age: 7, consent: CONSENT_V1 })).id;
+    const m = await svc.recordMemory({ studentId: kid, key: "favorite_food", value: "饺子", context: { lessonId: "lesson-001", stageId: "talent" } }, {});
+    await svc.markMemoriesAccessed([m.id]);
+    await svc.markMemoriesAccessed([m.id]);
+    const after = await ctx.sql.query("SELECT access_count FROM memories WHERE id = $1", [m.id]);
+    expect((after.rows[0] as { access_count: number }).access_count).toBe(2);
+  });
+});

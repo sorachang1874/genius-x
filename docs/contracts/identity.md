@@ -148,7 +148,7 @@ All fields below are **new in Phase 1** (Migration column = "new v1" unless note
 | Field | Owner | Source of truth | Allowed values | Derivation | Consumers | Fallback | Deletion condition | Migration | Preflight |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Student.id` | Identity Service | `students` table (PostgreSQL) | UUID | generated on enrollment | Classroom, Workspace, Agent | none | never hard-deleted (soft delete = Phase 8) | new v1 | query by id returns record |
-| `Student.displayName` | Parent (at enrollment) | `students.display_name` | non-empty string | parent input | Classroom UI, Certificate, Workspace | none | editable by parent | new v1 | length > 0 |
+| `Student.displayName` | Parent (at enrollment) | `students.display_name` | non-empty string | parent input | Classroom UI, Certificate, Workspace, **AI context build (provider-facing — P4 Step 4, lead-serialized: same posture as transcripts-to-provider, never in traces)** | none | editable by parent | new v1 | length > 0 |
 | `Student.age` | Parent (at enrollment) | `students.age` | 4-10 | parent input | Classroom (phase gating), Agent | none | updated annually or on parent request | new v1 | 4 ≤ age ≤ 10 |
 | `Student.tenantId` | Identity Service | `students.tenant_id` | valid tenant UUID | assigned at enrollment | All services (isolation) | none | immutable | new v1 | foreign key enforced |
 | `Parent.id` | Identity Service | `parents` table | UUID | generated on creation | Student enrollment, consent | none | never hard-deleted (soft delete = Phase 8) | new v1 | query by id returns record |

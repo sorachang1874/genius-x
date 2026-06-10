@@ -29,6 +29,7 @@ import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
 import { WorkspaceServiceError, type WorkspaceService } from "../workspace/service";
+import { ContextBuilder } from "../agent/context";
 import type { LessonShareMinter } from "../share/service";
 
 export interface Emitter {
@@ -124,7 +125,13 @@ export class ClassroomController {
      * (`context_degraded` trace); the classroom never blocks on context.
      */
     private readonly turnBuffer?: TurnBufferStore,
-  ) {}
+  ) {
+    // Phase 4 cold path (agent-context.md): built from the SAME identity/workspace deps —
+    // no new wiring surface; both absent ⇒ every call is correctly context-less.
+    this.contextBuilder = new ContextBuilder(identity, workspace, trace, () => clock.now());
+  }
+
+  private readonly contextBuilder: ContextBuilder;
 
   private readonly workspaceSkipTraced = new Set<string>();
   private readonly turnBufferSkipTraced = new Set<string>();
@@ -584,11 +591,20 @@ export class ClassroomController {
     switch (input.kind) {
       case "voice":
       case "talentAnswer": {
-        const asr = await this.gateway.asr({ audioRef: input.audioRef }); mark(asr.meta);
-        // HOT context (agent-context.md): prior rounds of THIS student's THIS-scene
-        // conversation shape the reply; any buffer failure ⇒ stateless call, traced.
-        const history = await this.readTurns(sessionId, cmd);
-        const llm = await this.gateway.llm({ promptVersion, input: asr.transcript, ...(history.length > 0 && { history }) }); mark(llm.meta);
+        // HOT context (prior rounds) + COLD context (canon + cross-lesson memories) fetch
+        // in PARALLEL with ASR — none depends on the transcript; either failing ⇒ the
+        // call proceeds with less context, traced — never blocked (agent-context.md).
+        const [asr, history, cold] = await Promise.all([
+          this.gateway.asr({ audioRef: input.audioRef }),
+          this.readTurns(sessionId, cmd),
+          this.contextBuilder.buildCold(sessionId, cmd.studentId),
+        ]);
+        mark(asr.meta);
+        const llm = await this.gateway.llm({
+          promptVersion, input: asr.transcript,
+          ...(history.length > 0 && { history }),
+          ...(cold && { context: { version: cold.version, text: cold.text } }),
+        }); mark(llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
         // The round is buffered by the CALLER only after the reducer ACCEPTS the
         // completion — a stale round (dropped, never delivered) must not enter context.
@@ -607,8 +623,15 @@ export class ClassroomController {
           }));
           option = "";
         }
-        const history = await this.readTurns(sessionId, cmd);
-        const llm = await this.gateway.llm({ promptVersion, input: option, ...(history.length > 0 && { history }) }); mark(llm.meta);
+        const [history, cold] = await Promise.all([
+          this.readTurns(sessionId, cmd),
+          this.contextBuilder.buildCold(sessionId, cmd.studentId),
+        ]);
+        const llm = await this.gateway.llm({
+          promptVersion, input: option,
+          ...(history.length > 0 && { history }),
+          ...(cold && { context: { version: cold.version, text: cold.text } }),
+        }); mark(llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
         return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, round: { childText: option, llm } };
       }
