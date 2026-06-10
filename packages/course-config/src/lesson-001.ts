@@ -11,7 +11,7 @@ import type { LessonConfig } from "@genius-x/contracts";
 export const lesson001: LessonConfig = {
   lessonId: "lesson-001",
   lessonTitle: "认识我的 AI 好朋友",
-  lessonConfigVersion: "1.3.0", // 1.3.0: promptAssembly carries SCENE content only — the brand style suffix moved to the gateway-level brand contract (docs/contracts/brand-style.md). OPS: bumping this fails-closed ALL persisted sessions on every message (guardSession) — deploy outside class hours; flush/reseed Redis sessions.
+  lessonConfigVersion: "1.4.0", // 1.4.0: talent declares episodicMemory (Phase 4 consolidation). 1.3.0: promptAssembly carries SCENE content only — the brand style suffix moved to the gateway-level brand contract (docs/contracts/brand-style.md). OPS: bumping this fails-closed ALL persisted sessions on every message (guardSession) — deploy outside class hours; flush/reseed Redis sessions.
   totalDuration: 60,
   unlockPolicy: "classWide",
   declaredOutputs: ["avatarUrl"],
@@ -123,6 +123,9 @@ export const lesson001: LessonConfig = {
         type: "allStudents",
         of: { kind: "minInteractions", count: 2 },
       },
+      // Phase 4: leaving 才艺互动 consolidates each child's scene conversation into ONE
+      // episodic memory (agent-context.md) — the friend remembers the MOMENT, not a slot.
+      episodicMemory: true,
       interaction: {
         type: "multimodal_talent",
         promptTemplate: "talent_v1",

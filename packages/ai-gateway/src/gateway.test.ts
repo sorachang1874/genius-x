@@ -365,3 +365,48 @@ describe("llmHistory adapter capability (history_unsupported — loud, never sil
     expect((t!.payload as { promptVersion?: string }).promptVersion).toBe("talent_v1"); // attributable
   });
 });
+
+describe("extractEpisode (end-of-scene consolidation — AI-first schema validation)", () => {
+  const ROUNDS = [
+    { role: "child" as const, text: "我想要三条尾巴" },
+    { role: "companion" as const, text: "三条尾巴超酷的！" },
+  ];
+
+  it("returns a schema-valid episode and traces ai_response", async () => {
+    const { gw, events } = makeGateway({}, { llmText: '{"summary":"孩子给朋友设计了三条尾巴","tags":["创作","尾巴"]}' });
+    const ep = await gw.extractEpisode({ rounds: ROUNDS, promptVersion: "episode_v1" });
+    expect(ep).toEqual({ summary: "孩子给朋友设计了三条尾巴", tags: ["创作", "尾巴"] });
+    expect(events.some((e) => e.kind === "ai_response" && (e.payload as { capability?: string }).capability === "extract_episode")).toBe(true);
+  });
+
+  it("FakeProvider's scripted episode keeps demo consolidation valid without canned content", async () => {
+    const { gw } = makeGateway();
+    const ep = await gw.extractEpisode({ rounds: ROUNDS, promptVersion: "episode_v1" });
+    expect(ep).not.toBeNull();
+    expect(ep!.tags).toEqual(["fake"]);
+  });
+
+  it("schema violations are REJECTED with a trace — oversize is never silently truncated", async () => {
+    const big = JSON.stringify({ summary: "长".repeat(600), tags: ["x"] });
+    const { gw, events } = makeGateway({}, { llmText: big });
+    expect(await gw.extractEpisode({ rounds: ROUNDS, promptVersion: "episode_v1" })).toBeNull();
+    expect(events.some((e) => (e.payload as { reason?: string }).reason === "episode_schema_miss")).toBe(true);
+    const { gw: gw2 } = makeGateway({}, { llmText: "不是 JSON" });
+    expect(await gw2.extractEpisode({ rounds: ROUNDS, promptVersion: "episode_v1" })).toBeNull();
+  });
+
+  it("an unsafe SUMMARY is dropped + safety-traced (output parity)", async () => {
+    const { gw, events } = makeGateway({}, { llmText: '{"summary":"特别暴力的一幕","tags":[]}' });
+    expect(await gw.extractEpisode({ rounds: ROUNDS, promptVersion: "episode_v1" })).toBeNull();
+    expect(events.some((e) => e.kind === "safety" && (e.payload as { stage?: string }).stage === "output")).toBe(true);
+  });
+
+  it("unsafe ROUNDS never reach the provider (input parity)", async () => {
+    let called = false;
+    const provider = stub({ llm: async () => { called = true; return { capability: "llm", text: "{}", meta: { source: "primary", degraded: false } }; } });
+    const { gw, events } = gatewayWith(provider);
+    expect(await gw.extractEpisode({ rounds: [{ role: "child", text: "讲点暴力的" }], promptVersion: "episode_v1" })).toBeNull();
+    expect(called).toBe(false);
+    expect(events.some((e) => e.kind === "safety" && (e.payload as { stage?: string }).stage === "input")).toBe(true);
+  });
+});

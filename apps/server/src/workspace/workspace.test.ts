@@ -214,3 +214,44 @@ describe("microsecond cursor precision (round-2 review: real-PG row skips)", () 
     expect(new Set(all.map((w) => w.contentText)).size).toBe(4);
   });
 });
+
+// --- P4 Step 3: the "episode" reserved-kind carve-out (workspace.md v1.1) ---
+
+describe("episode memory carve-out (schema-validated, never vocabulary-validated)", () => {
+  it("accepts key='episode' with a schema-valid EpisodeValue even though no lesson declares it", async () => {
+    const m = await svc.recordMemory(
+      { studentId, key: "episode", value: '{"summary":"今天聊了三条尾巴","tags":["创作"]}', context: { lessonId: "lesson-001", stageId: "talent" } },
+      { declaredMemoryKeys: ["favorite_toy"] }, // vocabulary does NOT include episode — carve-out applies
+    );
+    expect(m.key).toBe("episode");
+  });
+
+  it("rejects an episode value violating the schema (oversize summary / bad tags / non-JSON)", async () => {
+    const cases = [
+      JSON.stringify({ summary: "长".repeat(600), tags: [] }),
+      JSON.stringify({ summary: "ok", tags: ["也太长的标签超过二十个字符的那种东西啊啊啊啊啊啊"] }),
+      JSON.stringify({ summary: "ok", tags: ["a", "b", "c", "d", "e", "f"] }),
+      "不是 JSON",
+    ];
+    for (const value of cases) {
+      await expect(
+        svc.recordMemory({ studentId, key: "episode", value, context: { lessonId: "lesson-001", stageId: "talent" } }, {}),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    }
+  });
+
+  it("normal undeclared keys are STILL rejected (the carve-out is exactly one value)", async () => {
+    await expect(
+      svc.recordMemory({ studentId, key: "sneaky_key", value: "x", context: { lessonId: "lesson-001", stageId: "talent" } }, { declaredMemoryKeys: ["favorite_toy"] }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects an episode value smuggling unknown keys (CLOSED schema, fail closed)", async () => {
+    await expect(
+      svc.recordMemory(
+        { studentId, key: "episode", value: '{"summary":"ok","tags":[],"studentId":"smuggled-id"}', context: { lessonId: "lesson-001", stageId: "talent" } },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+});

@@ -29,7 +29,7 @@ function freshStudent(over: Partial<StudentRuntimeState> = {}): StudentRuntimeSt
 
 function seed(currentStageId: string, students: Record<string, StudentRuntimeState>): ClassSession {
   return {
-    sessionId: "s1", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.3.0", classId: "c1",
+    sessionId: "s1", tenantId: "demo-tenant", lessonId: "lesson-001", lessonConfigVersion: "1.4.0", classId: "c1",
     currentStageId, global: "active", stageStartTime: NOW, students, assistants: ["a1"],
   };
 }
@@ -68,7 +68,7 @@ describe("ClassroomController", () => {
     expect(msg.type).toBe("RESUME_STATE");
     if (msg.type === "RESUME_STATE") {
       expect(msg.currentStageId).toBe("shape");
-      expect(msg.lessonConfigVersion).toBe("1.3.0");
+      expect(msg.lessonConfigVersion).toBe("1.4.0");
       expect(msg.you.outputs.avatarUrl).toBe("u1");
     }
   });
@@ -764,3 +764,149 @@ async function untilTrue2(fn: () => Promise<boolean>, timeoutMs = 2000): Promise
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+// --- P4 Step 3: end-of-scene episodic consolidation + safety threading ---
+
+describe("episodic consolidation (scene exit → ONE schema-valid episode)", () => {
+  function talentGateway(t: TraceSink) {
+    return new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => ({
+          capability: "llm" as const,
+          text: r.promptVersion === "episode_v1" ? '{"summary":"孩子聊了三条尾巴的设计","tags":["创作"]}' : "回应",
+          meta: { source: "primary" as const, degraded: false },
+        }),
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "我想要三条尾巴", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace: t, now: () => NOW,
+    });
+  }
+
+  it("leaving an episodicMemory stage drains the buffer and writes ONE episode per student", async () => {
+    const tb = new InMemoryTurnBufferStore();
+    const episodes: { studentId: string; key: string; value: string; context: { stageId: string } }[] = [];
+    const ws = {
+      async recordMemory(req: { studentId: string; key: string; value: string; context: { stageId: string } }) {
+        episodes.push(req);
+        return { id: "m" };
+      },
+      async recordWork() { return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, talentGateway(trace),
+      undefined, ws as unknown as WorkspaceService, undefined, tb,
+    );
+    await store.save(seed("talent", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "talent", interactionId: "t1", input: { kind: "talentOption", option: "story" } });
+    await untilTrue2(async () => (await tb.read({ sessionId: "s1", studentId: "k1", stageId: "talent" })).length === 2);
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" }); // scene exits
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "episode_consolidated"));
+    expect(episodes.filter((m) => m.key === "episode")).toHaveLength(1);
+    const ep = JSON.parse(episodes.find((m) => m.key === "episode")!.value) as { summary: string };
+    expect(ep.summary).toBe("孩子聊了三条尾巴的设计");
+    expect(episodes[0]!.context.stageId).toBe("talent");
+    expect(await tb.read({ sessionId: "s1", studentId: "k1", stageId: "talent" })).toHaveLength(0); // drained once
+  });
+
+  it("a NON-episodic stage exit consolidates nothing; an empty buffer consolidates nothing", async () => {
+    const tb = new InMemoryTurnBufferStore();
+    const writes: string[] = [];
+    const ws = {
+      async recordMemory(req: { key: string }) { writes.push(req.key); return { id: "m" }; },
+      async recordWork() { return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, talentGateway(trace),
+      undefined, ws as unknown as WorkspaceService, undefined, tb,
+    );
+    // icebreak (no episodicMemory) with a buffered round → advance → no episode
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue2(async () => (await tb.read({ sessionId: "s1", studentId: "k1", stageId: "icebreak" })).length === 2);
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "shape", assistantId: "a1" });
+    // talent with NO rounds → advance → no episode either
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "talent", assistantId: "a1" });
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" });
+    await new Promise((r) => setTimeout(r, 40));
+    expect(writes.filter((k) => k === "episode")).toHaveLength(0);
+    expect(trace.events.filter((e) => e.payload.reason === "episode_consolidated")).toHaveLength(0);
+  });
+
+  it("an INPUT-FILTERED exchange records with safety='input_filtered' (the recorder consumes AiMeta.filtered)", async () => {
+    const recorded: { safety?: string }[] = [];
+    const ws = {
+      async recordInteraction(req: { safety?: string }) { recorded.push(req); return { id: "i" }; },
+      async recordWork() { return { id: "w" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const gw = new GW({
+      provider: {
+        llm: async () => ({ capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }),
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "讲点暴力的", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, gw,
+      undefined, ws as unknown as WorkspaceService,
+    );
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => recorded.length === 1);
+    expect(recorded[0]!.safety).toBe("input_filtered");
+  });
+});
+
+describe("consolidation/sweep ordering (review-proven race fix)", () => {
+  it("lesson-end sweep WAITS for in-flight consolidations — no student's episode is lost", async () => {
+    const tb = new InMemoryTurnBufferStore();
+    const episodes: string[] = [];
+    const ws = {
+      async recordMemory(req: { studentId: string; key: string }) { if (req.key === "episode") episodes.push(req.studentId); return { id: "m" }; },
+      async recordWork() { return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+    };
+    const gw = new GW({
+      provider: {
+        // SLOW episode extraction (the race window): consolidation for 2 students spans
+        // the immediately-following lesson-end transition.
+        llm: async (r: CtlLlmReq) => {
+          if (r.promptVersion === "episode_v1") await new Promise((res) => setTimeout(res, 40));
+          return {
+            capability: "llm" as const,
+            text: r.promptVersion === "episode_v1" ? '{"summary":"聊了尾巴","tags":["创作"]}' : "回应",
+            meta: { source: "primary" as const, degraded: false },
+          };
+        },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "我想要三条尾巴", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, gw,
+      undefined, ws as unknown as WorkspaceService, undefined, tb,
+    );
+    await store.save(seed("talent", { k1: freshStudent(), k2: freshStudent() }));
+    for (const k of ["k1", "k2"]) {
+      await c.onMessage("s1", { type: "INTERACT", studentId: k, stageId: "talent", interactionId: `t-${k}`, input: { kind: "talentOption", option: "story" } });
+    }
+    await untilTrue2(async () => (await tb.read({ sessionId: "s1", studentId: "k2", stageId: "talent" })).length === 2);
+    // Rush to the end: talent → birth (scene exit, consolidation starts) → closure (lesson
+    // completes, sweep fires) — the sweep must NOT delete k2's un-drained buffer.
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" });
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "closure", assistantId: "a1" });
+    await untilTrue(() => episodes.length === 2, 4000);
+    expect(episodes.sort()).toEqual(["k1", "k2"]); // BOTH children keep their memory
+  });
+});

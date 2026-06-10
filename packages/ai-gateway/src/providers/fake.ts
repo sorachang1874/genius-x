@@ -48,7 +48,12 @@ export class FakeProvider implements ProviderAdapter {
     await this.gate(this.config.llm);
     const text = this.config.llm?.filteredOutput
       ? "这里有暴力内容" // trips the output safety filter
-      : (this.content.llmText ?? `(fake reply: ${req.promptVersion})`);
+      : (this.content.llmText ??
+        // Scripted episode shape so demo/e2e consolidation produces a VALID episode
+        // (a generic fake reply would schema-miss and trace on every scene exit).
+        (req.promptVersion === "episode_v1"
+          ? '{"summary":"(fake) 这一幕里我们聊得很开心","tags":["fake"]}'
+          : `(fake reply: ${req.promptVersion})`));
     return { capability: "llm", text, meta: { source: "primary", degraded: false } };
   }
 

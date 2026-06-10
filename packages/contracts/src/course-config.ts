@@ -51,6 +51,12 @@ export interface StageConfig {
   appState?: StageAppState;
   /** Artifact produced by this stage (must be in declaredArtifactTypes). */
   output?: ArtifactType;
+  /**
+   * Phase 4 (agent-context.md): at stage exit, the agent consolidates this scene's turn
+   * buffer into ONE schema-validated episodic memory (`key="episode"`). STAGE-scoped by
+   * contract — the validator rejects this field on an interaction.
+   */
+  episodicMemory?: boolean;
 }
 
 export interface StageVariant {
@@ -99,6 +105,9 @@ export interface ImageGenInteraction {
   model: string; // adapter id, NOT a hard provider binding (D3)
   outputCount: number;
 }
+
+// (StageConfig.episodicMemory is declared on the stage type below — STAGE-scoped, matching
+// the end-of-scene consolidation trigger; the validator rejects it on an interaction.)
 
 export interface StructuredQaInteraction {
   type: "structured_qa";

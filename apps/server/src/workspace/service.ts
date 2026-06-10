@@ -33,6 +33,7 @@ import type {
   WorkspaceListQuery,
   WorkspaceSummaryResponse,
 } from "@genius-x/contracts";
+import { EPISODE_MEMORY_KEY, parseEpisodeValue } from "@genius-x/contracts";
 import type { IdentityDb } from "../identity/service";
 
 export const WORKSPACE_ERROR_STATUS: Record<WorkspaceErrorCode, number> = {
@@ -182,6 +183,7 @@ interface InteractionRow {
   input_kind: string; input_ref: string | null; input_text: string | null;
   output_kind: string; output_ref: string | null; output_text: string | null;
   output_work_id: string | null; output_degraded: boolean;
+  safety: "ok" | "input_filtered" | "output_filtered";
   memories_extracted: string[]; created_at: unknown;
 }
 
@@ -210,6 +212,7 @@ function toInteraction(r: InteractionRow): InteractionRecord {
       degraded: r.output_degraded,
     },
     memoriesExtracted: r.memories_extracted,
+    safety: r.safety,
     createdAt: iso(r.created_at),
   };
 }
@@ -244,7 +247,7 @@ const WORK_COLUMNS = `id, student_id, tenant_id, type, content_url, content_text
   thumbnail_url, lesson_id, stage_id, session_id, ai_params, degraded, created_at`;
 const INTERACTION_COLUMNS = `id, student_id, tenant_id, occurred_at, lesson_id, stage_id, session_id,
   initiated_by, input_kind, input_ref, input_text, output_kind, output_ref, output_text,
-  output_work_id, output_degraded, memories_extracted, created_at`;
+  output_work_id, output_degraded, safety, memories_extracted, created_at`;
 const MEMORY_COLUMNS = `id, student_id, tenant_id, key, value, lesson_id, stage_id, session_id,
   source_interaction_id, importance, last_accessed_at, access_count, created_at`;
 
@@ -329,8 +332,8 @@ export class WorkspaceService {
       result = await this.db.query(
         `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, session_id,
                                    initiated_by, input_kind, input_ref, input_text,
-                                   output_kind, output_ref, output_text, output_work_id, output_degraded)
-         SELECT s.id, s.tenant_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+                                   output_kind, output_ref, output_text, output_work_id, output_degraded, safety)
+         SELECT s.id, s.tenant_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
          FROM students s WHERE s.id = $1
          RETURNING ${INTERACTION_COLUMNS}`,
         [
@@ -339,7 +342,7 @@ export class WorkspaceService {
           req.context.initiatedBy,
           inputKind, req.input.contentRef ?? null, req.input.text ?? null,
           outputKind, req.output.contentRef ?? null, req.output.text ?? null,
-          req.output.workId ?? null, req.output.degraded,
+          req.output.workId ?? null, req.output.degraded, req.safety ?? "ok",
         ],
       );
     } catch (err) {
@@ -357,7 +360,16 @@ export class WorkspaceService {
   async recordMemory(req: RecordMemoryRequest, vocab: LessonVocabulary = {}): Promise<StudentMemory> {
     requireUuid(req.studentId, "studentId");
     const key = requireNonEmpty(req.key, 200, "key");
-    requireDeclared(key, vocab.declaredMemoryKeys, "memory key");
+    if (key === EPISODE_MEMORY_KEY) {
+      // workspace.md v1.1 carve-out (agent-context.md): the RESERVED episodic kind is
+      // validated by SCHEMA (the same parseEpisodeValue the gateway uses), never by the
+      // lesson vocabulary — and a lesson can never DECLARE it (validator fails closed).
+      if (parseEpisodeValue(req.value) === null) {
+        throw new WorkspaceServiceError("INVALID_INPUT", "episode value violates the EpisodeValue schema");
+      }
+    } else {
+      requireDeclared(key, vocab.declaredMemoryKeys, "memory key");
+    }
     const value = requireNonEmpty(req.value, MEMORY_VALUE_MAX, "value");
     const memLessonId = requireNonEmpty(req.context.lessonId, 200, "context.lessonId");
     const memStageId = requireNonEmpty(req.context.stageId, 200, "context.stageId");

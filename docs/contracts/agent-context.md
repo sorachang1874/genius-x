@@ -204,6 +204,22 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 
 ## Changelog
 
+- **v1 + Step-3 annotations** (2026-06-10, lead-serialized): episodic path IMPLEMENTED —
+  `gateway.extractEpisode` (input safety → call → `parseEpisodeValue` schema → output
+  safety; the SAME validator guards the workspace write), end-of-scene consolidation
+  (class-wide stage exit drains each student's buffer; `episode_consolidated`/`_failed`
+  countable), `StageConfig.episodicMemory` (STAGE-scoped; validator rejects it on an
+  interaction — zod would silently strip it), `InteractionRecord.safety` migration 004
+  wired from `AiMeta.filtered` (Phase-4 scope: conversational exchanges; image paths
+  record `ok` — their degradation rides `output.degraded` until real moderation, M6).
+  lesson-001 v1.4.0 declares `episodicMemory` on talent. INTERIM: consolidation
+  serializes per student (no provider burst); bounded parallelism arrives with the
+  Step-5 gateway queue. Buffers drain on EVERY scene exit (episodic or not — the
+  deletion clause); the lesson-end sweep waits for in-flight consolidations
+  (review-proven race fix). A round accepted just before a scene exit may land its
+  append AFTER the drain — the episode may miss the final in-flight round; the
+  workspace `InteractionRecord` remains the authoritative transcript (a recreated
+  buffer key is swept at lesson end / Redis TTL).
 - **v1 + Step-2 annotations** (2026-06-09, lead-serialized; no semantic re-freeze): hot
   path IMPLEMENTED (`TurnBufferStore` in-memory/Redis, `LlmRequest.history`,
   `AiMeta.filtered`, extractMemory output review). Amendments from the Step-2 adversarial

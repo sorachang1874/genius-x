@@ -118,3 +118,18 @@ describe("review-mandated preflights (P4 Step 1c)", () => {
     if (!r.ok) expect(r.errors.some((e) => e.includes("brand-style language"))).toBe(true);
   });
 });
+
+describe("episodicMemory placement (agent-context.md: STAGE-scoped, fail closed)", () => {
+  it("accepts episodicMemory on a stage (lesson-001 talent declares it)", () => {
+    expect(validateLessonConfig(lesson001).ok).toBe(true);
+  });
+
+  it("rejects episodicMemory on an interaction — zod would silently strip it (the forbidden silent fallback)", () => {
+    const bad = JSON.parse(JSON.stringify(lesson001)) as { stages: { stageId: string; interaction?: Record<string, unknown> }[] };
+    const talent = bad.stages.find((s) => s.stageId === "talent")!;
+    talent.interaction!.episodicMemory = true;
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("STAGE-scoped"))).toBe(true);
+  });
+});

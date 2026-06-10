@@ -216,8 +216,8 @@ Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-co
 
 | Field | Owner | Allowed values | Notes / preflight | Lands |
 | --- | --- | --- | --- | --- |
-| `StudentMemory.key = "episode"` carve-out | H (write path), I (producer) | schema-valid `EpisodeValue` JSON only | see the amended `StudentMemory.key` row above; undeclared-key preflight excludes `episode` | Phase 4 |
-| `InteractionRecord.safety` | H | `ok \| input_filtered \| output_filtered` | additive column; **backfill `"ok"` is a labeling DEFAULT, not evidence of review** — readers injecting pre-migration transcripts into model context must exclude/re-review rows with `output.degraded = true` | Phase 4 |
+| `StudentMemory.key = "episode"` carve-out | H (write path), I (producer) | schema-valid `EpisodeValue` JSON only (`parseEpisodeValue` — the SAME validator the gateway uses) | see the amended `StudentMemory.key` row above; undeclared-key preflight excludes `episode` | **IMPLEMENTED (P4 Step 3)** |
+| `InteractionRecord.safety` | H | `ok \| input_filtered \| output_filtered` | additive column (migration 004); recorder sets it from `AiMeta.filtered`; **Phase-4 scope: CONVERSATIONAL exchanges only** — image exchanges (doodle/answers) always record `ok` (their degradation is visible via `output.degraded`; image-path filtered-marking folds in with real moderation, M6); **backfill `"ok"` is a labeling DEFAULT, not evidence of review** — readers injecting pre-migration transcripts into model context must exclude/re-review rows with `output.degraded = true` | **IMPLEMENTED (P4 Step 3)** |
 | `WorkMetadata.ipCharacterVersion?` | H (column), 4.5 writers | positive int (version pointer) | links artifacts to the character version they depict; absence traced `work_lineage_missing` (accept-with-trace, back-compat) | Phase 4.5 |
 | Works lifecycle rev: one Work per completion **EVENT** | H + C | — | replaces lifecycle rule 3 ("first completion only"); MUST ship in the same lead serialization as the parent-share curation rev (decision ② — else drafts flood the parent gallery) | Phase 4.5 |
 
