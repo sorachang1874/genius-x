@@ -23,6 +23,10 @@ const migration: MigrationFile = {
   name: "001_phase1_identity.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "001_phase1_identity.sql"), "utf8"),
 };
+const migration002: MigrationFile = {
+  name: "002_phase2_workspace.sql",
+  sql: readFileSync(join(MIGRATIONS_DIR, "002_phase2_workspace.sql"), "utf8"),
+};
 const seed: MigrationFile = {
   name: "001_phase1_identity_seed.sql",
   sql: readFileSync(join(MIGRATIONS_DIR, "001_phase1_identity_seed.sql"), "utf8"),
@@ -60,14 +64,17 @@ async function count(text: string, params?: unknown[]): Promise<number> {
 beforeAll(async () => {
   db = new PGlite(); // fresh in-memory Postgres
   sql = adapter(db);
-  await applyMigrations(sql, [migration], quiet); // same path as the production CLI
+  await applyMigrations(sql, [migration, migration002], quiet); // same path as the production CLI
   await applySeeds(sql, [seed], quiet);
 });
 
 describe("001_phase1_identity migration + seed (via the runner)", () => {
   it("applies via the runner, journals with checksum, and seeds 4 students", async () => {
-    const journal = await sql.query("SELECT filename, checksum FROM schema_migrations");
-    expect(journal.rows).toEqual([{ filename: migration.name, checksum: sha256(migration.sql) }]);
+    const journal = await sql.query("SELECT filename, checksum FROM schema_migrations ORDER BY filename");
+    expect(journal.rows).toEqual([
+      { filename: migration.name, checksum: sha256(migration.sql) },
+      { filename: migration002.name, checksum: sha256(migration002.sql) },
+    ]);
     expect(await count("SELECT COUNT(*)::int AS n FROM tenants WHERE id = $1", [DEFAULT_DEMO_TENANT_ID])).toBe(1);
     expect(await count("SELECT COUNT(*)::int AS n FROM parents WHERE id = ANY($1)", [[PARENT_1, PARENT_2]])).toBe(2);
     expect(await count("SELECT COUNT(*)::int AS n FROM students WHERE id = ANY($1)", [SEED_STUDENTS])).toBe(4); // handbook DoD
@@ -84,7 +91,7 @@ describe("001_phase1_identity migration + seed (via the runner)", () => {
   });
 
   it("re-applying is safe: migration skips via journal, seed is idempotent", async () => {
-    await applyMigrations(sql, [migration], quiet); // skip path (checksum match)
+    await applyMigrations(sql, [migration, migration002], quiet); // skip path (checksum match)
     await applySeeds(sql, [seed], quiet); // ON CONFLICT DO NOTHING
     expect(await count("SELECT COUNT(*)::int AS n FROM students WHERE id = ANY($1)", [SEED_STUDENTS])).toBe(4);
     expect(await count("SELECT COUNT(*)::int AS n FROM guardian_consents WHERE student_id = ANY($1)", [SEED_STUDENTS])).toBe(4);
@@ -324,5 +331,191 @@ describe("migrate runner (applyMigrations/applySeeds)", () => {
     await applyMigrations(fresh, [migration], quiet); // must skip + backfill, not re-apply
     const journal = await fresh.query("SELECT checksum FROM schema_migrations WHERE filename = $1", [migration.name]);
     expect((journal.rows[0] as { checksum: string }).checksum).toBe(sha256(migration.sql));
+  });
+});
+
+// --- Phase 2 (002_phase2_workspace): DB-enforced workspace contract rules ---
+
+describe("002_phase2_workspace migration", () => {
+  const XIAOMING = "33333333-3333-4333-8333-000000000001"; // seeded, demo tenant
+
+  it("DATA-LAYER TENANT ISOLATION: a workspace row cannot claim another tenant", async () => {
+    await expect(
+      sql.query(
+        "INSERT INTO works (student_id, tenant_id, type, content_text, lesson_id, stage_id, degraded) VALUES ($1, $2, 'avatar_image', 'x', 'lesson-001', 'shape', false)",
+        [XIAOMING, TENANT_B], // 小明 belongs to the demo tenant, not TENANT_B
+      ),
+    ).rejects.toThrow(/foreign key/i);
+  });
+
+  it("rejects empty works (no content fields at all)", async () => {
+    await expect(
+      sql.query(
+        "INSERT INTO works (student_id, tenant_id, type, lesson_id, stage_id, degraded) VALUES ($1, $2, 'avatar_image', 'lesson-001', 'shape', false)",
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+  });
+
+  it("rejects oversized refs (refs are references, never payloads)", async () => {
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, input_ref, output_kind, output_degraded)
+         VALUES ($1, $2, NOW(), 'lesson-001', 'talent', 'student', 'voice', $3, 'text', false)`,
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID, "r".repeat(513)],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+  });
+
+  it("rejects unknown initiated_by and out-of-range importance", async () => {
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, output_kind, output_degraded)
+         VALUES ($1, $2, NOW(), 'lesson-001', 'talent', 'alien', 'voice', 'text', false)`,
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+    await expect(
+      sql.query(
+        "INSERT INTO memories (student_id, tenant_id, key, value, lesson_id, stage_id, importance) VALUES ($1, $2, 'favorite_toy', '积木', 'lesson-001', 'talent', 1.5)",
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+  });
+
+  it("contract preflights hold (tenant match across all three tables)", async () => {
+    // Insert one legal row per table, then run the workspace.md preflights.
+    const work = await sql.query(
+      "INSERT INTO works (student_id, tenant_id, type, content_url, lesson_id, stage_id, degraded) VALUES ($1, $2, 'avatar_image', 'fake://a.png', 'lesson-001', 'shape', false) RETURNING id",
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+    );
+    const interaction = await sql.query(
+      `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, input_text, output_kind, output_text, output_work_id, output_degraded)
+       VALUES ($1, $2, NOW(), 'lesson-001', 'shape', 'student', 'doodle', '画了一个圆', 'images', NULL, $3, false) RETURNING id`,
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID, (work.rows[0] as { id: string }).id],
+    );
+    await sql.query(
+      "INSERT INTO memories (student_id, tenant_id, key, value, lesson_id, stage_id, source_interaction_id) VALUES ($1, $2, 'favorite_toy', '积木', 'lesson-001', 'talent', $3)",
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID, (interaction.rows[0] as { id: string }).id],
+    );
+    for (const table of ["works", "interactions", "memories"]) {
+      expect(
+        await count(
+          `SELECT COUNT(*)::int AS n FROM ${table} t JOIN students s ON t.student_id = s.id WHERE t.tenant_id != s.tenant_id`,
+        ),
+      ).toBe(0);
+    }
+    expect(
+      await count("SELECT COUNT(*)::int AS n FROM works WHERE content_url IS NULL AND content_text IS NULL AND content_json IS NULL"),
+    ).toBe(0);
+  });
+});
+
+// --- 002 review mandates: student-scoped pointers + hardening probes ---
+
+describe("002 cross-row pointer isolation (review blocker)", () => {
+  const XIAOMING = "33333333-3333-4333-8333-000000000001";
+  const DUODUO = "33333333-3333-4333-8333-000000000002";
+
+  it("an interaction CANNOT reference another student's work", async () => {
+    const w = await sql.query(
+      "INSERT INTO works (student_id, tenant_id, type, content_text, lesson_id, stage_id, degraded) VALUES ($1, $2, 't', 'x', 'lesson-001', 'shape', false) RETURNING id",
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+    );
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, input_text, output_kind, output_work_id, output_degraded)
+         VALUES ($1, $2, NOW(), 'lesson-001', 'shape', 'student', 'doodle', 'x', 'images', $3, false)`,
+        [DUODUO, DEFAULT_DEMO_TENANT_ID, (w.rows[0] as { id: string }).id], // 朵朵 → 小明's work
+      ),
+    ).rejects.toThrow(/foreign key/i);
+  });
+
+  it("a memory CANNOT reference another student's interaction", async () => {
+    const i = await sql.query(
+      `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, input_text, output_kind, output_degraded)
+       VALUES ($1, $2, NOW(), 'lesson-001', 'talent', 'student', 'voice', 'x', 'text', false) RETURNING id`,
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+    );
+    await expect(
+      sql.query(
+        "INSERT INTO memories (student_id, tenant_id, key, value, lesson_id, stage_id, source_interaction_id) VALUES ($1, $2, 'k', 'v', 'lesson-001', 'talent', $3)",
+        [DUODUO, DEFAULT_DEMO_TENANT_ID, (i.rows[0] as { id: string }).id],
+      ),
+    ).rejects.toThrow(/foreign key/i);
+  });
+
+  it("memoriesExtracted LATERAL preflight: every linked id exists AND belongs to the same student", async () => {
+    expect(
+      await count(
+        `SELECT COUNT(*)::int AS n FROM interactions i CROSS JOIN LATERAL unnest(i.memories_extracted) mid
+         WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = mid AND m.student_id = i.student_id)`,
+      ),
+    ).toBe(0);
+  });
+});
+
+describe("002 hardening probes (review mandates)", () => {
+  const XIAOMING = "33333333-3333-4333-8333-000000000001";
+
+  it("rejects: NULL array elements, 1970 occurred_at, '' session_id, omitted initiated_by", async () => {
+    const i = await sql.query(
+      `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, input_text, output_kind, output_degraded)
+       VALUES ($1, $2, NOW(), 'lesson-001', 'talent', 'student', 'voice', 'probe', 'text', false) RETURNING id`,
+      [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+    );
+    await expect(
+      sql.query("UPDATE interactions SET memories_extracted = ARRAY[NULL]::uuid[] WHERE id = $1", [
+        (i.rows[0] as { id: string }).id,
+      ]),
+    ).rejects.toThrow(/check constraint/i);
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, initiated_by, input_kind, output_kind, output_degraded)
+         VALUES ($1, $2, '1970-01-01', 'lesson-001', 'talent', 'student', 'voice', 'text', false)`,
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, session_id, initiated_by, input_kind, output_kind, output_degraded)
+         VALUES ($1, $2, NOW(), 'lesson-001', 'talent', '', 'student', 'voice', 'text', false)`,
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+    await expect(
+      sql.query(
+        `INSERT INTO interactions (student_id, tenant_id, occurred_at, lesson_id, stage_id, input_kind, output_kind, output_degraded)
+         VALUES ($1, $2, NOW(), 'lesson-001', 'talent', 'voice', 'text', false)`,
+        [XIAOMING, DEFAULT_DEMO_TENANT_ID],
+      ),
+    ).rejects.toThrow(/not-null/i);
+  });
+
+  it("rejects an oversized content_json blob (refs-never-bytes cannot be bypassed via JSONB)", async () => {
+    const blob = JSON.stringify({ data: "x".repeat(100000) });
+    await expect(
+      db.exec(
+        `INSERT INTO works (student_id, tenant_id, type, content_json, lesson_id, stage_id, degraded)
+         VALUES ('${XIAOMING}', '${DEFAULT_DEMO_TENANT_ID}', 't', '${blob}'::jsonb, 'lesson-001', 'shape', false)`,
+      ),
+    ).rejects.toThrow(/check constraint/i);
+  });
+
+  it("UPGRADE PATH: 002's ALTER lands on a 001-journaled, SEEDED database (the prod sequence)", async () => {
+    const freshDb = new PGlite();
+    const fresh = {
+      query: async (text: string, params?: unknown[]) => freshDb.query(text, params as never[]),
+      exec: (text: string) => freshDb.exec(text),
+    };
+    await applyMigrations(fresh, [migration], quiet); // 001 alone, journaled
+    await applySeeds(fresh, [seed], quiet); // populated students
+    await applyMigrations(fresh, [migration, migration002], quiet); // then the upgrade
+    const journal = await fresh.query("SELECT filename FROM schema_migrations ORDER BY filename");
+    expect((journal.rows as { filename: string }[]).map((r) => r.filename)).toEqual([migration.name, migration002.name]);
+    const tables = await fresh.query(
+      "SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_name IN ('works','interactions','memories')",
+    );
+    expect((tables.rows[0] as { n: number }).n).toBe(3);
   });
 });

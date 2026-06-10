@@ -2,11 +2,11 @@
 
 ## Last updated
 
-2026-06-09 (PHASE 1 COMPLETE: persistent identity & enrollment, all 7 steps)
+2026-06-09 (PHASE 2 COMPLETE: student workspace — works/interactions/memories persist)
 
 ## Current state
 
-**M4d complete, Architecture v2.0 designed ✅, Phase 1 COMPLETE ✅ (persistent identity & enrollment)**
+**M4d ✅, Architecture v2.0 ✅, Phase 1 ✅ (persistent identity), Phase 2 ✅ (student workspace)**
 
 Complete 6-stage classroom flow (intro → icebreak → shape → talent → birth → closure) validated.
 Multi-role real-time collaboration (student/assistant/teacher) verified. Technical architecture
@@ -34,10 +34,11 @@ tool-calling framework, rich media, and multi-city deployment.
 
 ### Test coverage
 
-✅ **Unit tests** (231 total):
+✅ **Unit tests** (265 total):
 - ai-gateway: 19/19
-- server: 155/155 (incl. 22 PGlite migration/runner tests + identity suite + persistent-join suite + the Phase-1 e2e (`identity-classroom.e2e.test.ts`) —
-  the contract preflights, identity semantics, and HTTP error discipline as a permanent CI gate)
+- server: 189/189 (PGlite migration/runner/preflight gates + identity suite + persistent-join
+  suite + workspace suite + the full-loop e2e: enroll → join → real interactions → memory
+  mining → closure → profile + PORTFOLIO read over HTTP)
 - web: 57/57
 
 ✅ **E2E tests**:
@@ -89,7 +90,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | --- | --- | --- | --- |
 | **Phase 0** | Architecture design | 1 week | ✅ Complete |
 | **Phase 1** | Persistent identity & enrollment | 2-3 weeks | ✅ Complete (2026-06-09) |
-| **Phase 2** | Student workspace foundation | 3-4 weeks | 📋 Planned |
+| **Phase 2** | Student workspace foundation | 3-4 weeks | ✅ Complete (2026-06-09) |
 | **Phase 3** | Parent read-only artifact | 2 weeks | 📋 Planned |
 | **Phase 4** | Agent service with memory | 4-5 weeks | 📋 Planned |
 | **Phase 5** | Tool registry & tool-calling | 3-4 weeks | 📋 Planned |
@@ -139,8 +140,8 @@ Key MVP changes:
 Phase 1+ contracts:
 - `identity.md`: Student/parent persistent identity, tenant model — **frozen v1**
 - `enrollment.md`: Enrollment API surface, error codes, join migration — **frozen v1**
-- `workspace.md` / `agent.md` / `tool.md` / `parent-share.md` / `content.md`: planned —
-  not yet authored (frozen by the lead before their phases begin)
+- `workspace.md`: works/interactions/memories + read API — **frozen v1** (Phase 2)
+- `agent.md` / `tool.md` / `parent-share.md` / `content.md`: planned — not yet authored
 
 ---
 
@@ -261,5 +262,5 @@ All shadow systems remain pluggable and will not block classroom runtime per AGE
 
 ---
 
-_Last milestone: PHASE 1 COMPLETE — persistent identity & enrollment (contracts → schema → service → HTTP → join → write-back)_
-_Next milestone: Phase 2 — student workspace foundation (works/interactions/memories persist)_
+_Last milestone: PHASE 2 COMPLETE — student workspace (contracts → schema 002 → service/API → per-stage classroom writes → e2e)_
+_Next milestone: Phase 3 — parent read-only artifact (H5 + WeChat notification)_

@@ -16,6 +16,8 @@ import type { Role, SessionJoinRequest, SessionJoinResponse, ClassSession, Stude
 import type { SessionStore } from "./session/store";
 import { IdentityServiceError, type IdentityService } from "./identity/service";
 import { registerIdentityRoutes } from "./identity/routes";
+import type { WorkspaceService } from "./workspace/service";
+import { registerWorkspaceRoutes } from "./workspace/routes";
 import { freshStudentState } from "./sync/controller";
 
 const ROLES: ReadonlySet<string> = new Set(["student", "assistant", "teacher", "parent", "admin"] satisfies Role[]);
@@ -27,27 +29,41 @@ const ROLES: ReadonlySet<string> = new Set(["student", "assistant", "teacher", "
  */
 export const DEFAULT_DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
 
-export function buildHttp(
-  store: SessionStore,
-  lessonId: string,
-  lessonConfigVersion: string,
-  firstStageId: string,
-  // Phase 1 (shipped in Step 5): ONE tenant per server process — set from TENANT_ID in
-  // live/production (fail-closed at boot, see index.ts); this demo default is dev-only.
-  // Per-room/class tenant resolution is deferred (docs/DEFERRED.md DF-v2-12).
-  tenantId = DEFAULT_DEMO_TENANT_ID,
-  // Identity Service (Phase 1 Step 4). Absent ⇒ enrollment/admin endpoints are NOT
-  // registered (404) — a deployment mode, not a fallback: the composition root logs the
-  // disabled state loudly (operator-visible), and Step 5 will require it for student joins.
-  identity?: IdentityService,
-  // CORS origin. "*" for dev (separate Vite/Fastify origins); pin via CORS_ORIGIN in
-  // operator deployments — identity endpoints carry child PII and have no auth until Phase 3.
-  corsOrigin: string = "*",
-  // Operator-visible counting (enrollment.md: "the operator sees the real 400/404/403 +
-  // COUNT"): every refused student join records a join_rejected trace. Optional — the
-  // default no-op keeps tests/dev terse; server.ts threads its real sink.
-  trace?: TraceSink,
-): FastifyInstance {
+export interface HttpOptions {
+  lessonId: string;
+  lessonConfigVersion: string;
+  firstStageId: string;
+  /**
+   * Phase 1 (Step 5): ONE tenant per server process — set from TENANT_ID in live/production
+   * (fail-closed at boot, see index.ts); the demo default is dev-only. Per-room/class
+   * tenant resolution is deferred (docs/DEFERRED.md DF-v2-12).
+   */
+  tenantId?: string;
+  /**
+   * Identity Service (Phase 1). Absent ⇒ enrollment/admin endpoints are NOT registered
+   * (404) — a deployment mode, not a fallback: the composition root logs the disabled
+   * state loudly (operator-visible), and student joins 503.
+   */
+  identity?: IdentityService;
+  /** Workspace Service (Phase 2). Absent ⇒ workspace READ endpoints not registered (404). */
+  workspace?: WorkspaceService;
+  /**
+   * CORS origin. "*" for dev (separate Vite/Fastify origins); pin via CORS_ORIGIN in
+   * operator deployments — identity/workspace endpoints carry child PII, no auth until P3.
+   */
+  corsOrigin?: string;
+  /**
+   * Operator-visible counting (enrollment.md: "the operator sees the real 400/404/403 +
+   * COUNT"): every refused student join records a join_rejected trace. Optional — the
+   * default no-op keeps tests/dev terse; server.ts threads its real sink.
+   */
+  trace?: TraceSink;
+}
+
+export function buildHttp(store: SessionStore, options: HttpOptions): FastifyInstance {
+  const { lessonId, lessonConfigVersion, firstStageId, identity, workspace, trace } = options;
+  const tenantId = options.tenantId ?? DEFAULT_DEMO_TENANT_ID;
+  const corsOrigin = options.corsOrigin ?? "*";
   const app = Fastify();
 
   void app.register(cors, { origin: corsOrigin });
@@ -68,6 +84,7 @@ export function buildHttp(
   });
 
   if (identity) registerIdentityRoutes(app, identity);
+  if (workspace) registerWorkspaceRoutes(app, workspace);
 
   /** Fresh session shell (create-if-absent), bound to this server's tenant. */
   const newSession = (sessionId: string): ClassSession => ({
@@ -107,8 +124,9 @@ export function buildHttp(
   app.post("/session/join", async (req, reply) => {
     const body = (req.body ?? {}) as SessionJoinRequest;
     const sessionId = typeof body.roomCode === "string" ? body.roomCode.trim() : "";
-    if (sessionId === "") {
-      return reply.code(400).send({ error: "INVALID_INPUT", detail: "roomCode is required" });
+    if (sessionId === "" || sessionId.length > 128) {
+      // ≤128 keeps the session id valid as workspace.sessionId (DB CHECK) downstream.
+      return reply.code(400).send({ error: "INVALID_INPUT", detail: "roomCode is required (<=128 chars)" });
     }
     const role = body.role ?? "student";
     if (!ROLES.has(role)) {

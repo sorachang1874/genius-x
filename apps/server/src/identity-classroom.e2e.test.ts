@@ -6,10 +6,20 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { io as ioClient, type Socket } from "socket.io-client";
-import type { ClientMessage, ServerMessage, Student } from "@genius-x/contracts";
+import type {
+  ClientMessage,
+  ServerMessage,
+  Student,
+  ListWorksResponse,
+  ListInteractionsResponse,
+  ListMemoriesResponse,
+  WorkspaceSummaryResponse,
+} from "@genius-x/contracts";
 import { lesson001 } from "@genius-x/course-config";
+import { AiGateway, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
 import { InMemorySessionStore } from "./session/store";
 import { startClassroomServer, type ServerHandle } from "./server";
+import { WorkspaceService } from "./workspace/service";
 import { newIdentityTestContext, type IdentityTestContext } from "./identity/identity.testutil";
 
 const ROOM = "phase1-e2e";
@@ -44,11 +54,23 @@ const traces: { kind: string; payload: Record<string, unknown> }[] = [];
 beforeAll(async () => {
   ctx = await newIdentityTestContext();
   tenant = await ctx.makeTenant("E2E校区");
+  // Canned gateway content: the LLM text doubles as the memory-extraction JSON, so the
+  // talent interaction deterministically mines favorite_toy=积木 (and the birth speech
+  // becomes the same string — content realism is irrelevant here, plumbing is the point).
+  const gateway = new AiGateway({
+    provider: new FakeProvider({}, { llmText: '{"key":"favorite_toy","value":"积木"}', transcript: "我最喜欢积木" }),
+    safety: new KeywordSafetyFilter(),
+    fallback: new PresetFallbackLibrary(),
+    trace: { record: (e) => traces.push(e) },
+    now: () => new Date().toISOString(),
+  });
   handle = await startClassroomServer({
     port: 0,
     host: "127.0.0.1",
     store: new InMemorySessionStore(),
     identity: ctx.service,
+    workspace: new WorkspaceService(ctx.sql),
+    gateway,
     tenantId: tenant,
     trace: { record: (e) => traces.push(e) },
   });
@@ -117,13 +139,19 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
 
       send({ type: "ASSISTANT_UNLOCK", stageId: "icebreak", assistantId });
       await waitFor(unlocked("icebreak"));
+      // A REAL exchange: voice in → AI reply out (this must land in the workspace).
+      send({ type: "INTERACT", studentId: student.id, stageId: "icebreak", interactionId: "e2e-i1", input: { kind: "voice", audioRef: "ref://e2e-voice-1" } });
+      await waitFor(() => got.find((m) => m.type === "AI_OUTPUT" && m.interactionId === "e2e-i1"));
       send({ type: "ASSISTANT_UNLOCK", stageId: "shape", assistantId });
       await waitFor(unlocked("shape"));
       // The child picks an avatar — this output must land on the persistent profile.
       send({ type: "STAGE_COMPLETE", studentId: student.id, stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "cos://e2e/avatar.png" } });
       send({ type: "ASSISTANT_UNLOCK", stageId: "talent", assistantId });
       await waitFor(unlocked("talent"));
-      send({ type: "FORCE_ADVANCE", stageId: "birth", assistantId }); // talent gate needs AI turns; operator advance
+      // A memory-mining exchange: the canned gateway extracts favorite_toy=积木.
+      send({ type: "INTERACT", studentId: student.id, stageId: "talent", interactionId: "e2e-i2", input: { kind: "talentAnswer", option: "积木", audioRef: "ref://e2e-voice-2" } });
+      await waitFor(() => got.find((m) => m.type === "AI_OUTPUT" && m.interactionId === "e2e-i2"));
+      send({ type: "FORCE_ADVANCE", stageId: "birth", assistantId }); // talent gate needs more turns; operator advance
       await waitFor(unlocked("birth"));
       // Wait for the pre-generated birth speech to be READY before completing the stage —
       // pins the prepared→profile speech path deterministically (the late-prepare race has
@@ -148,6 +176,70 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       await ctx.service.recordLessonCompletion(student.id, lesson001.lessonId, {});
       const again = await ctx.service.getStudent(student.id);
       expect(again!.progress.completedLessonIds).toEqual([lesson001.lessonId]);
+
+      // 6. WORKSPACE (Phase 2): the class left a portfolio behind — read it over REAL HTTP.
+      // Successful workspace writes are fire-and-forget with NO success event, so the reads
+      // POLL until the expected rows appear (causal ordering), then assert exactly once.
+      const get = async <T>(path: string): Promise<T> => {
+        const res = await fetch(`${handle.url}${path}`);
+        expect(res.status).toBe(200);
+        return (await res.json()) as T;
+      };
+      await (async () => {
+        const deadline = Date.now() + 5000;
+        for (;;) {
+          const [w, m] = await Promise.all([
+            get<ListWorksResponse>(`/students/${student.id}/works`),
+            get<ListMemoriesResponse>(`/students/${student.id}/memories`),
+          ]);
+          const types = new Set(w.works.map((x) => x.type));
+          const linked = m.memories.some((x) => x.context.sourceInteractionId !== undefined);
+          if (types.has("avatar_image") && types.has("birth_certificate") && linked) return;
+          if (Date.now() > deadline) throw new Error("workspace rows did not land in time");
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      })();
+      // Works: the chosen avatar + the birth certificate (both from stage completions).
+      const works = await get<ListWorksResponse>(`/students/${student.id}/works`);
+      const byType = new Map(works.works.map((w) => [w.type, w]));
+      expect(byType.has("avatar_image")).toBe(true);
+      expect(byType.get("avatar_image")!.contentUrl).toBe("cos://e2e/avatar.png");
+      expect(works.works).toHaveLength(2); // EXACTLY once each — no duplicate artifacts
+      const cert = byType.get("birth_certificate");
+      expect(cert).toBeDefined();
+      expect(cert!.contentJson).toMatchObject({
+        studentName: "全链路",
+        avatarUrl: "cos://e2e/avatar.png",
+        lessonId: lesson001.lessonId,
+      });
+      // personality/background were never mined in this flow ⇒ PARTIAL certificate ⇒
+      // the amended contract requires metadata.degraded = true (operator-visible).
+      expect(cert!.metadata.degraded).toBe(true);
+      expect((cert!.contentJson as { memories: { label: string; value: string }[] }).memories).toContainEqual(
+        { label: "最喜欢的玩具", value: "积木" }, // lesson certificate label applied
+      );
+      // Interactions: both exchanges persisted with refs (never bytes) + transcripts.
+      const interactions = await get<ListInteractionsResponse>(`/students/${student.id}/interactions`);
+      expect(interactions.interactions.length).toBeGreaterThanOrEqual(2);
+      const voice = interactions.interactions.find((i) => i.input.contentRef === "ref://e2e-voice-1");
+      expect(voice).toBeDefined();
+      expect(voice!.input.text).toBe("我最喜欢积木"); // ASR transcript, the allowed textual form
+      expect(voice!.output.degraded).toBe(false);
+      // Memories: mined + LINKED into its source interaction record.
+      const memories = await get<ListMemoriesResponse>(`/students/${student.id}/memories`);
+      const toy = memories.memories.find((m) => m.key === "favorite_toy");
+      expect(toy).toBeDefined();
+      expect(toy!.value).toBe("积木");
+      expect(toy!.importance).toBe(0.5); // baseline until Phase 4
+      const sourceId = toy!.context.sourceInteractionId;
+      expect(sourceId).toBeDefined();
+      const linked = interactions.interactions.find((i) => i.id === sourceId);
+      expect(linked?.memoriesExtracted).toContain(toy!.id);
+      // Summary counts line up.
+      const summary = await get<WorkspaceSummaryResponse>(`/students/${student.id}/workspace`);
+      expect(summary.workCount).toBe(2); // exact: a duplicate-write regression must fail here
+      expect(summary.interactionCount).toBe(2);
+      expect(summary.memoryCount).toBe(1);
     } finally {
       sock?.disconnect();
     }

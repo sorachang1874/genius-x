@@ -10,6 +10,7 @@ import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
 import { InMemorySessionStore, type SessionStore } from "./session/store";
 import type { IdentityService } from "./identity/service";
+import type { WorkspaceService } from "./workspace/service";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
 import { buildHttp } from "./http";
@@ -26,6 +27,10 @@ export interface ServerOptions {
   tenantId?: string;
   /** Identity Service (Phase 1). Absent ⇒ enrollment/admin endpoints disabled (logged loudly). */
   identity?: IdentityService;
+  /** Workspace Service (Phase 2). Absent ⇒ workspace reads disabled + classroom writes skipped (traced). */
+  workspace?: WorkspaceService;
+  /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content). */
+  gateway?: AiGateway;
   /** CORS origin ("*" default for dev; pin in operator deployments — see buildHttp). */
   corsOrigin?: string;
 }
@@ -51,18 +56,27 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
   const clock = opts.clock ?? { now: () => new Date().toISOString() };
   const firstStageId = lesson.stages[0]!.stageId;
 
-  const gateway = new AiGateway({
+  const gateway = opts.gateway ?? new AiGateway({
     provider: new FakeProvider(),
     safety: new KeywordSafetyFilter(),
     fallback: new PresetFallbackLibrary(),
     trace,
     now: () => clock.now(),
   });
-  const app = buildHttp(store, lesson.lessonId, lesson.lessonConfigVersion, firstStageId, opts.tenantId, opts.identity, opts.corsOrigin, trace);
+  const app = buildHttp(store, {
+    lessonId: lesson.lessonId,
+    lessonConfigVersion: lesson.lessonConfigVersion,
+    firstStageId,
+    ...(opts.tenantId && { tenantId: opts.tenantId }),
+    ...(opts.identity && { identity: opts.identity }),
+    ...(opts.workspace && { workspace: opts.workspace }),
+    ...(opts.corsOrigin && { corsOrigin: opts.corsOrigin }),
+    trace,
+  });
   // Same origin policy as HTTP (note: CORS cannot gate non-browser WS clients — the real
   // guard is the controller's deny-unknown-student resume, Phase 1 Step 5).
   const io = new Server(app.server, { cors: { origin: opts.corsOrigin ?? "*" } });
-  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity);
+  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity, opts.workspace);
   attachSocket(io, controller);
 
   const host = opts.host ?? "0.0.0.0";

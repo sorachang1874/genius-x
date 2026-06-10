@@ -16,6 +16,8 @@ import type {
   EngineEvent,
   EngineCommand,
   TraceEvent,
+  ArtifactType,
+  InteractionRecord,
 } from "@genius-x/contracts";
 import type { AiGateway } from "@genius-x/ai-gateway";
 import type { Reducer } from "../engine";
@@ -23,6 +25,7 @@ import { stageById } from "../engine/nextStage";
 import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
+import { WorkspaceServiceError, type WorkspaceService } from "../workspace/service";
 
 export interface Emitter {
   toSession(sessionId: string, msg: ServerMessage): void;
@@ -75,6 +78,8 @@ interface Effects {
   prepares: Extract<EngineCommand, { type: "CALL_PREPARE" }>[];
   /** Set when this event transitioned the class INTO the final stage (lesson complete). */
   completed?: { lessonId: string; students: Record<string, StudentRuntimeState> };
+  /** Stage completions that produce a lesson-declared artifact (Phase 2 workspace works). */
+  artifacts?: { studentId: string; stageId: string; type: ArtifactType; you: StudentRuntimeState }[];
 }
 
 /** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
@@ -96,7 +101,15 @@ export class ClassroomController {
      * skips/failures are operator-visible traces only).
      */
     private readonly identity?: IdentityService,
+    /**
+     * Phase 2: per-stage workspace writes (works/interactions/memories). OPTIONAL — absence
+     * is a deployment state (one skip trace per controller), never a silent fallback;
+     * failures are operator traces and NEVER touch the classroom.
+     */
+    private readonly workspace?: WorkspaceService,
   ) {}
+
+  private readonly workspaceSkipTraced = new Set<string>();
 
   async onMessage(sessionId: string, msg: ClientMessage): Promise<void> {
     if (msg.type === "HELLO") {
@@ -141,7 +154,43 @@ export class ClassroomController {
         persist && before.currentStageId !== finalStageId && result.state.currentStageId === finalStageId
           ? { lessonId: before.lessonId, students: result.state.students }
           : undefined;
-      return { next: persist ? result.state : undefined, out: { broadcasts, traces, calls, prepares, ...(completed && { completed }) } };
+      // Phase 2: a student COMPLETING a stage that declares an artifact (stage.output)
+      // produces a workspace Work — captured here (consistent snapshot), written outside.
+      const artifacts: Effects["artifacts"] = [];
+      if (persist && event.type === "STUDENT_COMPLETE") {
+        const stage = stageById(this.lesson, event.stageId);
+        const wasDone = before.students[event.studentId]?.stageStatus[event.stageId] === "completed";
+        const isDone = result.state.students[event.studentId]?.stageStatus[event.stageId] === "completed";
+        if (stage?.output && !wasDone && isDone) {
+          artifacts.push({ studentId: event.studentId, stageId: event.stageId, type: stage.output, you: result.state.students[event.studentId]! });
+        } else if (stage?.output && wasDone && isDone) {
+          // RE-completion (e.g. avatar re-pick while the class gate waits): the recorded
+          // Work is immutable and now diverges from the final outputs/certificate — must
+          // be COUNTABLE, never silent (one-Work-per-completion stays the frozen rule).
+          traces.push(this.mkTrace("stage_transition", {
+            reason: "workspace_work_stale_recomplete",
+            studentId: event.studentId, stageId: event.stageId, type: stage.output, sessionId,
+          }));
+        }
+      }
+      // FORCE_ADVANCE past an artifact stage leaves a portfolio HOLE — enumerate it per
+      // student at lesson end so holes are countable (frozen: "holes are operator-visible").
+      if (completed) {
+        for (const [studentId, you] of Object.entries(completed.students)) {
+          for (const st of this.lesson.stages) {
+            if (st.output && you.stageStatus[st.stageId] !== "completed") {
+              traces.push(this.mkTrace("stage_transition", {
+                reason: "workspace_work_skipped_stage_not_completed",
+                studentId, stageId: st.stageId, type: st.output, sessionId,
+              }));
+            }
+          }
+        }
+      }
+      return {
+        next: persist ? result.state : undefined,
+        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }) },
+      };
     });
     for (const t of effects.traces) this.trace.record(t);
     for (const m of effects.broadcasts) this.emit.toSession(sessionId, m);
@@ -155,6 +204,10 @@ export class ClassroomController {
       void this.runPrepare(sessionId, prep).catch((err: unknown) =>
         this.trace.record(this.mkTrace("interaction", { reason: "run_prepare_failed", error: String(err), sessionId, preparedId: prep.preparedId })),
       );
+    // Phase 2: artifact works (fire-and-forget; failures traced, classroom untouched).
+    for (const artifact of effects.artifacts ?? []) {
+      void this.recordStageWork(sessionId, artifact);
+    }
     // Phase 1 (Step 6): persistent profile write-back at lesson end — fire-and-forget,
     // NEVER blocks the classroom; every skip/failure is an operator-visible trace.
     if (effects.completed) {
@@ -281,6 +334,9 @@ export class ClassroomController {
         }
         return { out: { ok: false, traces: [trace] } };
       }
+      // NOTE: artifact/lesson-end detection lives ONLY in applyEvent — safe because the
+      // reducer never completes a stage nor advances the class from INTERACTION_DONE
+      // (counts only). If that ever changes, route these effects through applyEvent.
       const result = this.reducer(s, { type: "INTERACTION_DONE", studentId, stageId, interactionId, degraded }, this.clock.now());
       const persist = result.commands.some((c) => c.type === "PERSIST");
       const traces = result.commands.filter((c): c is Extract<EngineCommand, { type: "TRACE" }> => c.type === "TRACE").map((c) => c.event);
@@ -289,11 +345,17 @@ export class ClassroomController {
     for (const t of accepted.traces) this.trace.record(t);
     if (accepted.ok) this.emit.toStudent(sessionId, studentId, { type: "AI_OUTPUT", studentId, stageId, interactionId, output });
 
+    // Phase 2: persist the exchange (fire-and-forget; resolves to undefined on failure so
+    // the memory write below can still link when it succeeded).
+    const recorded = accepted.ok
+      ? this.recordInteractionToWorkspace(sessionId, studentId, stageId, input, output, degraded, transcript)
+      : Promise.resolve(undefined);
+
     // Memory extraction (contracts-v1.4): for an extracting talent input, reuse the ASR transcript
     // to mine one memory. Runs AFTER the reply (never blocks it) and ALWAYS feeds
     // MEMORY_EXTRACTION_DONE — even if the reply was stale — so `pendingMemory` drains and birth
     // pre-generation can proceed.
-    if (this.wantsMemory(stageId, input)) await this.runMemoryExtraction(sessionId, studentId, stageId, interactionId, transcript);
+    if (this.wantsMemory(stageId, input)) await this.runMemoryExtraction(sessionId, studentId, stageId, interactionId, transcript, recorded);
   }
 
   /** True when the reducer seeded `pendingMemory` for this input (must match the reducer's rule). */
@@ -304,7 +366,14 @@ export class ClassroomController {
   }
 
   /** Mine one memory from the transcript, then drain it (with/without a memory) via the reducer. */
-  private async runMemoryExtraction(sessionId: string, studentId: string, stageId: string, interactionId: string, transcript: string | undefined): Promise<void> {
+  private async runMemoryExtraction(
+    sessionId: string,
+    studentId: string,
+    stageId: string,
+    interactionId: string,
+    transcript: string | undefined,
+    recorded: Promise<InteractionRecord | undefined> = Promise.resolve(undefined),
+  ): Promise<void> {
     let memory: { key: string; value: string } | undefined;
     if (transcript) {
       try {
@@ -313,6 +382,12 @@ export class ClassroomController {
       } catch (err) {
         this.trace.record(this.mkTrace("interaction", { reason: "extract_memory_threw", error: String(err), interactionId, studentId }));
       }
+    }
+    // Phase 2: persist the mined memory too — linked to its workspace interaction record
+    // when that write succeeded (the runtime wire `interactionId` is a DIFFERENT namespace).
+    if (memory) {
+      const found = memory;
+      void recorded.then((rec) => this.recordMemoryToWorkspace(sessionId, studentId, stageId, found, rec?.id));
     }
     await this.applyEvent(sessionId, memory
       ? { type: "MEMORY_EXTRACTION_DONE", studentId, stageId, interactionId, memory }
@@ -501,6 +576,193 @@ export class ClassroomController {
     });
     if (result.trace) this.trace.record(result.trace);
     if (result.msg) this.emit.toSession(sessionId, result.msg);
+  }
+
+  // --- Phase 2: workspace writes (all fire-and-forget; classroom NEVER blocked) ---
+
+  /** False ⇒ workspace not wired; traced once PER SESSION (each class stays countable). */
+  private ensureWorkspace(sessionId: string): boolean {
+    if (this.workspace) return true;
+    if (!this.workspaceSkipTraced.has(sessionId)) {
+      this.workspaceSkipTraced.add(sessionId);
+      this.trace.record(this.mkTrace("stage_transition", { reason: "workspace_writes_skipped_not_wired", sessionId }));
+    }
+    return false;
+  }
+
+  private traceWorkspaceFailure(what: string, sessionId: string, studentId: string, err: unknown): void {
+    this.trace.record(
+      this.mkTrace("stage_transition", {
+        reason: "workspace_write_failed",
+        what,
+        sessionId,
+        studentId,
+        // Typed code, or PII-free pg fields — raw MESSAGES can carry row contents.
+        error: err instanceof WorkspaceServiceError ? err.code : String((err as Error)?.name ?? err),
+        ...((err as { code?: string })?.code && { dbCode: (err as { code?: string }).code }),
+        ...((err as { constraint?: string })?.constraint && { constraint: (err as { constraint?: string }).constraint }),
+      }),
+    );
+  }
+
+  /** Persist one accepted exchange. Resolves to the record (for memory linking) or undefined. */
+  private async recordInteractionToWorkspace(
+    sessionId: string,
+    studentId: string,
+    stageId: string,
+    input: Extract<EngineCommand, { type: "CALL_INTERACTION" }>["input"],
+    output: ClientAiOutput,
+    degraded: boolean,
+    transcript: string | undefined,
+  ): Promise<InteractionRecord | undefined> {
+    if (!this.ensureWorkspace(sessionId)) return undefined;
+    try {
+      const contentRef = "audioRef" in input ? input.audioRef : "doodleRef" in input ? input.doodleRef : undefined;
+      // Structured inputs persist as canonical JSON in `text` (workspace.md rule); a
+      // talentAnswer keeps BOTH the chosen option and the transcript.
+      const inputText =
+        "answersByQuestionId" in input
+          ? JSON.stringify(input.answersByQuestionId)
+          : "option" in input && input.option !== undefined && transcript !== undefined
+            ? JSON.stringify({ option: input.option, transcript })
+            : (transcript ?? ("option" in input ? input.option : undefined));
+      const images = output.imageUrls && output.imageUrls.length > 0;
+      const outputKind = output.audioUrl ? "audio" : images ? "images" : output.text ? "text" : "none";
+      // Image outputs (shape doodle/answers lines) persist their URL list as canonical
+      // JSON — refs/URLs, never bytes (a single 512-char contentRef cannot hold 3 URLs).
+      const outputText = images ? JSON.stringify(output.imageUrls) : output.text;
+      return await this.workspace!.recordInteraction({
+        studentId,
+        occurredAt: this.clock.now(),
+        context: { lessonId: this.lesson.lessonId, stageId, sessionId, initiatedBy: "student" },
+        input: { kind: input.kind, ...(contentRef && { contentRef }), ...(inputText && { text: inputText }) },
+        output: {
+          kind: outputKind,
+          ...(output.audioUrl && { contentRef: output.audioUrl }),
+          ...(outputText && { text: outputText }),
+          degraded,
+        },
+      });
+    } catch (err) {
+      this.traceWorkspaceFailure("interaction", sessionId, studentId, err);
+      return undefined;
+    }
+  }
+
+  private async recordMemoryToWorkspace(
+    sessionId: string,
+    studentId: string,
+    stageId: string,
+    memory: { key: string; value: string },
+    sourceInteractionId: string | undefined,
+  ): Promise<void> {
+    if (!this.ensureWorkspace(sessionId)) return;
+    try {
+      await this.workspace!.recordMemory(
+        {
+          studentId,
+          key: memory.key,
+          value: memory.value,
+          context: {
+            lessonId: this.lesson.lessonId,
+            stageId,
+            sessionId,
+            ...(sourceInteractionId && { sourceInteractionId }),
+          },
+        },
+        { declaredMemoryKeys: this.lesson.declaredMemoryKeys },
+      );
+    } catch (err) {
+      this.traceWorkspaceFailure("memory", sessionId, studentId, err);
+    }
+  }
+
+  /** A completed stage that declares an artifact (stage.output) becomes a workspace Work. */
+  private async recordStageWork(
+    sessionId: string,
+    artifact: { studentId: string; stageId: string; type: ArtifactType; you: StudentRuntimeState },
+  ): Promise<void> {
+    if (!this.ensureWorkspace(sessionId)) return;
+    try {
+      const content = this.buildWorkContent(artifact.type, artifact.you);
+      if (!content) {
+        // Content builder doesn't know this artifact type / required runtime fields absent —
+        // operator-visible (DF-v2-14: per-lesson output→work map is the generalization).
+        this.trace.record(
+          this.mkTrace("stage_transition", {
+            reason: "workspace_work_skipped_no_content",
+            type: artifact.type,
+            sessionId,
+            studentId: artifact.studentId,
+            stageId: artifact.stageId,
+          }),
+        );
+        return;
+      }
+      const { degraded, ...body } = content;
+      await this.workspace!.recordWork(
+        {
+          studentId: artifact.studentId,
+          type: artifact.type,
+          ...body,
+          metadata: { lessonId: this.lesson.lessonId, stageId: artifact.stageId, sessionId, degraded },
+        },
+        { declaredArtifactTypes: this.lesson.declaredArtifactTypes },
+      );
+    } catch (err) {
+      this.traceWorkspaceFailure(`work:${artifact.type}`, sessionId, artifact.studentId, err);
+    }
+  }
+
+  /**
+   * Lesson-001 artifact content builders (couplings documented + skipped-with-trace when
+   * absent; a per-lesson declarative output→work map is the generalization, DF-v2-14).
+   */
+  private buildWorkContent(
+    type: ArtifactType,
+    you: StudentRuntimeState,
+  ): { contentUrl?: string; contentText?: string; contentJson?: Record<string, unknown>; degraded: boolean } | null {
+    if (type === "avatar_image") {
+      const url = you.outputs["avatarUrl"];
+      return typeof url === "string" && url !== "" ? { contentUrl: url, degraded: false } : null;
+    }
+    if (type === "birth_certificate") {
+      // BirthCertificate-shaped contentJson (student.ts): built from runtime memories +
+      // outputs + the lesson's certificate labels. Blank fields stay "" (e.g. a child whose
+      // 性格标签 was never mined) — renderers handle the gaps warmly.
+      const labels: Record<string, string> = this.lesson.certificate?.memoryLabels ?? {};
+      const speechStageIds = new Set(
+        this.lesson.stages
+          .filter((st) => (st.interaction ?? st.variants?.[0]?.interaction)?.type === "birth_speech")
+          .map((st) => st.stageId),
+      );
+      const candidates = Object.values(you.prepared).filter(
+        (p) => speechStageIds.has(p.stageId) && p.ready && typeof p.output.text === "string" && p.output.text !== "",
+      );
+      const chosen = candidates.find((p) => !p.degraded) ?? candidates[0];
+      const avatarUrl = you.outputs["avatarUrl"];
+      const certificate = {
+        studentName: you.displayName ?? "",
+        avatarUrl: typeof avatarUrl === "string" ? avatarUrl : "",
+        personalityTag: you.memories["personality_tag"] ?? "",
+        backgroundSetting: you.memories["background_setting"] ?? "",
+        memories: Object.entries(you.memories).map(([key, value]) => ({ label: labels[key] ?? key, value })),
+        birthdaySpeech: chosen?.output.text ?? "",
+        generatedAt: this.clock.now(),
+        lessonId: this.lesson.lessonId,
+      };
+      // AMENDED contract (workspace.md lifecycle 4): a PARTIAL certificate (any required
+      // BirthCertificate field blank) is recorded with degraded:true — operator-visible
+      // incomplete-content marker; a full one carries the speech's own degraded flag.
+      const partial =
+        certificate.avatarUrl === "" ||
+        certificate.birthdaySpeech === "" ||
+        certificate.personalityTag === "" ||
+        certificate.backgroundSetting === "" ||
+        certificate.studentName === "";
+      return { contentJson: certificate, degraded: partial || (chosen?.degraded ?? false) };
+    }
+    return null;
   }
 
   private guardSession(session: ClassSession | null, sessionId: string): TraceEvent | null {

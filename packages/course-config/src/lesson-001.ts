@@ -11,7 +11,7 @@ import type { LessonConfig } from "@genius-x/contracts";
 export const lesson001: LessonConfig = {
   lessonId: "lesson-001",
   lessonTitle: "认识我的 AI 好朋友",
-  lessonConfigVersion: "1.1.0",
+  lessonConfigVersion: "1.2.0", // 1.2.0: shape declares the avatar_image artifact (Phase 2 workspace)
   totalDuration: 60,
   unlockPolicy: "classWide",
   declaredOutputs: ["avatarUrl"],
@@ -25,7 +25,7 @@ export const lesson001: LessonConfig = {
     "personality_tag", // the one 性格标签 (contracts-v1.4)
     "background_setting", // from shape B-line or talent (contracts-v1.4)
   ],
-  declaredArtifactTypes: ["birth_certificate"],
+  declaredArtifactTypes: ["birth_certificate", "avatar_image"],
   certificate: {
     memoryLabels: {
       personality_tag: "性格",
@@ -83,6 +83,7 @@ export const lesson001: LessonConfig = {
         type: "allStudents",
         of: { kind: "outputSet", output: "avatarUrl" },
       },
+      output: "avatar_image", // Phase 2: the chosen avatar becomes a workspace Work
       variants: [
         {
           id: "drawing", // A-line
