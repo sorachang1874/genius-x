@@ -275,23 +275,20 @@ describe("updateConsent (single-row overwrite)", () => {
 });
 
 describe("applyProgressUpdate (server-internal — the Classroom Service path)", () => {
-  it("merges geniusX and progress partials; absent fields keep their values", async () => {
+  it("merges ritual + progress partials; PROJECTED companion fields are REJECTED (P4.5-B single writer)", async () => {
     const parentId = await ctx.makeParent(tenantA);
     const s = await ctx.service.enrollStudent({ parentId, displayName: "进度", age: 7, consent: CONSENT_V1 });
-    const afterShape = await ctx.service.applyProgressUpdate(s.id, {
-      geniusX: { avatarUrl: "cos://avatar/1.png", backgroundSetting: "太空站" },
-    });
-    expect(afterShape.geniusX).toEqual({ avatarUrl: "cos://avatar/1.png", backgroundSetting: "太空站" });
+    // The IP character MIRROR owns the projected columns from 4.5 on — this surface fails
+    // closed (accept-and-ignore would be the forbidden silent fallback).
+    await expect(
+      ctx.service.applyProgressUpdate(s.id, { geniusX: { avatarUrl: "cos://avatar/1.png", backgroundSetting: "太空站" } }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
 
     const afterLesson = await ctx.service.applyProgressUpdate(s.id, {
-      geniusX: { birthdaySpeech: "你好呀！" },
+      geniusX: { birthdaySpeech: "你好呀！" }, // the ritual field stays writable here
       progress: { completedLessonIds: ["lesson-001"], badges: ["first-friend"] },
     });
-    expect(afterLesson.geniusX).toEqual({
-      avatarUrl: "cos://avatar/1.png", // kept
-      backgroundSetting: "太空站", // kept
-      birthdaySpeech: "你好呀！",
-    });
+    expect(afterLesson.geniusX).toEqual({ birthdaySpeech: "你好呀！" });
     expect(afterLesson.progress).toEqual({
       completedLessonIds: ["lesson-001"],
       currentPhase: 1, // kept
@@ -316,16 +313,14 @@ describe("recordLessonCompletion (server-internal lesson-end write-back)", () =>
     const s = await ctx.service.enrollStudent({ parentId, displayName: "结课", age: 7, consent: CONSENT_V1 });
 
     const first = await ctx.service.recordLessonCompletion(s.id, "lesson-001", {
-      avatarUrl: "cos://a.png",
-      birthdaySpeech: "你好呀！",
+      birthdaySpeech: "你好呀！", // P4.5-B: projected fields (avatar etc.) flow via the IP mirror now
     });
     expect(first.progress.completedLessonIds).toEqual(["lesson-001"]);
-    expect(first.geniusX).toMatchObject({ avatarUrl: "cos://a.png", birthdaySpeech: "你好呀！" });
+    expect(first.geniusX).toMatchObject({ birthdaySpeech: "你好呀！" });
 
     const again = await ctx.service.recordLessonCompletion(s.id, "lesson-001", {});
     expect(again.progress.completedLessonIds).toEqual(["lesson-001"]); // no duplicate
-    expect(again.geniusX.avatarUrl).toBe("cos://a.png"); // COALESCE keeps existing on empty re-run
-    expect(again.geniusX.birthdaySpeech).toBe("你好呀！");
+    expect(again.geniusX.birthdaySpeech).toBe("你好呀！"); // COALESCE keeps the ritual field on empty re-run
 
     const second = await ctx.service.recordLessonCompletion(s.id, "lesson-002", {});
     expect(second.progress.completedLessonIds).toEqual(["lesson-001", "lesson-002"]);

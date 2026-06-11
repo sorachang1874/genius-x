@@ -37,6 +37,12 @@ export interface WorkMetadata {
   aiParams?: Record<string, unknown>;
   /** Was any contributing AI call degraded? Operator-visible (degradation principle). */
   degraded: boolean;
+  /**
+   * Phase 4.5 lineage (ip-character.md): the character version this artifact depicts —
+   * stamped when a character exists at record time; absent on pre-character (lesson-1)
+   * rows and non-character artifacts.
+   */
+  ipCharacterVersion?: number;
 }
 
 export interface Work {

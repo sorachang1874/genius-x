@@ -40,6 +40,15 @@ export type RefineOutcome =
 export class IpCharacterService {
   constructor(private readonly db: IdentityDb) {}
 
+  /** Newest avatar work id (by monotonic seq) — the lesson-end refine's appearanceRef. */
+  async newestAvatarRef(studentId: string): Promise<string | undefined> {
+    const r = await this.db.query(
+      `SELECT id FROM works WHERE student_id = $1 AND type = 'avatar_image' ORDER BY seq DESC LIMIT 1`,
+      [studentId],
+    );
+    return r.rows.length > 0 ? (r.rows[0] as { id: string }).id : undefined;
+  }
+
   async getCharacter(studentId: string): Promise<IpCharacter | null> {
     const r = await this.db.query(
       `SELECT student_id, tenant_id, base_canon, surface, version, updated_by, created_at, updated_at

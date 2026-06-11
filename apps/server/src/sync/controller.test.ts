@@ -210,9 +210,11 @@ describe("lesson-end profile write-back", () => {
     }));
     await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
     await untilTrue(() => identity.calls.length === 1);
+    // P4.5-B cutover: the ritual field only — projected fields (avatar etc.) flow via
+    // the IP mirror (ip-character.md single-writer rule).
     expect(identity.calls[0]).toEqual({
       studentId: "k1", lessonId: "lesson-001",
-      geniusX: { avatarUrl: "u9", birthdaySpeech: "生日快乐呀" },
+      geniusX: { birthdaySpeech: "生日快乐呀" },
     });
     const ok = trace.events.find((e) => e.payload.reason === "profile_writeback_ok");
     expect(ok?.payload.degraded).toBeUndefined();
@@ -228,7 +230,7 @@ describe("lesson-end profile write-back", () => {
       }),
     }));
     await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
-    await untilTrue(() => identity.calls.length === 1);
+    await untilTrue(() => trace.events.filter((e) => e.payload.reason === "profile_writeback_ok").length === 1);
     expect(identity.calls[0]!.geniusX.birthdaySpeech).toBe("预设台词");
     const ok = trace.events.find((e) => e.payload.reason === "profile_writeback_ok");
     expect(ok?.payload.degraded).toBe(true); // operator-visible at the durable boundary
@@ -247,7 +249,7 @@ describe("lesson-end profile write-back", () => {
       k2: birthDone(), // nothing produced at all
     }));
     await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
-    await untilTrue(() => identity.calls.length === 2);
+    await untilTrue(() => trace.events.filter((e) => e.payload.reason === "profile_writeback_ok").length === 2);
     const k1 = identity.calls.find((x) => x.studentId === "k1")!;
     expect(k1.geniusX.birthdaySpeech).toBe("真台词");
     const missing = trace.events.find((e) => e.payload.reason === "profile_writeback_ok" && e.payload.studentId === "k2");
@@ -1196,5 +1198,171 @@ describe("cap bypass hardening (review fix: client-controlled variantId must nev
     expect(llmSeen).toHaveLength(0); // the cap held — no AI round happened
     const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT");
     expect(out).toBeDefined(); // and the child still got the warm wrap-up
+  });
+});
+
+// --- P4.5-B: lesson-end IP wiring + lineage stamping ---
+
+import type { IpCharacterService } from "../workspace/ip-character";
+
+describe("lesson-end IP character wiring (P4.5-B)", () => {
+  function birthDone2(over: Partial<StudentRuntimeState> = {}): StudentRuntimeState {
+    return freshStudent({ stageStatus: { birth: "completed" }, ...over });
+  }
+
+  it("creates the v1 snapshot at lesson end (patch from memories + newest avatar work) and traces it", async () => {
+    const identity = new FakeIdentity();
+    const outcomes: { studentId: string; patch: Record<string, unknown> }[] = [];
+    const ip = {
+      async newestAvatarRef() { return "33333333-3333-4333-8333-0000000000aa"; },
+      async getCharacter() { return null; },
+      async recordLessonOutcome(studentId: string, patch: Record<string, unknown>) {
+        outcomes.push({ studentId, patch });
+        return { kind: "created", partialBackfill: false, character: { version: 1 } };
+      },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      identity as unknown as IdentityService, undefined, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("birth", {
+      k1: birthDone2({ memories: { personality_tag: "勇敢", background_setting: "森林" } }),
+    }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "ip_snapshot_created"));
+    expect(outcomes[0]!.patch).toEqual({
+      appearanceRef: "33333333-3333-4333-8333-0000000000aa",
+      personality: "勇敢",
+      backstory: "森林",
+    });
+  });
+
+  it("a re-run lands as ip_refine_noop; an IP failure is traced and never blocks the write-back", async () => {
+    const identity = new FakeIdentity();
+    let call = 0;
+    const ip = {
+      async newestAvatarRef() { return undefined; },
+      async getCharacter() { return null; },
+      async recordLessonOutcome() {
+        call++;
+        if (call === 1) return { kind: "noop", character: { version: 1 } };
+        throw new Error("db down");
+      },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      identity as unknown as IdentityService, undefined, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("birth", { k1: birthDone2(), k2: birthDone2() }));
+    await c.onMessage("s1", { type: "TEACHER_UNLOCK", stageId: "closure" });
+    await untilTrue(() => trace.events.filter((e) => e.payload.reason === "profile_writeback_ok").length === 2);
+    expect(trace.events.some((e) => e.payload.reason === "ip_refine_noop")).toBe(true);
+    expect(trace.events.some((e) => e.payload.reason === "ip_refine_failed")).toBe(true);
+    expect(identity.calls).toHaveLength(2); // BOTH profile write-backs still landed
+  });
+
+  it("works record with the CHARACTER VERSION lineage when a character exists (lesson 2+)", async () => {
+    const captured: { metadata: { ipCharacterVersion?: number } }[] = [];
+    const ws = {
+      async recordWork(req: { metadata: { ipCharacterVersion?: number } }) { captured.push(req); return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const ip = {
+      async newestAvatarRef() { return undefined; },
+      async getCharacter() { return { version: 3 }; }, // lesson 2+: character exists
+      async recordLessonOutcome() { return { kind: "noop", character: { version: 3 } }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } });
+    await untilTrue(() => captured.length === 1);
+    expect(captured[0]!.metadata.ipCharacterVersion).toBe(3); // depicts version 3
+  });
+});
+
+describe("canon source switch (P4.5-B review: the headline path now pinned)", () => {
+  function canonGateway(seen: CtlLlmReq[]) {
+    return new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { seen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "继续", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+  }
+  const identityWith = (name?: string) => ({
+    async getStudent() {
+      return { id: "k1", tenantId: "t", parentId: "p", displayName: name ?? "切换娃", age: 7, geniusX: { name: "镜像旧名", personalityTag: "镜像旧性格" }, progress: { completedLessonIds: [], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+    },
+  });
+
+  it("canon serves from the IP CHARACTER surface (not the mirror) + the child-name garnish", async () => {
+    const seen: CtlLlmReq[] = [];
+    const ip = {
+      async getCharacter() {
+        return { studentId: "k1", tenantId: "t", baseCanon: { brandStyleVersion: "style-v0", baseForm: "v0" }, surface: { name: "实体小泥", personality: "实体勇敢", backstory: "实体城堡" }, version: 2, updatedBy: { lessonId: "l2" }, createdAt: NOW, updatedAt: NOW };
+      },
+      async newestAvatarRef() { return undefined; },
+      async recordLessonOutcome() { return { kind: "noop", character: {} }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, canonGateway(seen),
+      identityWith() as never, undefined, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    const text = seen[0]!.context!.text;
+    expect(text).toContain("实体小泥"); // the ENTITY wins…
+    expect(text).not.toContain("镜像旧名"); // …never the mirror
+    expect(text).toContain("孩子的名字：切换娃"); // garnish still present
+  });
+
+  it("character lookup FAILURE falls back to the mirror with the exact canon-miss trace", async () => {
+    const seen: CtlLlmReq[] = [];
+    const ip = {
+      async getCharacter(): Promise<never> { throw new Error("ip db down"); },
+      async newestAvatarRef() { return undefined; },
+      async recordLessonOutcome() { return { kind: "noop", character: {} }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, canonGateway(seen),
+      identityWith() as never, undefined, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    expect(seen[0]!.context!.text).toContain("镜像旧名"); // degraded canon (mirror) beats no canon
+    const t = trace.events.find((e) => e.payload.reason === "context_canon_miss");
+    expect(t!.payload.cause).toBe("character_lookup_failed");
+  });
+
+  it("a FAILED lineage lookup at work-record time is countable (work_lineage_missing)", async () => {
+    const works: unknown[] = [];
+    const ws = {
+      async recordWork(req: unknown) { works.push(req); return { id: "w" }; },
+      async recordInteraction() { return { id: "i" }; },
+      async recordMemory() { return { id: "m" }; },
+    };
+    const ip = {
+      async getCharacter(): Promise<never> { throw new Error("ip db down"); },
+      async newestAvatarRef() { return undefined; },
+      async recordLessonOutcome() { return { kind: "noop", character: {} }; },
+    };
+    const c = new ClassroomController(
+      lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
+      undefined, ws as unknown as WorkspaceService, undefined, undefined, ip as unknown as IpCharacterService,
+    );
+    await store.save(seed("shape", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "u1" } });
+    await untilTrue(() => works.length === 1); // the work STILL records
+    expect(trace.events.some((e) => e.payload.reason === "work_lineage_missing")).toBe(true);
   });
 });

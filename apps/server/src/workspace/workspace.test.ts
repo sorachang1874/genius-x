@@ -286,4 +286,14 @@ describe("retrieveContextMemories (the model-context projection)", () => {
     const after = await ctx.sql.query("SELECT access_count FROM memories WHERE id = $1", [m.id]);
     expect((after.rows[0] as { access_count: number }).access_count).toBe(2);
   });
+  it("lineage ROUND-TRIPS: a stamped work lists back with metadata.ipCharacterVersion (P4.5-B)", async () => {
+    const w = await svc.recordWork({
+      studentId, type: "avatar_image", contentUrl: "cos://lineage/v3.png",
+      metadata: { lessonId: "lesson-003", stageId: "shape", degraded: false, ipCharacterVersion: 3 },
+    });
+    expect(w.metadata.ipCharacterVersion).toBe(3); // RETURNING surfaces it
+    const listed = await svc.listWorks(studentId, {});
+    const found = listed.works.find((x) => x.id === w.id);
+    expect(found!.metadata.ipCharacterVersion).toBe(3); // list read surfaces it too
+  });
 });

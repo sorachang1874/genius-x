@@ -22,6 +22,7 @@ import { startClassroomServer, type ServerHandle } from "./server";
 import { WorkspaceService } from "./workspace/service";
 import { ShareService, type NotificationSink } from "./share/service";
 import { newIdentityTestContext, type IdentityTestContext } from "./identity/identity.testutil";
+import { IpCharacterService } from "./workspace/ip-character";
 
 const ROOM = "phase1-e2e";
 
@@ -87,6 +88,7 @@ beforeAll(async () => {
     identity: ctx.service,
     workspace: new WorkspaceService(ctx.sql),
     share: new ShareService(ctx.sql),
+    ipCharacter: new IpCharacterService(ctx.sql),
     notify: captureSink,
     webBaseUrl: "http://parent.test",
     gateway,
@@ -189,6 +191,18 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       expect(updated.geniusX.avatarUrl).toBe("cos://e2e/avatar.png"); // Shape output landed
       expect(typeof updated.geniusX.birthdaySpeech).toBe("string"); // Birth speech landed too
       expect(updated.geniusX.birthdaySpeech!.length).toBeGreaterThan(0);
+      // P4.5-B: the IP CHARACTER is the canonical record — v1 birth snapshot exists,
+      // appearanceRef captured, and the mirror (the SINGLE projected-column writer)
+      // produced the avatarUrl asserted above.
+      await waitFor(() => traces.find((t) => t.payload.reason === "ip_snapshot_created"));
+      const ipRow = await ctx.sql.query("SELECT version, surface FROM ip_characters WHERE student_id = $1", [student.id]);
+      expect(ipRow.rows).toHaveLength(1);
+      const ip = ipRow.rows[0] as { version: number; surface: { appearanceRef?: string } };
+      expect(ip.version).toBe(1);
+      expect(ip.surface.appearanceRef).toBeDefined(); // the avatar WORK captured as canon
+      // lesson-1 works are PRE-character — lineage column intentionally NULL (not drift)
+      const lineage = await ctx.sql.query("SELECT COUNT(*)::int AS n FROM works WHERE student_id = $1 AND ip_character_version IS NOT NULL", [student.id]);
+      expect((lineage.rows[0] as { n: number }).n).toBe(0);
       expect(Date.parse(updated.updatedAt)).toBeGreaterThan(Date.parse(student.updatedAt));
 
       // 5. IDEMPOTENT: the next lesson run of the same lesson doesn't duplicate.

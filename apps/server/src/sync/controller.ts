@@ -29,6 +29,8 @@ import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
 import { WorkspaceServiceError, type WorkspaceService } from "../workspace/service";
+import type { IpCharacterService } from "../workspace/ip-character";
+import type { IpCharacterSurface } from "@genius-x/contracts";
 import { ContextBuilder } from "../agent/context";
 import type { LessonShareMinter } from "../share/service";
 
@@ -132,10 +134,16 @@ export class ClassroomController {
      * (`context_degraded` trace); the classroom never blocks on context.
      */
     private readonly turnBuffer?: TurnBufferStore,
+    /**
+     * Phase 4.5: the IP character entity (lesson-end snapshot/refine + works lineage +
+     * the canon source). OPTIONAL — absence is a deployment state (traced at lesson end),
+     * failures are per-student traces; the classroom never blocks.
+     */
+    private readonly ipCharacter?: IpCharacterService,
   ) {
-    // Phase 4 cold path (agent-context.md): built from the SAME identity/workspace deps —
-    // no new wiring surface; both absent ⇒ every call is correctly context-less.
-    this.contextBuilder = new ContextBuilder(identity, workspace, trace, () => clock.now());
+    // Phase 4 cold path (agent-context.md): built from the SAME deps — no new wiring
+    // surface. P4.5-B: the canon source prefers the ip_characters record (mirror fallback).
+    this.contextBuilder = new ContextBuilder(identity, workspace, ipCharacter, trace, () => clock.now());
   }
 
   private readonly contextBuilder: ContextBuilder;
@@ -380,9 +388,9 @@ export class ClassroomController {
 
     for (const [studentId, s] of Object.entries(students)) {
       try {
-        const geniusX: { avatarUrl?: string; birthdaySpeech?: string } = {};
+        const geniusX: { birthdaySpeech?: string } = {}; // projected fields flow via the IP mirror (P4.5-B)
         const avatar = s.outputs[AVATAR_OUTPUT_KEY];
-        if (typeof avatar === "string" && avatar !== "") geniusX.avatarUrl = avatar;
+        const avatarPresent = typeof avatar === "string" && avatar !== "";
         // Select among the speech-stage prepared entries; PREFER non-degraded content.
         const candidates = Object.values(s.prepared).filter(
           (p) => speechStageIds.has(p.stageId) && p.ready && typeof p.output.text === "string" && p.output.text !== "",
@@ -390,6 +398,10 @@ export class ClassroomController {
         const chosen = candidates.find((p) => !p.degraded) ?? candidates[0];
         if (chosen) geniusX.birthdaySpeech = chosen.output.text as string;
         await this.identity.recordLessonCompletion(studentId, lessonId, geniusX);
+        // P4.5-B: the IP character is the canonical companion record — lesson end creates
+        // the v1 birth snapshot or refines a version; the mirror (inside the service) is
+        // the SINGLE writer of the projected genius_x columns from here on.
+        await this.recordIpOutcome(sessionId, studentId, s, lessonId, mode);
         this.trace.record(
           this.mkTrace("stage_transition", {
             reason: "profile_writeback_ok",
@@ -401,7 +413,7 @@ export class ClassroomController {
             // line persisted as the speech, or expected fields absent, must be countable.
             ...(chosen?.degraded && { degraded: true }),
             ...(speechStageIds.size > 0 && !chosen && { birthdaySpeechMissing: true }),
-            ...(avatarExpected && geniusX.avatarUrl === undefined && { avatarUrlMissing: true }),
+            ...(avatarExpected && !avatarPresent && { avatarUrlMissing: true }),
           }),
         );
       } catch (err) {
@@ -1016,6 +1028,49 @@ export class ClassroomController {
     }
   }
 
+  /** Lesson-end IP snapshot/refine (ip-character.md): per-student isolation; every
+   *  outcome countable (ip_snapshot_created / ip_backfill_partial / ip_refined /
+   *  ip_refine_noop / ip_refine_failed / ip_write_skipped_not_wired). */
+  private async recordIpOutcome(
+    sessionId: string,
+    studentId: string,
+    s: StudentRuntimeState,
+    lessonId: string,
+    mode: "lesson_end" | "late_prepare",
+  ): Promise<void> {
+    if (!this.ipCharacter) {
+      this.trace.record(this.mkTrace("stage_transition", { reason: "ip_write_skipped_not_wired", sessionId, studentId, lessonId }));
+      return;
+    }
+    try {
+      // appearanceRef = the newest avatar WORK (by seq). The work write is fire-and-forget
+      // during the lesson, so it has long landed by lesson end; a lost write is simply not
+      // captured this lesson (the late_prepare re-run or the next lesson catches up).
+      const ref = await this.ipCharacter.newestAvatarRef(studentId);
+      const patch: IpCharacterSurface = {
+        ...(ref && { appearanceRef: ref }),
+        ...(s.memories["personality_tag"] && { personality: s.memories["personality_tag"] }),
+        ...(s.memories["background_setting"] && { backstory: s.memories["background_setting"] }),
+      };
+      const outcome = await this.ipCharacter.recordLessonOutcome(studentId, patch, { lessonId, sessionId });
+      if (outcome.kind === "created") {
+        this.trace.record(this.mkTrace("stage_transition", { reason: "ip_snapshot_created", version: 1, mode, sessionId, studentId, lessonId }));
+        if (outcome.partialBackfill) {
+          this.trace.record(this.mkTrace("stage_transition", { reason: "ip_backfill_partial", sessionId, studentId, lessonId }));
+        }
+      } else if (outcome.kind === "refined") {
+        this.trace.record(this.mkTrace("stage_transition", { reason: "ip_refined", version: outcome.character.version, mode, sessionId, studentId, lessonId }));
+      } else {
+        this.trace.record(this.mkTrace("stage_transition", { reason: "ip_refine_noop", mode, sessionId, studentId, lessonId }));
+      }
+    } catch (err) {
+      this.trace.record(this.mkTrace("stage_transition", {
+        reason: "ip_refine_failed", mode, sessionId, studentId, lessonId,
+        error: err instanceof WorkspaceServiceError ? err.code : String((err as Error)?.name ?? err),
+      }));
+    }
+  }
+
   /** A completed stage that declares an artifact (stage.output) becomes a workspace Work. */
   private async recordStageWork(
     sessionId: string,
@@ -1048,12 +1103,31 @@ export class ClassroomController {
           keys: skippedMemoryKeys, sessionId, studentId: artifact.studentId, stageId: artifact.stageId,
         }));
       }
+      // Phase 4.5 lineage: stamp the version the artifact DERIVES FROM (current at record
+      // time; the contract wording amendment pins this). Pre-character lesson-1 rows are
+      // intentionally unstamped (not drift); a FAILED lookup while a character may exist
+      // is countable (work_lineage_missing) — the work itself must still record.
+      let ipCharacterVersion: number | undefined;
+      if (this.ipCharacter) {
+        try {
+          ipCharacterVersion = (await this.ipCharacter.getCharacter(artifact.studentId))?.version;
+        } catch (err) {
+          this.trace.record(this.mkTrace("stage_transition", {
+            reason: "work_lineage_missing", cause: "character_lookup_failed",
+            error: String((err as Error)?.name ?? err),
+            studentId: artifact.studentId, stageId: artifact.stageId, type: artifact.type, sessionId,
+          }));
+        }
+      }
       await this.workspace!.recordWork(
         {
           studentId: artifact.studentId,
           type: artifact.type,
           ...body,
-          metadata: { lessonId: this.lesson.lessonId, stageId: artifact.stageId, sessionId, degraded },
+          metadata: {
+            lessonId: this.lesson.lessonId, stageId: artifact.stageId, sessionId, degraded,
+            ...(ipCharacterVersion !== undefined && { ipCharacterVersion }),
+          },
         },
         { declaredArtifactTypes: this.lesson.declaredArtifactTypes },
       );

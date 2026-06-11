@@ -467,10 +467,16 @@ export class IdentityService {
     };
 
     const g = update.geniusX ?? {};
-    if (g.name !== undefined) set("genius_x_name", requireBoundedText(g.name, "geniusX.name"));
-    if (g.avatarUrl !== undefined) set("genius_x_avatar_url", requireBoundedText(g.avatarUrl, "geniusX.avatarUrl"));
-    if (g.personalityTag !== undefined) set("genius_x_personality_tag", requireBoundedText(g.personalityTag, "geniusX.personalityTag"));
-    if (g.backgroundSetting !== undefined) set("genius_x_background_setting", requireBoundedText(g.backgroundSetting, "geniusX.backgroundSetting"));
+    // P4.5-B SINGLE-WRITER RULE (ip-character.md): the projected companion columns
+    // (name/avatar/personality/background) are owned by the IP character MIRROR — this
+    // surface REJECTS them (fail closed, never accept-and-ignore). The ritual field
+    // (birthdaySpeech) remains writable here per the contract's COALESCE carve-out.
+    if (g.name !== undefined || g.avatarUrl !== undefined || g.personalityTag !== undefined || g.backgroundSetting !== undefined) {
+      throw new IdentityServiceError(
+        "INVALID_INPUT",
+        "projected companion fields are owned by the IP character mirror (Phase 4.5) — write via IpCharacterService",
+      );
+    }
     if (g.birthdaySpeech !== undefined) set("genius_x_birthday_speech", requireBoundedText(g.birthdaySpeech, "geniusX.birthdaySpeech"));
 
     const p = update.progress ?? {};
@@ -499,14 +505,13 @@ export class IdentityService {
    * Lesson-1 companion fields that the runtime produced (COALESCE keeps later non-null
    * values authoritative — re-running a write-back never erases). Never exposed over HTTP.
    */
-  /** P4.5 RESIDUAL (Step B removes this): the projected genius_x columns below are now
- *  ALSO written by IpCharacterService's mirror (replace semantics). Until the Step-B
- *  rewire makes the mirror the single writer, this COALESCE writer must not run AFTER a
- *  mirror in the same lesson-end path — Step B deletes the projected-column writes here. */
-  async recordLessonCompletion(
+    async recordLessonCompletion(
     studentId: string,
     lessonId: string,
-    geniusX: { avatarUrl?: string; birthdaySpeech?: string } = {},
+    // P4.5-B SINGLE-WRITER CUTOVER: the projected genius_x columns (avatar/personality/
+    // background/name) are now owned by IpCharacterService's MIRROR — this writer keeps
+    // ONLY the ritual field (birthdaySpeech, COALESCE never-erase) + lesson progress.
+    geniusX: { birthdaySpeech?: string } = {},
   ): Promise<Student> {
     requireUuid(studentId, "studentId");
     const lesson = lessonId.trim();
@@ -524,12 +529,11 @@ export class IdentityService {
          completed_lesson_ids = CASE WHEN $2 = ANY(completed_lesson_ids)
                                      THEN completed_lesson_ids
                                      ELSE array_append(completed_lesson_ids, $2) END,
-         genius_x_avatar_url      = COALESCE($3, genius_x_avatar_url),
-         genius_x_birthday_speech = COALESCE($4, genius_x_birthday_speech),
+         genius_x_birthday_speech = COALESCE($3, genius_x_birthday_speech),
          updated_at = NOW()
        WHERE id = $1
        RETURNING ${STUDENT_COLUMNS}`,
-      [studentId, lesson, geniusX.avatarUrl ?? null, geniusX.birthdaySpeech ?? null],
+      [studentId, lesson, geniusX.birthdaySpeech ?? null],
     );
     if (result.rows.length === 0) throw new IdentityServiceError("STUDENT_NOT_FOUND");
     return toStudent(result.rows[0] as StudentRow);

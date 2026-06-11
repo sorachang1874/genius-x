@@ -93,7 +93,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 2** | Student workspace foundation | 3-4 weeks | ✅ Complete (2026-06-09) |
 | **Phase 3** | Parent read-only artifact | 2 weeks | ✅ Complete (2026-06-09) |
 | **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | ✅ Complete (2026-06-10) |
-| **Phase 4.5** | **IP character entity & versioning** (new): canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | 📋 Planned |
+| **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; **absorbs brand-style slice** (style-v0 gateway injection BEFORE first tool-produced works) | 3-4 weeks | 📋 Planned |
 | **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
 | **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
@@ -298,5 +298,16 @@ agent-context.md v1 (+Step 2-5 annotations), ip-character.md v1, brand-style.md 
 workspace.md v1.1, parent-share.md v1.2. Five adversarial review rounds; every confirmed
 finding fixed with tests (355 green; migrations 001-004 on real PG16).
 
-_Next milestone: Phase 4.5 — IP character entity & versioning (canon record, work lineage,
-works-lifecycle + parent-curation companion revs)_
+**Phase 4.5 delivered** (2026-06-10, PRs #23-#24): the IP character is a versioned DATA
+ENTITY — locked base canon + child-refined surface, every refinement an immutable
+snapshot (the growth timeline); lesson end creates the v1 birth snapshot / refines a
+version with idempotent retries; the GeniusXProfile mirror is SINGLE-writer (both legacy
+writers cut over, projected fields fail closed); works carry character-version lineage
+(read-path surfaced, failures countable); the agent's canon source reads the entity
+(mirror fallback, same seam); works lifecycle = one Work per completion EVENT with
+parent-side curation (latest-per-type finals + 打磨轨迹 slices — decision ②'s coupling
+honored). Review blocker fixed: deterministic latest-per-type via works.seq.
+
+_Next milestone: Phase 5 — tool registry & tool-calling (tools = in-scene creation
+instruments; brand-style slice already live at the gateway). Pending external inputs:
+brand/market design doc (replaces style-v0), team confirmation of decision ③._

@@ -153,7 +153,8 @@ interface WorkRow {
   id: string; student_id: string; tenant_id: string; type: string;
   content_url: string | null; content_text: string | null; content_json: Record<string, unknown> | null;
   thumbnail_url: string | null; lesson_id: string; stage_id: string; session_id: string | null;
-  ai_params: Record<string, unknown> | null; degraded: boolean; created_at: unknown;
+  ai_params: Record<string, unknown> | null; degraded: boolean;
+  ip_character_version: number | null; created_at: unknown;
 }
 
 function toWork(r: WorkRow): Work {
@@ -172,6 +173,7 @@ function toWork(r: WorkRow): Work {
       ...(r.session_id !== null && { sessionId: r.session_id }),
       ...(r.ai_params !== null && { aiParams: r.ai_params }),
       degraded: r.degraded,
+      ...(r.ip_character_version !== null && { ipCharacterVersion: r.ip_character_version }),
     },
     createdAt: iso(r.created_at),
   };
@@ -244,7 +246,7 @@ function toMemory(r: MemoryRow): StudentMemory {
 }
 
 const WORK_COLUMNS = `id, student_id, tenant_id, type, content_url, content_text, content_json,
-  thumbnail_url, lesson_id, stage_id, session_id, ai_params, degraded, created_at`;
+  thumbnail_url, lesson_id, stage_id, session_id, ai_params, degraded, ip_character_version, created_at`;
 const INTERACTION_COLUMNS = `id, student_id, tenant_id, occurred_at, lesson_id, stage_id, session_id,
   initiated_by, input_kind, input_ref, input_text, output_kind, output_ref, output_text,
   output_work_id, output_degraded, safety, memories_extracted, created_at`;
@@ -288,8 +290,8 @@ export class WorkspaceService {
     try {
       result = await this.db.query(
         `INSERT INTO works (student_id, tenant_id, type, content_url, content_text, content_json,
-                            thumbnail_url, lesson_id, stage_id, session_id, ai_params, degraded)
-         SELECT s.id, s.tenant_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+                            thumbnail_url, lesson_id, stage_id, session_id, ai_params, degraded, ip_character_version)
+         SELECT s.id, s.tenant_id, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
          FROM students s WHERE s.id = $1
          RETURNING ${WORK_COLUMNS}`,
         [
@@ -299,7 +301,7 @@ export class WorkspaceService {
           req.thumbnailUrl ?? null,
           lessonId, stageId, m.sessionId ?? null,
           m.aiParams !== undefined ? JSON.stringify(m.aiParams) : null,
-          m.degraded,
+          m.degraded, m.ipCharacterVersion ?? null,
         ],
       );
     } catch (err) {
