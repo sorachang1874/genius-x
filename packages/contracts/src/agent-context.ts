@@ -102,7 +102,7 @@ export type InteractionSafetyStatus = "ok" | "input_filtered" | "output_filtered
 // --- COLD path (cross-lesson retrieval — agent-context.md) ---
 
 /** The versioned context prompt contract (model-input contract, ONE assembly point). */
-export const CONTEXT_VERSION = "context_v1";
+export const CONTEXT_VERSION = "context_v2"; // v2 (P6): +【爸爸妈妈想对你说】 section — ANY template change bumps this FIRST
 /** Semantic memories: latest-per-key dedup (DF-v2-15), importance-ranked, top K. */
 export const CONTEXT_SEMANTIC_TOP_K = 12;
 /** Episodic memories: recency+importance ranked, top K. */

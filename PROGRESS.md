@@ -95,7 +95,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | ✅ Complete (2026-06-10) |
 | **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; brand-style slice live since P4 | 3-4 weeks | ✅ Complete (2026-06-10) |
-| **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
+| **Phase 6** | Parent co-working — server slice (auth + timeline + notes) shipped; parent H5 (Step 3) next | 3 weeks | 🔄 In progress (server slice 2026-06-10) |
 | **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
 
@@ -317,6 +317,23 @@ record). First real tool: 魔法画笔 (image_refine) — the iterative aestheti
 ownership validated, declared options only, img2img guidance styled with the brand suffix,
 enforced image-scene round caps (warm wrap-up), every denial countable + warm-redirected.
 
-_Next milestone: Phase 6 — parent co-working (authenticated parent accounts, growth
-timeline). Pending external inputs: brand/market design doc (replaces style-v0), team
-confirmation of decision ③, 微信资质._
+**Phase 6 server slice delivered** (2026-06-10): parent-surface.md v1 (frozen) — the
+parent's AUTHENTICATED home. Auth = the proven Phase-3 capability machinery, parent-scoped
+(sha256-hash-only tokens, 180-day expiry, uniform 404 everywhere — unknown token = expired
+= not-your-child, no oracle; SMS/WeChat login replaces the operator mint later behind the
+same verifier seam). Reads: children list (companion SURFACE), the growth timeline
+(ip_character_versions surface-only projection ⋈ lineage works), full works history (the
+parent-share DENY discipline extends — no transcripts/episodes/operator metadata/
+base_canon). Co-working v1 = the parent note: safety-reviewed BEFORE storage, ≤3 pending
+per child, relayed by the companion EXACTLY ONCE via the 【爸爸妈妈想对你说】 context section
+(CONTEXT_VERSION → context_v2), relay failures countable and never blocking the lesson.
+Adversarial review (2 confirmed majors, both fixed): the exposure rule serialized into
+parent-share.md v1.4 (cross-contract consistency — a deploy following either contract now
+agrees); relay marks moved to the CONTROLLER after a NON-DEGRADED reply (build-time
+marking silently lost notes under gateway fallback). Migration 006; 394 tests green; 006
+smoked on real PG16.
+
+_Next milestone: Phase 6 Step 3 — the parent H5 (token-gated web surface: children,
+timeline, note composer). Pending external inputs: brand/market design doc (replaces
+style-v0), team confirmation of decision ③, 微信资质, Phase-7 credentials checklist
+(capacity doc §5)._

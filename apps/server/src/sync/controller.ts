@@ -31,8 +31,9 @@ import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
 import { WorkspaceServiceError, type WorkspaceService } from "../workspace/service";
 import type { IpCharacterService } from "../workspace/ip-character";
+import type { ParentNoteRelay } from "../parent/service";
 import type { IpCharacterSurface } from "@genius-x/contracts";
-import { ContextBuilder } from "../agent/context";
+import { ContextBuilder, type ColdContext } from "../agent/context";
 import type { LessonShareMinter } from "../share/service";
 
 export interface Emitter {
@@ -147,13 +148,29 @@ export class ClassroomController {
      * failures are per-student traces; the classroom never blocks.
      */
     private readonly ipCharacter?: IpCharacterService,
+    /** Phase 6: parent-note relay (parent-surface.md) — notes inject into the cold block once. */
+    private readonly parentNotes?: ParentNoteRelay,
   ) {
     // Phase 4 cold path (agent-context.md): built from the SAME deps — no new wiring
     // surface. P4.5-B: the canon source prefers the ip_characters record (mirror fallback).
-    this.contextBuilder = new ContextBuilder(identity, workspace, ipCharacter, trace, () => clock.now());
+    this.contextBuilder = new ContextBuilder(identity, workspace, ipCharacter, trace, () => clock.now(), parentNotes);
   }
 
   private readonly contextBuilder: ContextBuilder;
+
+  /** parent-surface.md: notes mark relayed only after a NON-DEGRADED contextful reply —
+   *  a gateway fallback (filtered/error/timeout) never consumed them, so they stay
+   *  unrelayed and retry next call. Fire-and-forget; the parent_note_relayed trace fires
+   *  only when the mark actually LANDS (never an over-count). Accepted residual (pinned
+   *  in the contract): the gateway's defensive context review dropping the cold block
+   *  still counts as use — that drop is operator-visible via its own safety trace. */
+  private relayParentNotes(sessionId: string, studentId: string, cold: ColdContext | undefined, llmMeta: { degraded: boolean }): void {
+    if (!cold || cold.noteIds.length === 0 || !this.parentNotes || llmMeta.degraded) return;
+    const ids = cold.noteIds;
+    void this.parentNotes.markRelayed(ids)
+      .then(() => this.trace.record(this.mkTrace("interaction", { sessionId, studentId, count: ids.length, reason: "parent_note_relayed" })))
+      .catch((err) => this.trace.record(this.mkTrace("interaction", { sessionId, studentId, error: String((err as Error)?.name ?? err), reason: "parent_note_relay_failed" })));
+  }
 
   private readonly workspaceSkipTraced = new Set<string>();
   private readonly turnBufferSkipTraced = new Set<string>();
@@ -670,6 +687,7 @@ export class ClassroomController {
           ...(history.length > 0 && { history }),
           ...(cold && { context: { version: cold.version, text: cold.text } }),
         }); mark(llm.meta);
+        this.relayParentNotes(sessionId, cmd.studentId, cold, llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
         // The round is buffered by the CALLER only after the reducer ACCEPTS the
         // completion — a stale round (dropped, never delivered) must not enter context.
@@ -697,6 +715,7 @@ export class ClassroomController {
           ...(history.length > 0 && { history }),
           ...(cold && { context: { version: cold.version, text: cold.text } }),
         }); mark(llm.meta);
+        this.relayParentNotes(sessionId, cmd.studentId, cold, llm.meta);
         const tts = await this.gateway.tts({ text: llm.text }); mark(tts.meta);
         return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, round: { childText: option, llm } };
       }

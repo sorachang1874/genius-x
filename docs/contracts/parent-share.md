@@ -1,12 +1,13 @@
 # Parent Share Contract (Phase 3)
 
-**Status**: Frozen v1.3 (v1.2 + the Phase-4.5 curation rev, coupled to workspace.md v1.2 — see Changelog)
+**Status**: Frozen v1.4 (v1.3 + the Phase-6 exposure amendment, coupled to parent-surface.md v1 — see Changelog)
 **Owner**: Parent surfaces (Agent K) · share service in `apps/server/src/share`
 **Phase**: Phase 3 — Parent read-only artifact
 **Typed realization**: `packages/contracts/src/parent-share.ts`
 **Companion contracts**: [`workspace.md`](workspace.md) (the works this filters),
-[`identity.md`](identity.md), [`data-and-privacy.md`](data-and-privacy.md)
-**Last updated**: 2026-06-09
+[`identity.md`](identity.md), [`data-and-privacy.md`](data-and-privacy.md),
+[`parent-surface.md`](parent-surface.md) (the Phase-6 authenticated surface — amends the exposure rule)
+**Last updated**: 2026-06-10
 
 ---
 
@@ -56,22 +57,25 @@ Out of scope (deferred):
 
 ## Deployment exposure rule (BINDING)
 
-`GET /share/:token` is the system's **one internet-facing route**; everything else on the
-server (identity admin, workspace reads, `/session/*`) is unauthenticated child PII at
-operator posture. The two postures share one Fastify listener in Phase 3, so **exposure is
-enforced at the proxy**:
+The internet-facing routes are `GET /share/:token` (Phase 3) and the token-gated
+`GET/POST /parent/*` family (Phase 6, [`parent-surface.md`](parent-surface.md) — amended
+into this rule v1.4); everything else on the server (identity admin, workspace reads,
+`/session/*`) is unauthenticated child PII at operator posture. The postures share one
+Fastify listener, so **exposure is enforced at the proxy**:
 
-> The internet-facing reverse proxy forwards **exactly** `GET /share/*` (to the server) and
-> the static H5 (the web bundle). **Every other server path is denied from outside the
-> operator network.** Without a proxy, the server binds to the operator LAN only — never
-> directly to the internet.
+> The internet-facing reverse proxy forwards **exactly** `GET /share/*`, token-gated
+> `GET/POST /parent/*` (parent-surface.md), and the static H5 (the web bundle). **Every
+> other server path is denied from outside the operator network.** Without a proxy, the
+> server binds to the operator LAN only — never directly to the internet.
 
 Example nginx allowlist:
 
 ```nginx
-location ~ ^/share/ { proxy_pass http://geniusx-server:3000; }   # the ONE public route
-location /          { root /srv/geniusx-web; try_files $uri /index.html; }  # static H5
-# NO other proxy_pass: /students, /parents, /admin, /session, /socket.io stay unreachable
+location ~ ^/share/  { proxy_pass http://geniusx-server:3000; }  # capability link (Phase 3)
+location ~ ^/parent/ { proxy_pass http://geniusx-server:3000; }  # token-gated parent surface (Phase 6)
+location /           { root /srv/geniusx-web; try_files $uri /index.html; }  # static H5
+# NO other proxy_pass: /students, /parents (NB: ^/parent/ does NOT match /parents/ — the
+# operator MINT stays unreachable), /admin, /session, /socket.io stay denied from outside
 ```
 
 Code keeps the postures explicit: `registerPublicShareRoute` (public GET only) vs
@@ -181,7 +185,9 @@ preflight below binding the content pipeline.
      OR (w.session_id IS NOT NULL AND w.content_url LIKE '%' || w.session_id || '%');
   ```
 - Deploy preflight (exposure rule): from outside the operator network,
-  `/students/<any>` and `/session/x/state` blocked; `GET /share/<token>` serves.
+  `/students/<any>`, `/session/x/state`, and `POST /parents/<any>/access` (the operator
+  mint) blocked; `GET /share/<token>` serves; `GET /parent/children` serves with a valid
+  parent token and uniform-404s without one.
 - ```sql
   -- All tokens reference valid students (FK enforces; drift check — expect 0)
   SELECT COUNT(*) FROM share_tokens WHERE student_id NOT IN (SELECT id FROM students);
@@ -195,6 +201,13 @@ preflight below binding the content pipeline.
 
 ## Changelog
 
+- **v1.4** (2026-06-10, lead-serialized with the Phase-6 parent-surface freeze): the
+  BINDING exposure rule gains token-gated `GET/POST /parent/*` (parent-surface.md) as the
+  second internet-facing route family; nginx example + deploy preflight updated (the
+  `^/parent/` location does not match `/parents/` — the operator mint stays denied).
+  Without this rev, a deploy following this contract's allowlist blocks the entire Phase-6
+  parent surface, while one following parent-surface.md violates this binding text
+  (the review-caught cross-contract divergence).
 - **v1.3** (2026-06-10, lead-serialized with Phase 4.5 — coupled to workspace.md v1.2's
   one-Work-per-completion-EVENT rev, decision ② three-layer browse): the gallery becomes
   CURATED (latest Work per artifact type = the 每课精选 finals); the additive
