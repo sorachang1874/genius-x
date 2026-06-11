@@ -2,7 +2,7 @@
 
 ## Last updated
 
-2026-06-10 (PHASES 1-6 COMPLETE; APP-integration contracts frozen — Shell refactor next)
+2026-06-11 (PHASES 1-6 + 6.5 Steps 1-4 COMPLETE; development PAUSED at founder's request — see docs/reports/2026-06-11-progress-report.md)
 
 ## Current state
 
@@ -366,8 +366,22 @@ asleep scene — a dead session NEVER shows error copy), world registry per worl
 every state), parent 「把屏幕交给孩子」 door. Review: 3 confirmed majors + 13 low — ALL
 fixed (contracts v1.1 both). 445 tests; PG16 smoked. Gate ⑤ honored: v0 reads only.
 
-_Next milestone: Phase 6.5 Step 4 — L1 reflection (scheduler + deterministic companion
-diary + visit-greeting memory selection) and/or the parent panel (quota settings,
-DF-v2-28 config read). Playground writes stay gated on the data-and-privacy upgrade +
-workspace.md mode discriminator (gate ⑤). Phase 7 deferred behind APP integration.
-Pending external: brand/market design doc (DF-v2-18), 微信资质 (Q7), decision ③._
+**Phase 6.5 Step 4 delivered** (2026-06-11): L1 reflection — the companion diary
+(DETERMINISTIC tier: composed from the session's reviewed episode summaries + works
+count, no model call — the honest FakeProvider-era form; generative diary arrives with
+real LLM via the same seam). `self_narrative` reserved kind (workspace.md v1.3 carve-out:
+schema-valid `DiaryEntryValue` only, never lesson-declarable, EXCLUDED from semantic
+context retrieval — a diary must never silently change the versioned cold block);
+ReflectionService fires at lesson end AFTER consolidations settle (idempotent per
+student×lesson; no episodes ⇒ honest absence, traced); the playground worldView serves
+摊开的日记 (top 5) + the L1 visit greeting (newest episode → 「…——我还想着呢！」);
+world.md `companion_diary` object shipped. 450 tests green. NOTE: the customary
+adversarial review round for this slice is DEFERRED to development resumption
+(founder paused development 2026-06-11 for a progress report).
+
+**DEVELOPMENT PAUSED** (founder, 2026-06-11) — snapshot report:
+[`docs/reports/2026-06-11-progress-report.md`](docs/reports/2026-06-11-progress-report.md).
+Resume point: review the Step-4 slice, then parent panel (DF-v2-28) / 心愿种子 co-creation.
+Playground writes stay gated on gate ⑤. Phase 7 deferred behind APP integration.
+Pending external: brand/market design doc (DF-v2-18), 微信资质 (Q7 — calendar risk,
+start early), decision ③._

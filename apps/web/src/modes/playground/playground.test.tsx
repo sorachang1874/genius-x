@@ -35,6 +35,8 @@ function world(overrides: Partial<PlaygroundWorldView> = {}): PlaygroundWorldVie
       ],
     }],
     album: [{ version: 1, surface: { name: "小泥", personality: "勇敢" }, createdAt: "2026-06-09T10:00:00Z" }],
+    diary: [{ summary: "今天我们一起画了一只蓝色的海豚。", createdAt: "2026-06-10T10:00:00Z" }],
+    greeting: "我们一起画了海豚——我还想着呢！",
     sessionExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     serverNow: new Date().toISOString(),
     ...overrides,
@@ -106,6 +108,8 @@ describe("PlaygroundApp — arrival, the home, and the friend's body clock", () 
     expect(wallImg()).toBe("fake://v1.png"); // replay step 1
     expect(screen.getByText(/第 1 步/)).toBeDefined();
     expect(screen.getByText("诞生时刻")).toBeDefined(); // album v1
+    expect(screen.getByText(/我们一起画了海豚——我还想着呢/)).toBeDefined(); // L1 visit greeting
+    expect(screen.getByText(/今天我们一起画了一只蓝色的海豚/)).toBeDefined(); // 摊开的日记
     expect(container.innerHTML).not.toMatch(BANNED);
   });
 
@@ -136,7 +140,8 @@ describe("PlaygroundApp — arrival, the home, and the friend's body clock", () 
 
   it("an EARNED-empty world tells the small-world story — never an empty state", async () => {
     setUrl(`?playground=${TOKEN}`);
-    const { companion: _omit, ...bare } = world({ wall: [], album: [] });
+    const { companion: _omit, greeting: _omitG, ...bare } = world({ wall: [], album: [], diary: [] });
+    void _omitG;
     void _omit;
     render(<PlaygroundApp api={async () => bare} />);
     await waitFor(() => expect(screen.getByText(/这个家刚刚开始/)).toBeDefined());

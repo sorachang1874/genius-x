@@ -33,7 +33,7 @@ import type {
   WorkspaceListQuery,
   WorkspaceSummaryResponse,
 } from "@genius-x/contracts";
-import { EPISODE_MEMORY_KEY, parseEpisodeValue } from "@genius-x/contracts";
+import { EPISODE_MEMORY_KEY, parseEpisodeValue, DIARY_MEMORY_KEY, parseDiaryValue } from "@genius-x/contracts";
 import type { IdentityDb } from "../identity/service";
 
 export const WORKSPACE_ERROR_STATUS: Record<WorkspaceErrorCode, number> = {
@@ -369,6 +369,12 @@ export class WorkspaceService {
       if (parseEpisodeValue(req.value) === null) {
         throw new WorkspaceServiceError("INVALID_INPUT", "episode value violates the EpisodeValue schema");
       }
+    } else if (key === DIARY_MEMORY_KEY) {
+      // workspace.md v1.3 carve-out: the companion DIARY kind (L1 reflection) — same
+      // discipline as episode: schema-valid only, never lesson-declarable.
+      if (parseDiaryValue(req.value) === null) {
+        throw new WorkspaceServiceError("INVALID_INPUT", "diary value violates the DiaryEntryValue schema");
+      }
     } else {
       requireDeclared(key, vocab.declaredMemoryKeys, "memory key");
     }
@@ -483,11 +489,11 @@ export class WorkspaceService {
     const semantic = await this.db.query(
       `SELECT * FROM (
          SELECT DISTINCT ON (key) ${MEMORY_COLUMNS} FROM memories
-         WHERE student_id = $1 AND key <> $3
+         WHERE student_id = $1 AND key <> $3 AND key <> $4
          ORDER BY key, created_at DESC, id DESC
        ) latest
        ORDER BY importance DESC, created_at DESC, id DESC LIMIT $2`,
-      [studentId, opts.semanticTopK, EPISODE_MEMORY_KEY],
+      [studentId, opts.semanticTopK, EPISODE_MEMORY_KEY, DIARY_MEMORY_KEY],
     );
     const episodes = await this.db.query(
       `SELECT ${MEMORY_COLUMNS} FROM memories
@@ -499,6 +505,40 @@ export class WorkspaceService {
       semantic: (semantic.rows as MemoryRow[]).map(toMemory),
       episodes: (episodes.rows as MemoryRow[]).map(toMemory),
     };
+  }
+
+  /** This SESSION's episodes (the reflection input — what consolidation wrote). */
+  async listSessionEpisodes(studentId: string, sessionId: string): Promise<StudentMemory[]> {
+    requireUuid(studentId, "studentId");
+    const r = await this.db.query(
+      `SELECT ${MEMORY_COLUMNS} FROM memories
+       WHERE student_id = $1 AND key = $2 AND session_id = $3
+       ORDER BY created_at ASC, id ASC`,
+      [studentId, EPISODE_MEMORY_KEY, sessionId],
+    );
+    return (r.rows as MemoryRow[]).map(toMemory);
+  }
+
+  /** Diary entries (key="self_narrative"), newest first — the 摊开的日记 read. */
+  async listDiaryEntries(studentId: string, limit: number): Promise<(StudentMemory & { lessonId: string })[]> {
+    requireUuid(studentId, "studentId");
+    const r = await this.db.query(
+      `SELECT ${MEMORY_COLUMNS} FROM memories
+       WHERE student_id = $1 AND key = $2
+       ORDER BY created_at DESC, id DESC LIMIT $3`,
+      [studentId, DIARY_MEMORY_KEY, limit],
+    );
+    return (r.rows as MemoryRow[]).map((row) => ({ ...toMemory(row), lessonId: row.lesson_id }));
+  }
+
+  /** Count one lesson's works for a student (the diary's only number). */
+  async countLessonWorks(studentId: string, lessonId: string): Promise<number> {
+    requireUuid(studentId, "studentId");
+    const r = await this.db.query(
+      `SELECT COUNT(*)::int AS n FROM works WHERE student_id = $1 AND lesson_id = $2 AND type <> 'birth_certificate'`,
+      [studentId, lessonId],
+    );
+    return (r.rows[0] as { n: number }).n;
   }
 
   /** Retrieval write-back (fields pre-built in Phase 2) — callers fire-and-forget. */

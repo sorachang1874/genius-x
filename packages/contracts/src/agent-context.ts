@@ -96,6 +96,45 @@ export const EPISODE_SUMMARY_MAX_CHARS = 500;
 export const EPISODE_MAX_TAGS = 5;
 export const EPISODE_TAG_MAX_CHARS = 20;
 
+/**
+ * RESERVED memory kind for the companion DIARY (L1 reflection, workspace.md v1.3 —
+ * the second carve-out, same discipline as "episode"): never lesson-declarable;
+ * single writer = the lesson-end ReflectionService; schema-validated below.
+ * v1 entries are DETERMINISTIC curations of real episode data (the honest tier —
+ * generative first-person diaries arrive with real LLM providers).
+ */
+export const DIARY_MEMORY_KEY = "self_narrative";
+
+/** Diary payload — `StudentMemory.value` is the JSON of this shape when key === "self_narrative". */
+export interface DiaryEntryValue {
+  /** The companion's bounded recollection of the lesson (curated, never verbatim speech). */
+  summary: string;
+  /** Which lesson this entry reflects on. */
+  lessonId: string;
+  /** How many works the child made that day (the diary's only number — never a score). */
+  madeCount: number;
+}
+
+export const DIARY_SUMMARY_MAX_CHARS = 600;
+
+/** Parse + schema-validate a diary JSON (the ONE validator — write path AND readers). */
+export function parseDiaryValue(json: string): DiaryEntryValue | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (o === null || typeof o !== "object" || Array.isArray(o)) return null;
+  const keys = Object.keys(o as Record<string, unknown>);
+  if (keys.length !== 3 || !keys.includes("summary") || !keys.includes("lessonId") || !keys.includes("madeCount")) return null;
+  const e = o as { summary?: unknown; lessonId?: unknown; madeCount?: unknown };
+  if (typeof e.summary !== "string" || e.summary === "" || e.summary.length > DIARY_SUMMARY_MAX_CHARS) return null;
+  if (typeof e.lessonId !== "string" || e.lessonId === "" || e.lessonId.length > 200) return null;
+  if (typeof e.madeCount !== "number" || !Number.isInteger(e.madeCount) || e.madeCount < 0) return null;
+  return { summary: e.summary, lessonId: e.lessonId, madeCount: e.madeCount };
+}
+
 /** Safety status of a recorded exchange (additive workspace column, Phase 4 migration). */
 export type InteractionSafetyStatus = "ok" | "input_filtered" | "output_filtered";
 

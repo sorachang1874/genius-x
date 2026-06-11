@@ -34,6 +34,7 @@ import type { IpCharacterService } from "../workspace/ip-character";
 import type { ParentNoteRelay } from "../parent/service";
 import type { IpCharacterSurface } from "@genius-x/contracts";
 import { ContextBuilder, type ColdContext } from "../agent/context";
+import { ReflectionService } from "../agent/reflection";
 import type { LessonShareMinter } from "../share/service";
 
 export interface Emitter {
@@ -154,7 +155,12 @@ export class ClassroomController {
     // Phase 4 cold path (agent-context.md): built from the SAME deps — no new wiring
     // surface. P4.5-B: the canon source prefers the ip_characters record (mirror fallback).
     this.contextBuilder = new ContextBuilder(identity, workspace, ipCharacter, trace, () => clock.now(), parentNotes);
+    // Phase 6.5 Step 4 (L1): the lesson-end reflection — built from the SAME workspace
+    // dep; absence of workspace ⇒ no diary (the existing skip-trace posture covers it).
+    this.reflection = workspace ? new ReflectionService(workspace, trace, () => clock.now()) : undefined;
   }
+
+  private readonly reflection: ReflectionService | undefined;
 
   private readonly contextBuilder: ContextBuilder;
 
@@ -344,12 +350,26 @@ export class ClassroomController {
       // an eager sweep deleted not-yet-drained buffers ⇒ silent episode loss). Still
       // fire-and-forget relative to the classroom.
       const inflight = this.inflightConsolidations.get(sessionId);
-      void Promise.allSettled(inflight ? [...inflight] : [])
+      const settled = Promise.allSettled(inflight ? [...inflight] : []);
+      void settled
         .then(() => this.turnBuffer?.clearSession(sessionId))
         .then(() => this.inflightConsolidations.delete(sessionId))
         .catch((err: unknown) =>
           this.trace.record(this.mkTrace("interaction", { reason: "context_sweep_failed", error: String((err as Error)?.name ?? err), sessionId })),
         );
+      // Phase 6.5 Step 4 (L1): the companion reflects AFTER every consolidation lands
+      // (the diary reads what they wrote). Per-student isolation; fire-and-forget;
+      // failures are reflection_failed traces inside the service — never the classroom's.
+      if (this.reflection) {
+        const { lessonId: doneLessonId, students: doneStudents } = effects.completed;
+        void settled.then(() => {
+          for (const studentId of Object.keys(doneStudents)) {
+            void this.reflection!.reflectOnLesson(studentId, doneLessonId, sessionId).catch((err: unknown) =>
+              this.trace.record(this.mkTrace("interaction", { reason: "reflection_crashed", error: String((err as Error)?.name ?? err), sessionId, studentId })),
+            );
+          }
+        });
+      }
       // Phase 3: parent share links (per attending student; same isolation discipline).
       if (this.shareMinter) {
         const { lessonId, students } = effects.completed;

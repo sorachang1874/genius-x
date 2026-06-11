@@ -283,7 +283,7 @@ describe("Phase 1 — enroll → join → full lesson → profile persists", () 
       const summary = await get<WorkspaceSummaryResponse>(`/students/${student.id}/workspace`);
       expect(summary.workCount).toBe(2); // exact: a duplicate-write regression must fail here
       expect(summary.interactionCount).toBe(2);
-      expect(summary.memoryCount).toBe(2); // favorite_toy + the talent episode
+      expect(summary.memoryCount).toBe(3); // favorite_toy + the talent episode + the L1 diary (P6.5 Step 4)
 
       // 7. PARENT SHARE (Phase 3): lesson end auto-minted a capability link (the sink IS
       // the event) — open it over REAL HTTP and verify the filtered view.
