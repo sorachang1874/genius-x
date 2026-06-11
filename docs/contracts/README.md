@@ -34,12 +34,16 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | [`workspace.md`](workspace.md) | Student workspace: works, interactions, memories | **frozen v1.1** (v1 + Phase-4/4.5 pending amendments) | Phase 2 |
 | [`agent-context.md`](agent-context.md) | Agent context: hot/cold split, turn buffer, `LlmRequest.history`, episodic memory, safety parity, budget floor | **frozen v1** (implementation: Phase 4 Steps 2–5) | Phase 4 |
 | [`ip-character.md`](ip-character.md) | IP character entity: layered canon model, version snapshots, works lineage, GeniusXProfile transition | **frozen v1** (implementation: Phase 4.5) | Phase 4.5 |
-| [`brand-style.md`](brand-style.md) | Brand style: gateway-level injection rule + trace stamping (binding); style VALUES are v0 placeholders pending the brand design doc (DF-v2-18) | **frozen v0** (injection rule implemented) | Phase 4+ (values: external) |
+| [`brand-style.md`](brand-style.md) | Brand style: gateway-level injection rule + trace stamping (binding); style VALUES are v0 placeholders pending the brand design doc (DF-v2-18) | **frozen v0.1** (+ THEME_FLOORS_V0) (injection rule implemented) | Phase 4+ (values: external) |
 | [`tool.md`](tool.md) | Tools = in-scene creation instruments: closed gateway-bound mechanics, brand composition, no-free-text inputs, `image_refine` | **frozen v1** (implementation: P5 Step 3) | Phase 5 |
 | [`scene.md`](scene.md) | Scene library + in-class selection (decision ⑤); scene==stage formalized; mechanics×prompts rule | **frozen v1** (owner = C, lead decision 2026-06-10; implementation: P5 Step 2) | Phase 5 |
-| [`parent-share.md`](parent-share.md) | Parent read-only share artifact (capability URL, privacy filter, deployment exposure rule — v1.4 adds token-gated `/parent/*`) | **frozen v1.4** | Phase 3 (co-working = Phase 6) |
-| [`parent-surface.md`](parent-surface.md) | Authenticated parent home: capability-token auth seam (SMS/WeChat mint later), growth timeline, co-working v1 = the relayed parent note; v1.1 pins the H5-entry token posture (scrub-on-mount) | **frozen v1.1** | Phase 6 |
-| `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 |
+| [`parent-share.md`](parent-share.md) | Parent read-only share artifact (capability URL, privacy filter, deployment exposure rule — v1.4 adds token-gated `/parent/*`) | **frozen v1.5** | Phase 3 (+ playground route family) |
+| [`parent-surface.md`](parent-surface.md) | Authenticated parent home: capability-token auth seam (SMS/WeChat mint later), growth timeline, co-working v1 = the relayed parent note; v1.1 pins the H5-entry token posture; v1.2 adds the playground unlock mint | **frozen v1.2** | Phase 6 |
+| [`world.md`](world.md) | The friend's home: CLOSED asset→world-object mapping, form-agnostic + earned-not-prestocked rules | **frozen v1** (implementation: APP Shell + 乐园 v0) | APP integration |
+| [`theme.md`](theme.md) | ThemePackV1 design tokens: three closed sources (brand default / derived / skin), brand-locked floors, derivation seam | **frozen v1** (implementation: Shell ThemeProvider) | APP integration |
+| [`agent-session.md`](agent-session.md) | Playground session: parent-unlocked lifecycle, quota/curfew config, zero-AI floor, the four gates for after-class AI, append-only grants | **frozen v1** (implementation: 乐园 v0 → AI 档) | APP integration |
+| `companion-conduct.md` | The companion's behavioral guardrails (absence-is-fine, no secrets, distress escalation) — CI-enforced | planned — freezes BEFORE any after-class AI dialogue | APP integration (L1/L2) |
+| `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 (deferred behind APP integration) |
 
 **Contract freeze protocol**: Phase N contracts are authored and frozen by the lead
 before Phase N implementation begins. Workers import contracts read-only.

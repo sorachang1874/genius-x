@@ -1,6 +1,6 @@
 # Parent Surface Contract (Phase 6)
 
-**Status**: Frozen v1.1 (v1 + the Step-3 H5-entry transport rev — see Changelog)
+**Status**: Frozen v1.2 (v1.1 + the playground unlock mint — see Changelog)
 **Owner**: Parent surfaces (Agent K) — H5/routes; parent access tokens — share-service
 patterns (Phase 3 machinery); note injection — Agent I (context builder)
 **Typed realization**: `packages/contracts/src/parent-surface.ts`
@@ -44,7 +44,7 @@ child next lesson** (「爸爸妈妈想对你说」).
 
 | Property | Rule |
 | --- | --- |
-| Write | `POST /parent/children/:id/note` `{text}` — the ONLY parent write in v1 |
+| Write | `POST /parent/children/:id/note` `{text}` (co-working v1) and `POST /parent/children/:id/playground-session` (the playground UNLOCK MINT, v1.2 — mints a `playground_session_tokens` row, [`agent-session.md`](agent-session.md)) — the only two parent writes |
 | Validation | text 1–200 chars; SAFETY-REVIEWED at the boundary (parent input is still input — filtered ⇒ 400 with a gentle message, never stored); rate: ≤ 3 pending notes per child (DB-checked) |
 | Storage | `parent_notes` table (note, parent_id, student_id + tenant composite FK, created_at, relayed_at NULL until used) — NOT a memory row (it is parent content, not the child's memory) |
 | Relay | The context builder injects UNRELAYED notes into the cold block (`【爸爸妈妈想对你说】`, ≤2 newest) and rides their ids on `ColdContext.noteIds`; the CONTROLLER marks `relayed_at` (fire-and-forget) only after a **NON-DEGRADED** LLM reply — a gateway fallback (filtered/error/timeout) never consumed them, so they stay unrelayed and retry next call. **Accepted residual**: the gateway's defensive context review dropping the cold block still counts as use (that drop is operator-visible via its own safety trace) |
@@ -87,6 +87,13 @@ child next lesson** (「爸爸妈妈想对你说」).
   guidance (never 换个说法/休息一下); a 400 on note POST renders the gentle rewording copy.
 
 ## Changelog
+
+- **v1.2** (2026-06-10, lead-serialized with the agent-session.md freeze): the playground
+  UNLOCK MINT (`POST /parent/children/:id/playground-session`) becomes the second parent
+  write — it mints a SEPARATE token class (`playground_session_tokens`: one student,
+  playground scope, session TTL; agent-session.md owns it). The v1.1 rule stands: token-
+  class risk acceptances never transfer between classes by implementation — the new class
+  carries its own transport ruling in agent-session.md.
 
 - **v1.1** (2026-06-10, lead-serialized after the Step-3 adversarial review): the H5
   entry route `?parent=<token>` is now contract-named, and the share token's

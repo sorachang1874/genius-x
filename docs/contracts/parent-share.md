@@ -1,6 +1,6 @@
 # Parent Share Contract (Phase 3)
 
-**Status**: Frozen v1.4 (v1.3 + the Phase-6 exposure amendment, coupled to parent-surface.md v1 — see Changelog)
+**Status**: Frozen v1.5 (v1.4 + the playground route family — see Changelog)
 **Owner**: Parent surfaces (Agent K) · share service in `apps/server/src/share`
 **Phase**: Phase 3 — Parent read-only artifact
 **Typed realization**: `packages/contracts/src/parent-share.ts`
@@ -57,23 +57,29 @@ Out of scope (deferred):
 
 ## Deployment exposure rule (BINDING)
 
-The internet-facing routes are `GET /share/:token` (Phase 3) and the token-gated
+The internet-facing routes are `GET /share/:token` (Phase 3), the token-gated
 `GET/POST /parent/*` family (Phase 6, [`parent-surface.md`](parent-surface.md) — amended
-into this rule v1.4); everything else on the server (identity admin, workspace reads,
-`/session/*`) is unauthenticated child PII at operator posture. The postures share one
-Fastify listener, so **exposure is enforced at the proxy**:
+into this rule v1.4), and the token-gated `GET/POST /playground/*` family (APP
+integration, [`agent-session.md`](agent-session.md) — amended in v1.5: ALL child-at-home
+traffic — session lifecycle, world-object reads, theme packs, future turn traffic — rides
+the playground session token under this prefix ONLY, never the operator-posture
+endpoints); everything else on the server (identity admin, workspace reads, `/session/*`)
+is unauthenticated child PII at operator posture. The postures share one Fastify
+listener, so **exposure is enforced at the proxy**:
 
 > The internet-facing reverse proxy forwards **exactly** `GET /share/*`, token-gated
-> `GET/POST /parent/*` (parent-surface.md), and the static H5 (the web bundle). **Every
-> other server path is denied from outside the operator network.** Without a proxy, the
-> server binds to the operator LAN only — never directly to the internet.
+> `GET/POST /parent/*` (parent-surface.md), token-gated `GET/POST /playground/*`
+> (agent-session.md), and the static H5 (the web bundle). **Every other server path is
+> denied from outside the operator network.** Without a proxy, the server binds to the
+> operator LAN only — never directly to the internet.
 
 Example nginx allowlist:
 
 ```nginx
-location ~ ^/share/  { proxy_pass http://geniusx-server:3000; }  # capability link (Phase 3)
-location ~ ^/parent/ { proxy_pass http://geniusx-server:3000; }  # token-gated parent surface (Phase 6)
-location /           { root /srv/geniusx-web; try_files $uri /index.html; }  # static H5
+location ~ ^/share/      { proxy_pass http://geniusx-server:3000; }  # capability link (Phase 3)
+location ~ ^/parent/     { proxy_pass http://geniusx-server:3000; }  # token-gated parent surface (Phase 6)
+location ~ ^/playground/ { proxy_pass http://geniusx-server:3000; }  # token-gated child-at-home surface (APP integration)
+location /               { root /srv/geniusx-web; try_files $uri /index.html; }  # static H5
 # NO other proxy_pass: /students, /parents (NB: ^/parent/ does NOT match /parents/ — the
 # operator MINT stays unreachable), /admin, /session, /socket.io stay denied from outside
 ```
@@ -187,7 +193,8 @@ preflight below binding the content pipeline.
 - Deploy preflight (exposure rule): from outside the operator network,
   `/students/<any>`, `/session/x/state`, and `POST /parents/<any>/access` (the operator
   mint) blocked; `GET /share/<token>` serves; `GET /parent/children` serves with a valid
-  parent token and uniform-404s without one.
+  parent token and uniform-404s without one; `/playground/*` serves with a valid
+  playground session token and uniform-404s without one.
 - ```sql
   -- All tokens reference valid students (FK enforces; drift check — expect 0)
   SELECT COUNT(*) FROM share_tokens WHERE student_id NOT IN (SELECT id FROM students);
@@ -200,6 +207,13 @@ preflight below binding the content pipeline.
 ---
 
 ## Changelog
+
+- **v1.5** (2026-06-10, lead-serialized with the agent-session.md freeze): the BINDING
+  exposure rule gains token-gated `GET/POST /playground/*` as the THIRD internet-facing
+  route family — the child-at-home playground surface (agent-session.md). Same review
+  class as v1.4: without this rev a deploy following this allowlist blocks the entire
+  playground (child-visible breakage at home), and one following agent-session.md widens
+  the proxy ad-hoc over operator-posture child-PII endpoints.
 
 - **v1.4** (2026-06-10, lead-serialized with the Phase-6 parent-surface freeze): the
   BINDING exposure rule gains token-gated `GET/POST /parent/*` (parent-surface.md) as the
