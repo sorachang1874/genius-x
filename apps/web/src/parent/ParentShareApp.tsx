@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import type { ParentShareView, SharedWork } from "@genius-x/contracts";
 import { serverBaseUrl } from "../shared/socket";
+import { safeSrc } from "./safe-src";
 
 type LoadState =
   | { phase: "loading" }
@@ -33,13 +34,6 @@ interface CertificateJson {
   birthdaySpeech?: string;
 }
 
-/**
- * Render-safe media URL (defense-in-depth on the one unauthenticated surface): https?,
- * root-relative, or the dev/demo fake:// — anything else (javascript:, data:, …) is
- * skipped, never rendered as an img src.
- */
-const safeSrc = (url: string | undefined): string | undefined =>
-  url !== undefined && /^(https?:\/\/|\/(?!\/)|fake:\/\/)/i.test(url) ? url : undefined;
 
 export function ParentShareApp({ fetcher = defaultFetcher }: { fetcher?: ShareFetcher }): React.JSX.Element {
   const [state, setState] = useState<LoadState>({ phase: "loading" });

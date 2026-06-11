@@ -19,4 +19,11 @@ describe("App routing (share precedence)", () => {
     // ParentShareApp's empty-token branch: warm guidance, no fetch, no student join UI.
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("请联系老师"));
   });
+
+  it("?parent= with an EMPTY value routes to the parent HOME's warm guidance — never the student screen", async () => {
+    setUrl("?parent=");
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("请联系老师"));
+    expect(screen.queryByText(/教室门牌号/)).toBeNull(); // no student join UI
+  });
 });

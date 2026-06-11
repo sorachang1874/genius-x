@@ -1,6 +1,6 @@
 # Parent Surface Contract (Phase 6)
 
-**Status**: Frozen v1 (implementation: Phase 6 Steps 2–3)
+**Status**: Frozen v1.1 (v1 + the Step-3 H5-entry transport rev — see Changelog)
 **Owner**: Parent surfaces (Agent K) — H5/routes; parent access tokens — share-service
 patterns (Phase 3 machinery); note injection — Agent I (context builder)
 **Typed realization**: `packages/contracts/src/parent-surface.ts`
@@ -27,6 +27,8 @@ child next lesson** (「爸爸妈妈想对你说」).
 | v1 credential | **Parent access token** — the PROVEN Phase-3 capability machinery (256-bit, sha256-hash-only storage, uniform 404), but PARENT-scoped: bound to `parentId`, covering ALL that parent's children; expiry 180 days; re-mint on demand |
 | Mint | Operator posture (`POST /parents/:id/access` — the identity-admin trust level, never internet-exposed). SMS-OTP / WeChat login (Better Auth) replaces the MINT path later behind the same verifier seam — the routes/reads never change (shadow rule: pluggable, not required) |
 | Transport | parent-share.md's BINDING exposure rule (amended to v1.4 with this freeze) names token-gated `GET/POST /parent/*` as the second internet-facing route family — everything else (including the `/parents/:id/access` mint) stays operator-network only |
+| H5 entry (v1.1) | The home opens via `?parent=<token>` (presence-routed like `?share=`). **History/screenshot persistence is NOT accepted for this token class** (unlike the scoped share token — this one is 180-day, ALL-children, write-capable): BINDING preconditions are (a) the global no-referrer meta (index.html) and (b) **scrub-on-mount** — the H5 captures the token into memory at first render and `history.replaceState`s the value out of the address bar (presence kept for routing). A reload after scrub lands on the warm re-request guidance; the original minted link still works. Sub-requests ride the `Authorization` header only |
+| Mid-session death (v1.1) | The uniform 404 on ANY call (children/timeline/note) ⇒ the H5 shows the warm **re-request guidance** — never retry copy ("休息一下") or rewording copy ("换个说法") for a dead credential. 400 stays gentle-rewording; network/5xx stays gentle-retry. This distinction is server-given — no client oracle is invented |
 | Scope | One parent's children ONLY (every read joins through `students.parent_id`); tenant isolation unchanged |
 
 ## Reads (privacy boundary — the DENY discipline extends)
@@ -79,9 +81,20 @@ child next lesson** (「爸爸妈妈想对你说」).
 - Deploy preflight (exposure — mirrors parent-share.md v1.4): from outside the operator
   network, `GET /parent/children` serves with a valid token and uniform-404s without one;
   `POST /parents/<id>/access` (the mint) is blocked.
+- Scrub-on-mount test (v1.1): after the H5 renders, the address bar retains `?parent=`
+  presence but NOT the token value; the children fetch still carries the captured token.
+- Mid-session-death tests (v1.1): a 404 on note POST / timeline renders the re-request
+  guidance (never 换个说法/休息一下); a 400 on note POST renders the gentle rewording copy.
 
 ## Changelog
 
+- **v1.1** (2026-06-10, lead-serialized after the Step-3 adversarial review): the H5
+  entry route `?parent=<token>` is now contract-named, and the share token's
+  history-persistence acceptance explicitly does NOT transfer to this token class
+  (180-day, all-children, write-capable — a materially larger blast radius must not
+  inherit a weaker token's risk acceptance by implementation). Binding mitigations:
+  no-referrer meta + scrub-on-mount. Mid-session uniform 404 ⇒ re-request guidance on
+  every surface (the failure-modes row was previously honored only by the initial fetch).
 - **v1** (2026-06-10): initial freeze — parent access token (capability machinery,
   SMS/WeChat mint later behind the same seam), scoped authenticated reads, growth
   timeline projection, co-working v1 = the relayed parent note. Converged pre-merge with
@@ -90,4 +103,4 @@ child next lesson** (「爸爸妈妈想对你说」).
   parent-share.md v1.4 (not asserted unilaterally here), exact trace reasons named,
   timeline lineage works carry DENY-scrubbed contentJson like the share view.
 
-_Parent Surface Contract · Phase 6 · Frozen v1 · 2026-06-10_
+_Parent Surface Contract · Phase 6 · Frozen v1.1 · 2026-06-10_

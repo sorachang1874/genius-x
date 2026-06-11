@@ -38,7 +38,7 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | [`tool.md`](tool.md) | Tools = in-scene creation instruments: closed gateway-bound mechanics, brand composition, no-free-text inputs, `image_refine` | **frozen v1** (implementation: P5 Step 3) | Phase 5 |
 | [`scene.md`](scene.md) | Scene library + in-class selection (decision ⑤); scene==stage formalized; mechanics×prompts rule | **frozen v1** (owner = C, lead decision 2026-06-10; implementation: P5 Step 2) | Phase 5 |
 | [`parent-share.md`](parent-share.md) | Parent read-only share artifact (capability URL, privacy filter, deployment exposure rule — v1.4 adds token-gated `/parent/*`) | **frozen v1.4** | Phase 3 (co-working = Phase 6) |
-| [`parent-surface.md`](parent-surface.md) | Authenticated parent home: capability-token auth seam (SMS/WeChat mint later), growth timeline, co-working v1 = the relayed parent note | **frozen v1** (implementation: P6 Steps 2-3) | Phase 6 |
+| [`parent-surface.md`](parent-surface.md) | Authenticated parent home: capability-token auth seam (SMS/WeChat mint later), growth timeline, co-working v1 = the relayed parent note; v1.1 pins the H5-entry token posture (scrub-on-mount) | **frozen v1.1** | Phase 6 |
 | `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 |
 
 **Contract freeze protocol**: Phase N contracts are authored and frozen by the lead

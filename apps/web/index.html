@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <!-- The parent share capability token rides in the query string; legacy WeChat/X5
-         webviews can send full URLs in Referer to cross-origin media. No fetch here needs
-         a Referer, so: never send one (parent-share.md Transport row). -->
+    <!-- BOTH parent token classes enter via the query string (?share= scoped 90d link,
+         parent-share.md; ?parent= 180d all-children home, parent-surface.md v1.1 — which
+         additionally scrubs its value from the URL on mount); legacy WeChat/X5 webviews
+         can send full URLs in Referer to cross-origin media. No fetch here needs a
+         Referer, so: never send one (binding precondition of both Transport rows). -->
     <meta name="referrer" content="no-referrer" />
     <title>Genius X</title>
   </head>
