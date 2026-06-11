@@ -24,9 +24,20 @@ export interface WorldAlbumPage {
   createdAt: string; // ISO
 }
 
+/** One open-diary entry (world.md: `companion_diary` → 摊开的日记). */
+export interface WorldDiaryEntry {
+  summary: string;
+  createdAt: string; // ISO
+}
+
 /** GET /playground/world — everything the v0 home renders, in one fetch. */
 export interface PlaygroundWorldView {
   displayName: string;
+  /** The friend's visit greeting (L1: deterministic from the newest episode) —
+   *  absent ⇒ the client's generic warm line (cold-miss is never child-visible). */
+  greeting?: string;
+  /** 摊开的日记 — newest first, curated entries only (deterministic v1). */
+  diary: WorldDiaryEntry[];
   /** The companion's parent-visible surface (form-agnostic — name/personality only). */
   companion?: { name?: string; personality?: string };
   wall: WorldWallItem[];

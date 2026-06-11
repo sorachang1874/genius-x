@@ -138,13 +138,15 @@ export function PlaygroundApp({ api = defaultApi, now = defaultNow }: {
             ? `${friendName}有点困了，揉了揉眼睛……`
             : `${world.displayName}，你来啦！${friendName}抬起头看见了你。`}
         </h1>
-        {world.album.length === 0 && world.wall.length === 0 && (
+        {!sleepy && world.greeting && <p className="playground__greeting">「{world.greeting}」</p>}
+        {world.album.length === 0 && world.wall.length === 0 && world.diary.length === 0 && (
           // EARNED world (world.md rule 3): small is the story, not an empty state.
           <p>这个家刚刚开始。上完课，这里会一点点长出你们的故事。</p>
         )}
       </header>
 
       <WORLD_REGISTRY.works_wall world={world} />
+      <WORLD_REGISTRY.companion_diary world={world} />
       <WORLD_REGISTRY.growth_album world={world} />
 
       {sleepy && (

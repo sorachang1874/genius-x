@@ -11,7 +11,8 @@
  * the token IS the session lock). Uniform 404 everywhere.
  */
 import { createHash, randomBytes } from "node:crypto";
-import type { PlaygroundSessionResult, PlaygroundWorldView, SharedWork, TraceEvent, TraceSink, WorldAlbumPage, WorldWallItem } from "@genius-x/contracts";
+import type { PlaygroundSessionResult, PlaygroundWorldView, SharedWork, TraceEvent, TraceSink, WorldAlbumPage, WorldDiaryEntry, WorldWallItem } from "@genius-x/contracts";
+import { DIARY_MEMORY_KEY, EPISODE_MEMORY_KEY, parseDiaryValue, parseEpisodeValue } from "@genius-x/contracts";
 import type { IdentityDb } from "../identity/service";
 import { ShareServiceError, sampleSlices, scrubDeniedKeys } from "../share/service";
 
@@ -210,6 +211,36 @@ export class PlaygroundService {
       console.warn("[playground-scrub] dropped DENIED keys:", { keys: dropped });
     }
 
+    // 摊开的日记 (L1) — newest first; malformed rows are corruption signals, skipped+counted.
+    const diaryRows = await this.db.query(
+      `SELECT value, created_at FROM memories
+       WHERE student_id = $1 AND key = $2
+       ORDER BY created_at DESC, id DESC LIMIT 5`,
+      [studentId, DIARY_MEMORY_KEY],
+    );
+    const diary: WorldDiaryEntry[] = [];
+    for (const row of diaryRows.rows as { value: string; created_at: unknown }[]) {
+      const d = parseDiaryValue(row.value);
+      if (d === null) {
+        this.mk("world_diary_malformed", { studentId });
+        continue;
+      }
+      diary.push({ summary: d.summary, createdAt: iso(row.created_at) });
+    }
+
+    // The visit greeting (L1): deterministic from the NEWEST episode — cold-miss or no
+    // episodes ⇒ no greeting field, the client's generic warm line covers it.
+    let greeting: string | undefined;
+    const newestEpisode = await this.db.query(
+      `SELECT value FROM memories WHERE student_id = $1 AND key = $2
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [studentId, EPISODE_MEMORY_KEY],
+    );
+    if (newestEpisode.rows.length > 0) {
+      const e = parseEpisodeValue((newestEpisode.rows[0] as { value: string }).value);
+      if (e !== null) greeting = `${e.summary}——我还想着呢！`;
+    }
+
     const versions = await this.db.query(
       `SELECT version, surface, created_at FROM ip_character_versions
        WHERE student_id = $1 ORDER BY version ASC`,
@@ -232,6 +263,8 @@ export class PlaygroundService {
     return {
       serverNow: this.now().toISOString(),
       displayName: srow.display_name,
+      ...(greeting !== undefined && { greeting }),
+      diary,
       ...(srow.companion_surface !== null && {
         companion: {
           ...(srow.companion_surface.name && { name: srow.companion_surface.name }),

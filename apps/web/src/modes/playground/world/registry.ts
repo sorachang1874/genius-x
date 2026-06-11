@@ -12,6 +12,7 @@ import type { ComponentType } from "react";
 import type { PlaygroundWorldView } from "@genius-x/contracts";
 import { WorksWall } from "./WorksWall";
 import { GrowthAlbum } from "./GrowthAlbum";
+import { CompanionDiary } from "./CompanionDiary";
 
 export interface WorldObjectProps {
   world: PlaygroundWorldView;
@@ -23,6 +24,8 @@ export const WORLD_REGISTRY = {
   works_wall: WorksWall,
   /** IP character version (`ip_character_versions`) → 相册(成长快照). */
   growth_album: GrowthAlbum,
+  /** Companion diary (`self_narrative`, L1) → 摊开的日记. */
+  companion_diary: CompanionDiary,
 } as const satisfies Record<string, ComponentType<WorldObjectProps>>;
 
 /**
@@ -30,4 +33,4 @@ export const WORLD_REGISTRY = {
  * test diffs WORLD_REGISTRY keys against this — drift between contract and registry
  * fails the build, not the child.
  */
-export const WORLD_CONTRACT_ROWS_V0 = ["works_wall", "growth_album"] as const;
+export const WORLD_CONTRACT_ROWS_V0 = ["works_wall", "growth_album", "companion_diary"] as const;

@@ -41,7 +41,7 @@ asset type may not ship until its world-object row exists.
 | Temporary skin (decision ④) | _(key 随实现定)_ | 衣柜/换装角 | apply = temporary, auto-revert, snapshot-logged | 乐园 v0 |
 | ThemePack ([`theme.md`](theme.md)) | _(key 随实现定)_ | 世界本身的样子 | never shown "as an asset"; applies ambiently | 乐园 v0 |
 | Episodic memory (`memories`, key="episode" — agent-context.md) | _(key 随实现定)_ | 回忆罐 | the FRIEND retells (TTS), never raw transcripts | 乐园 AI 档(agent-session.md 五道闸后) |
-| Companion diary (`self_narrative`, L1) | _(key 随实现定)_ | 摊开的日记 | curated entries only; deterministic v1 | L1 |
+| Companion diary (`self_narrative`, L1) | `companion_diary` | 摊开的日记 | curated entries only; deterministic v1 | L1 (shipped — deterministic tier) |
 | Tool grant ([`agent-session.md`](agent-session.md) rule 6 — the grant model's home) | _(key 随实现定)_ | 工作台上的器械 | visible ONLY when granted ("学会了新本领") — an ungranted tool simply isn't there (never a locked/grey button) | 乐园 AI 档 |
 | Letter/surprise (L3 outbox) | _(key 随实现定)_ | 惊喜信箱 | child discovers; NEVER announced by push | L3 |
 | Parent note (P6 `parent_notes`) | _(key 随实现定)_ | (no object) | relayed through the friend's speech only — a raw "inbox" is banned (浸泡式); relay semantics stay parent-surface.md's | P6 (shipped — CLASSROOM relay); in-world speech relay = 乐园 AI 档(五道闸) |

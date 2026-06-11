@@ -7,8 +7,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import type { TraceEvent } from "@genius-x/contracts";
 import { newIdentityTestContext, type IdentityTestContext } from "../identity/identity.testutil";
+import { EPISODE_MEMORY_KEY } from "@genius-x/contracts";
 import { WorkspaceService } from "../workspace/service";
 import { IpCharacterService } from "../workspace/ip-character";
+import { ReflectionService } from "../agent/reflection";
 import { PlaygroundService, inCurfew, sessionQuotaMinutes } from "./service";
 
 const traced: TraceEvent[] = [];
@@ -36,6 +38,13 @@ beforeAll(async () => {
   await workspace.recordWork({ studentId: kidA, type: "avatar_image", contentUrl: "fake://v1.png", metadata: { lessonId: "lesson-001", stageId: "shape", degraded: false } });
   await workspace.recordWork({ studentId: kidA, type: "avatar_image", contentUrl: "fake://v2.png", metadata: { lessonId: "lesson-001", stageId: "shape", degraded: false } });
   await ip.recordLessonOutcome(kidA, { name: "小泥", personality: "勇敢" }, { lessonId: "lesson-001", sessionId: "s1" });
+  // L1: an episode + the reflection that writes the diary
+  await workspace.recordMemory({
+    studentId: kidA, key: EPISODE_MEMORY_KEY,
+    value: JSON.stringify({ summary: "我们一起捏了一只小海豚", tags: [] }),
+    context: { lessonId: "lesson-001", stageId: "talent", sessionId: "s1" },
+  });
+  await new ReflectionService(workspace, { record: () => {} }).reflectOnLesson(kidA, "lesson-001", "s1");
 });
 
 describe("the unlock door (parent-surface.md v1.2 / agent-session.md token class)", () => {
@@ -112,6 +121,10 @@ describe("the v0 world view (world.md — read-only, gate ⑤)", () => {
     expect(world.wall[0]!.slices.length).toBeGreaterThan(0); // 打磨轨迹 replayable
     expect(world.album).toHaveLength(1);
     expect(world.album[0]).toMatchObject({ version: 1, surface: { name: "小泥" } });
+    // L1: the open diary + the visit greeting from the newest episode
+    expect(world.diary).toHaveLength(1);
+    expect(world.diary[0]!.summary).toContain("我们一起捏了一只小海豚");
+    expect(world.greeting).toBe("我们一起捏了一只小海豚——我还想着呢！");
     expect(world.serverNow).toBe(DAYTIME().toISOString()); // the clock-anchor seam serves the injected now
     const json = JSON.stringify(world);
     expect(json).not.toContain(kidA); // studentId never on the wire
