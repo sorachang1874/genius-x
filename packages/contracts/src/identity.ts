@@ -91,6 +91,12 @@ export interface GuardianConsent {
   dataRetentionAgreed: boolean; // required true to enroll
   parentCoWorkAllowed: boolean; // gates parent-initiated interactions (Phase 6)
   mediaUsageAllowed: boolean; // gates showcase/promotion use of the child's works
+  /** Gates PHYSICAL-carrier use of the child's works & IP character (cards/cups/stickers/
+   *  growth books — decision ④'s 实体 path). A DISTINCT purpose from digital showcase
+   *  (PIPL: new purpose ⇒ separate consent), collected NOW so the merch path never needs
+   *  a re-authorization campaign. Founder framing (2026-06-10): the goal is INCENTIVE
+   *  (「让我的作品被看到」), not commercialization. */
+  ipPhysicalUseAllowed: boolean;
 }
 
 // --- Student (permanent child profile) ---

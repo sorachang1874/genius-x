@@ -26,6 +26,7 @@ const consentInputSchema = z.strictObject({
   dataRetentionAgreed: z.boolean(),
   parentCoWorkAllowed: z.boolean().optional(),
   mediaUsageAllowed: z.boolean().optional(),
+  ipPhysicalUseAllowed: z.boolean().optional(), // identity.md v1.1 — physical-carrier use
 });
 
 export const createParentRequestSchema = z.strictObject({

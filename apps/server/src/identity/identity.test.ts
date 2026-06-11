@@ -124,7 +124,23 @@ describe("enrollStudent (atomic student + consent)", () => {
       data_retention_agreed: true,
       parent_co_work_allowed: true,
       media_usage_allowed: false, // defaulted false when absent
+      ip_physical_use_allowed: false, // v1.1 — NEVER assumed (PIPL separate-purpose consent)
     });
+  });
+
+  it("ipPhysicalUseAllowed (identity.md v1.1): explicit at enrollment, updatable, never retro-assumed", async () => {
+    const parentId = await ctx.makeParent(tenantA);
+    const s = await ctx.service.enrollStudent({
+      parentId, displayName: "实体娃", age: 7,
+      consent: { ...CONSENT_V1, ipPhysicalUseAllowed: true },
+    });
+    const row = await ctx.sql.query("SELECT ip_physical_use_allowed FROM guardian_consents WHERE student_id = $1", [s.id]);
+    expect((row.rows[0] as { ip_physical_use_allowed: boolean }).ip_physical_use_allowed).toBe(true);
+    // update path overwrites; omission means false (consent must be explicit each version)
+    const updated = await ctx.service.updateConsent(s.id, { consentVersion: "v1.1", dataRetentionAgreed: true });
+    expect(updated.ipPhysicalUseAllowed).toBe(false);
+    const granted = await ctx.service.updateConsent(s.id, { consentVersion: "v1.1", dataRetentionAgreed: true, ipPhysicalUseAllowed: true });
+    expect(granted.ipPhysicalUseAllowed).toBe(true);
   });
 
   it("unknown parent → PARENT_NOT_FOUND (and no orphan rows left behind)", async () => {

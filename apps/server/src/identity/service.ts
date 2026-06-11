@@ -195,6 +195,7 @@ interface ConsentRow {
   data_retention_agreed: boolean;
   parent_co_work_allowed: boolean;
   media_usage_allowed: boolean;
+  ip_physical_use_allowed: boolean;
 }
 
 function toConsent(row: ConsentRow): GuardianConsent {
@@ -206,6 +207,7 @@ function toConsent(row: ConsentRow): GuardianConsent {
     dataRetentionAgreed: row.data_retention_agreed,
     parentCoWorkAllowed: row.parent_co_work_allowed,
     mediaUsageAllowed: row.media_usage_allowed,
+    ipPhysicalUseAllowed: row.ip_physical_use_allowed,
   };
 }
 
@@ -342,8 +344,8 @@ export class IdentityService {
          RETURNING *
        ), new_consent AS (
          INSERT INTO guardian_consents
-           (student_id, parent_id, consent_version, data_retention_agreed, parent_co_work_allowed, media_usage_allowed)
-         SELECT ns.id, ns.parent_id, $4, $5, $6, $7 FROM new_student ns
+           (student_id, parent_id, consent_version, data_retention_agreed, parent_co_work_allowed, media_usage_allowed, ip_physical_use_allowed)
+         SELECT ns.id, ns.parent_id, $4, $5, $6, $7, $8 FROM new_student ns
          RETURNING student_id
        )
        SELECT ns.* FROM new_student ns, new_consent nc`,
@@ -355,6 +357,7 @@ export class IdentityService {
         consent.dataRetentionAgreed,
         consent.parentCoWorkAllowed ?? false,
         consent.mediaUsageAllowed ?? false,
+        consent.ipPhysicalUseAllowed ?? false,
       ],
     );
     if (result.rows.length === 0) {
@@ -421,17 +424,18 @@ export class IdentityService {
 
     const result = await this.db.query(
       `INSERT INTO guardian_consents
-         (student_id, parent_id, consent_version, data_retention_agreed, parent_co_work_allowed, media_usage_allowed, consent_given_at)
-       SELECT s.id, s.parent_id, $2, $3, $4, $5, NOW() FROM students s WHERE s.id = $1
+         (student_id, parent_id, consent_version, data_retention_agreed, parent_co_work_allowed, media_usage_allowed, ip_physical_use_allowed, consent_given_at)
+       SELECT s.id, s.parent_id, $2, $3, $4, $5, $6, NOW() FROM students s WHERE s.id = $1
        ON CONFLICT (student_id) DO UPDATE SET
-         parent_id              = EXCLUDED.parent_id,
-         consent_version        = EXCLUDED.consent_version,
-         data_retention_agreed  = EXCLUDED.data_retention_agreed,
-         parent_co_work_allowed = EXCLUDED.parent_co_work_allowed,
-         media_usage_allowed    = EXCLUDED.media_usage_allowed,
-         consent_given_at       = EXCLUDED.consent_given_at
+         parent_id               = EXCLUDED.parent_id,
+         consent_version         = EXCLUDED.consent_version,
+         data_retention_agreed   = EXCLUDED.data_retention_agreed,
+         parent_co_work_allowed  = EXCLUDED.parent_co_work_allowed,
+         media_usage_allowed     = EXCLUDED.media_usage_allowed,
+         ip_physical_use_allowed = EXCLUDED.ip_physical_use_allowed,
+         consent_given_at        = EXCLUDED.consent_given_at
        RETURNING *`,
-      [studentId, valid.consentVersion, valid.dataRetentionAgreed, valid.parentCoWorkAllowed ?? false, valid.mediaUsageAllowed ?? false],
+      [studentId, valid.consentVersion, valid.dataRetentionAgreed, valid.parentCoWorkAllowed ?? false, valid.mediaUsageAllowed ?? false, valid.ipPhysicalUseAllowed ?? false],
     );
     if (result.rows.length === 0) throw new IdentityServiceError("STUDENT_NOT_FOUND");
     return toConsent(result.rows[0] as ConsentRow);
