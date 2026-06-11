@@ -1,6 +1,7 @@
 # Brand Style Contract (v0 placeholder)
 
-**Status**: Frozen v0 — **placeholder by design** (founder decision ①: simple start;
+**Status**: Frozen v0.1 (v0 + the theme token floors — placeholder values by design)
+(founder decision ①: simple start;
 the real style kit replaces the placeholder when the brand/market design doc lands —
 DF-v2-18). The INJECTION RULE below is binding now; the style VALUES are placeholders.
 **Owner**: AI gateway (Agent D) — injection + stamping; brand asset values — founder/design
@@ -89,6 +90,24 @@ and submits the assembled prompt (previously dead config — raw answer JSON wen
 provider). Missing answer for a referenced token ⇒ token replaced with empty string +
 `prompt_assembly_missing_answer` trace (countable, never a crash).
 
+## Theme token floors (v0.1 — consumed by theme.md)
+
+The numeric floors every ThemePack must respect ([`theme.md`](theme.md) rule 1) live
+HERE, versioned with the brand contract. v0.1 values are PLACEHOLDERS (replaced by the
+brand design doc, DF-v2-18 — same lifecycle as `promptSuffix`):
+
+```ts
+export const THEME_FLOORS_V0 = {
+  contrastMin: 4.5,          // WCAG AA — child readability floor
+  tapTargetMinPx: 48,        // minimum touch target
+  motionIntensityMax: 2,     // 0=static .. 3=busy; themes may not exceed 2
+  forbiddenHueRanges: [],    // brand doc fills (e.g. alarm-red bands); empty = none yet
+} as const;
+```
+
+Home: `packages/contracts/src/theme.ts` (with ThemePackV1). The theme.md floor-violation
+preflight validates against THESE constants — a pack crossing any floor rejects at load.
+
 ## Owner matrix
 
 | Field | Owner | Source of truth | Allowed values | Derivation | Consumers | Fallback | Deletion | Preflight |
@@ -124,6 +143,10 @@ provider). Missing answer for a referenced token ⇒ token replaced with empty s
   (ids only, never values). Free text cannot reach the prompt.
 
 ## Changelog
+
+- **v0.1** (2026-06-10, lead-serialized with the theme.md freeze): THEME_FLOORS_V0 added
+  (contrast/tap-target/motion/forbidden-hues — placeholder values, brand doc replaces).
+  theme.md is the named consumer; both contracts changelogged (the cross-contract rule).
 
 - **v0** (2026-06-09): injection rule + trace stamping + scene/brand split frozen; style
   VALUES are placeholders pending the brand design doc (DF-v2-18).

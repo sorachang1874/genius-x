@@ -2,7 +2,7 @@
 
 ## Last updated
 
-2026-06-09 (PHASE 2 COMPLETE: student workspace — works/interactions/memories persist)
+2026-06-10 (PHASES 1-6 COMPLETE; APP-integration contracts frozen — Shell refactor next)
 
 ## Current state
 
@@ -96,7 +96,8 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; brand-style slice live since P4 | 3-4 weeks | ✅ Complete (2026-06-10) |
 | **Phase 6** | Parent co-working — server slice (auth + timeline + notes) + parent H5 (token-gated home) | 3 weeks | ✅ Complete (2026-06-10; SMS/WeChat mint = later, behind the frozen verifier seam) |
-| **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
+| **Phase 6.5 (APP integration)** | ONE APP (founder pivot 2026-06-10, PRD v0.2 §10): contracts (world/theme/agent-session) → Shell refactor (+ one-tap classroom entry DF-v2-26) → 乐园 v0 zero-AI floor → parent unlock door → L1 reflection/diary → companion-conduct CI | 6-8 weeks | 🔄 In progress (contracts frozen 2026-06-10) |
+| **Phase 7** | Rich media pipeline + real providers (narrowed: async media + video/3D + style-conformance; brand slice moved to P5) | 4-5 weeks | 📋 Deferred behind APP integration (founder 2026-06-10; external credentials still pending) |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
 
 **Total estimated**: ~6-7 months for full architecture (Phases 1-8; +2-3 weeks from the
@@ -342,8 +343,11 @@ captured into memory, value scrubbed from the address bar) + the no-referrer met
 binding preconditions; mid-session dead tokens (uniform 404) now show re-request guidance
 on every surface, never misleading retry/rewording copy. 408 tests green.
 
-_Next milestone: Phase 7 prep — real provider adapters + media pipeline (DF-v2-22),
-sticky routing + 300-client load harness (DF-v2-20/21). Long-term: DF-v2-24 (LLM
-streaming + sentence TTS), DF-v2-25 (native omni-modal interaction). Pending external
-inputs: brand/market design doc (replaces style-v0; +API ⇒ triggers DF-v2-23), team
-confirmation of decision ③, 微信资质, Phase-7 credentials checklist (capacity doc §5)._
+_Next milestone: Phase 6.5 APP integration (founder-authorized 2026-06-10) — contracts
+frozen (world/theme/agent-session v1 + parent-share v1.5 + parent-surface v1.2 +
+brand-style v0.1); next = Shell refactor (classroom behavior pinned by Lesson-1 smoke,
+one-tap entry DF-v2-26) → 乐园 v0 zero-AI floor → parent unlock door → L1 reflection.
+Playground DB writes gated on data-and-privacy upgrade + workspace.md mode discriminator
+(agent-session.md gate ⑤). Phase 7 (real providers/media) deferred behind this. Pending
+external: brand/market design doc (DF-v2-18), 微信资质 (Q7 — start early, calendar lead
+time), decision ③ confirmation._
