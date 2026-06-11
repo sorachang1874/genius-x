@@ -446,7 +446,7 @@ describe("partial birth certificate (amended contract: blanks ⇒ degraded)", ()
 });
 
 describe("round-2 review mandates (divergence visibility + image outputs)", () => {
-  it("avatar RE-pick after completion traces workspace_work_stale_recomplete (countable divergence)", async () => {
+  it("avatar RE-pick records a SECOND Work (workspace.md v1.2: one per completion EVENT) + iteration trace", async () => {
     const ws = new FakeWorkspace();
     const c = new ClassroomController(
       lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace),
@@ -456,8 +456,8 @@ describe("round-2 review mandates (divergence visibility + image outputs)", () =
     await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "first" } });
     await untilTrue(() => ws.works.length === 1);
     await c.onMessage("s1", { type: "STAGE_COMPLETE", studentId: "k1", stageId: "shape", payload: { kind: "selection", output: "avatarUrl", value: "second" } });
-    await untilTrue(() => trace.events.some((e) => e.payload.reason === "workspace_work_stale_recomplete"));
-    expect(ws.works).toHaveLength(1); // one-Work-per-completion stays the rule
+    await untilTrue(() => ws.works.length === 2); // iteration = first-class portfolio history
+    expect(trace.events.some((e) => e.payload.reason === "workspace_work_iteration")).toBe(true); // countable volume
   });
 
   it("FORCE_ADVANCE past an artifact stage leaves a COUNTABLE hole trace at lesson end", async () => {

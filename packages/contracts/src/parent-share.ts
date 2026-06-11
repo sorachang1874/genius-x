@@ -40,8 +40,17 @@ export interface ParentShareView {
    * surfaced separately so the H5 can hero-render it. Absent if the lesson produced none.
    */
   certificate?: Record<string, unknown>;
-  /** Other works, recency-first, privacy-filtered. The certificate is NOT repeated here. */
+  /**
+   * v1.3 (Phase 4.5, decision ②): CURATED gallery — the LATEST Work per artifact type
+   * (the 每课精选 finals). The certificate is NOT repeated here.
+   */
   works: SharedWork[];
+  /**
+   * v1.3 additive: per artifact type with more than one completion, the 打磨轨迹 — up to
+   * 4 EVENLY-SAMPLED drafts oldest→newest (e.g. 1/15→6/15→11/15→15/15), each
+   * privacy-filtered like a SharedWork. Absent when nothing iterated.
+   */
+  iterations?: { type: ArtifactType; total: number; slices: SharedWork[] }[];
   /** When this share was minted (lesson end). */
   sharedAt: string; // ISO
   /** Capability expiry — the H5 may show "链接有效期至…". */

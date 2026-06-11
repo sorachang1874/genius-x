@@ -102,14 +102,17 @@ character service's mirror step.
 | Surface field | `genius_x` column | Resolution |
 | --- | --- | --- |
 | `name` | `genius_x_name` | verbatim |
-| `appearanceRef` | `genius_x_avatar_url` | resolve the referenced work's `contentUrl` (NOT the ref itself — the column is a URL; thumbnail never) |
+| `appearanceRef` | `genius_x_avatar_url` | resolve the referenced work's `contentUrl` (same-student scoped; NOT the ref itself — the column is a URL; thumbnail never). **Surface carries NO appearanceRef ⇒ the column is left UNTOUCHED** (a pre-4.5 legacy URL may be unrecoverable as a work ref and must not be erased — P4.5-A review amendment); a later refinement WITH a ref re-takes ownership |
 | `personality` | `genius_x_personality_tag` | verbatim |
 | `backstory` | `genius_x_background_setting` | verbatim |
 | — (no surface counterpart) | `genius_x_birthday_speech` | **NOT character state** — a lesson-001 ritual field. It stays writable by the SAME mirror service call with today's COALESCE latest-wins semantics, sourced from the lesson write-back input as now |
 
 **Mirror write semantics, pinned**: projected fields are **replace-from-canonical** (the
 mirror always equals the projection — including writing NULL when a surface field is
-absent); ritual fields (`birthdaySpeech`) keep identity.md's COALESCE never-erase rule.
+absent — EXCEPT the avatar column under the legacy-preservation rule above); the mirror
+runs on the NO-OP path too (idempotent — a re-run heals a mirror an earlier crash left
+stale); `appearanceRef` must be UUID-shaped and resolve to THIS student's work (the
+same-student pointer discipline; checked before any write); ritual fields (`birthdaySpeech`) keep identity.md's COALESCE never-erase rule.
 identity.md's COALESCE idempotency rule is superseded for the projected columns at the
 4.5 rev (one writer, deterministic mirror). The mirror test asserts equality over
 **projected fields only**.

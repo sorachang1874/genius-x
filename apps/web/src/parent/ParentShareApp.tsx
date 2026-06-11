@@ -133,6 +133,28 @@ export function ParentShareApp({ fetcher = defaultFetcher }: { fetcher?: ShareFe
         </section>
       )}
 
+      {view.iterations && view.iterations.length > 0 && (
+        // 打磨轨迹 (parent-share v1.3, decision ②): tap to expand the sampled drafts —
+        // the growth story behind each final, never a wall of near-duplicates.
+        <section className="parent-share__iterations" aria-label="打磨轨迹">
+          {view.iterations.map((it) => (
+            <details key={it.type}>
+              <summary>看看这件作品的成长之路（一共尝试了 {it.total} 次）</summary>
+              <ol>
+                {it.slices
+                  .filter((w) => safeSrc(w.contentUrl) !== undefined || w.contentText)
+                  .map((w, i) => (
+                    <li key={`${it.type}-slice-${i}`}>
+                      {safeSrc(w.contentUrl) && <img src={safeSrc(w.contentUrl)} alt={`第 ${i + 1} 次尝试`} />}
+                      {w.contentText && <p>{w.contentText}</p>}
+                    </li>
+                  ))}
+              </ol>
+            </details>
+          ))}
+        </section>
+      )}
+
       <footer>
         <p>链接有效期至 {view.expiresAt.slice(0, 10)} · 想了解更多，欢迎联系老师</p>
       </footer>

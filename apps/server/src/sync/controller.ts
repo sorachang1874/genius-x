@@ -213,16 +213,18 @@ export class ClassroomController {
         const stage = stageById(this.lesson, event.stageId);
         const wasDone = before.students[event.studentId]?.stageStatus[event.stageId] === "completed";
         const isDone = result.state.students[event.studentId]?.stageStatus[event.stageId] === "completed";
-        if (stage?.output && !wasDone && isDone) {
+        if (stage?.output && isDone) {
+          // workspace.md v1.2 (Phase 4.5, decision ②): ONE Work per completion EVENT —
+          // a RE-completion (in-scene refinement, the IP concept's normal creative path)
+          // records its own immutable Work; the portfolio is the iteration history.
+          // Iteration volume stays countable (workspace_work_iteration), never silent.
           artifacts.push({ studentId: event.studentId, stageId: event.stageId, type: stage.output, you: result.state.students[event.studentId]! });
-        } else if (stage?.output && wasDone && isDone) {
-          // RE-completion (e.g. avatar re-pick while the class gate waits): the recorded
-          // Work is immutable and now diverges from the final outputs/certificate — must
-          // be COUNTABLE, never silent (one-Work-per-completion stays the frozen rule).
-          traces.push(this.mkTrace("stage_transition", {
-            reason: "workspace_work_stale_recomplete",
-            studentId: event.studentId, stageId: event.stageId, type: stage.output, sessionId,
-          }));
+          if (wasDone) {
+            traces.push(this.mkTrace("stage_transition", {
+              reason: "workspace_work_iteration",
+              studentId: event.studentId, stageId: event.stageId, type: stage.output, sessionId,
+            }));
+          }
         }
       }
       // FORCE_ADVANCE past an artifact stage leaves a portfolio HOLE — enumerate it per

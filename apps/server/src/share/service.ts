@@ -73,7 +73,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Raw capability token: 32 bytes → base64url, always 43 chars, no padding. */
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 const SHARE_TTL_DAYS = 90;
-const SHARE_WORKS_LIMIT = 20;
+/** Curation scans this many works per (student, lesson) — far above a lesson's realistic
+ *  iteration volume; the projection collapses to latest-per-type + ≤4 slices per type. */
+const SHARE_WORKS_SCAN_LIMIT = 200;
+
+/** Up to 4 evenly-sampled drafts oldest→newest, ALWAYS including first and last. */
+export function sampleSlices<T>(list: T[]): T[] {
+  if (list.length <= 4) return [...list];
+  const idx = [0, Math.round((list.length - 1) / 3), Math.round(((list.length - 1) * 2) / 3), list.length - 1];
+  return [...new Set(idx)].map((i) => list[i]!);
+}
 
 const sha256hex = (s: string): string => createHash("sha256").update(s).digest("hex");
 const iso = (v: unknown): string => (v instanceof Date ? v : new Date(String(v))).toISOString();
@@ -157,21 +166,33 @@ export class ShareService {
     const certRows = await this.db.query(
       `SELECT content_json FROM works
        WHERE student_id = $1 AND lesson_id = $2 AND type = 'birth_certificate'
-       ORDER BY created_at DESC, id DESC LIMIT 1`,
+       ORDER BY seq DESC LIMIT 1`,
       [row.student_id, row.lesson_id],
     );
     const rawCert = (certRows.rows[0] as { content_json: Record<string, unknown> | null } | undefined)?.content_json;
     const certificate = rawCert != null ? (scrubDeniedKeys(rawCert, dropped) as Record<string, unknown>) : undefined;
 
-    // Recency-first works for THIS lesson (certificate excluded — it is the hero, never
-    // repeated in the gallery), filtered through the DENY list.
+    // ALL of this lesson's works oldest→newest (certificate excluded — it is the hero),
+    // bounded; CURATION happens here (parent-share.md v1.3, decision ②): the gallery is
+    // the LATEST Work per type (每课精选 finals), iterating types expose up to 4
+    // evenly-sampled drafts (打磨轨迹). Everything passes the same DENY-list scrub.
+    // DESC scan so the NEWEST works survive the bound (an ASC LIMIT would truncate the
+    // finals on a 200+ row lesson), reversed in memory to oldest→newest for sampling;
+    // seq = the monotonic insertion order (review blocker: created_at ties on PGlite ms
+    // resolution made "latest per type" a coin flip — a draft served as the final).
     const works = await this.db.query(
       `SELECT type, content_url, content_text, content_json, thumbnail_url, created_at
        FROM works WHERE student_id = $1 AND lesson_id = $2 AND type <> 'birth_certificate'
-       ORDER BY created_at DESC, id DESC LIMIT $3`,
-      [row.student_id, row.lesson_id, SHARE_WORKS_LIMIT],
+       ORDER BY seq DESC LIMIT $3`,
+      [row.student_id, row.lesson_id, SHARE_WORKS_SCAN_LIMIT],
     );
-    const shared: SharedWork[] = (works.rows as {
+    if (works.rows.length === SHARE_WORKS_SCAN_LIMIT) {
+      // Operator-greppable (the [share-scrub] pattern): older drafts fell outside the
+      // window — finals stay correct (DESC), iteration totals under-count.
+      console.warn("[share-curation] works scan hit the bound:", { limit: SHARE_WORKS_SCAN_LIMIT, lessonId: row.lesson_id });
+    }
+    works.rows.reverse();
+    const all: SharedWork[] = (works.rows as {
       type: string;
       content_url: string | null;
       content_text: string | null;
@@ -186,6 +207,16 @@ export class ShareService {
       ...(w.thumbnail_url !== null && { thumbnailUrl: w.thumbnail_url }),
       createdAt: iso(w.created_at),
     }));
+    const byType = new Map<string, SharedWork[]>();
+    for (const w of all) {
+      const list = byType.get(w.type) ?? [];
+      list.push(w);
+      byType.set(w.type, list);
+    }
+    const shared: SharedWork[] = [...byType.values()].map((list) => list[list.length - 1]!); // latest per type
+    const iterations = [...byType.entries()]
+      .filter(([, list]) => list.length > 1)
+      .map(([type, list]) => ({ type, total: list.length, slices: sampleSlices(list) }));
 
     if (dropped.length > 0) {
       // Operator-visible (greppable, like [client-degraded]) — a writer upstream put
@@ -198,6 +229,7 @@ export class ShareService {
       lessonId: row.lesson_id,
       ...(certificate !== undefined && { certificate }),
       works: shared,
+      ...(iterations.length > 0 && { iterations }),
       sharedAt: iso(row.created_at),
       expiresAt: iso(row.expires_at),
     };
