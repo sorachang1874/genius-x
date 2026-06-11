@@ -292,6 +292,24 @@ function onInteract(
   if (s.pending[event.interactionId] || s.completedInteractionIds.includes(event.interactionId)) {
     return { state, commands: [{ type: "TRACE", event: mkTrace(now, "interaction", { dropped: true, reason: "duplicate_interaction", interactionId: event.interactionId, studentId: event.studentId }) }] };
   }
+  // Phase 4 operational floor (agent-context.md): declared round caps are ENFORCED server-
+  // side. Cap reached ⇒ NO pending, NO gateway call — CAP_REACHED tells the runtime to
+  // serve the warm wrap-up (decision ⑦: the friend winds down, never a dead button), and
+  // the deny is countable. Counts tally COMPLETED rounds, so a burst of in-flight taps can
+  // briefly exceed the cap by the in-flight amount — accepted (the client gates taps).
+  // Variant resolution: SERVER truth first (the student's recorded selection), then the
+  // event's claim — a client-controlled variantId must never pick the cap (review fix:
+  // a bogus variantId previously resolved to NO cap = unlimited rounds).
+  const cap = roundCapFor(lesson, event.stageId, s.selectedVariant[event.stageId] ?? event.variantId);
+  if (cap !== undefined && (s.interactionCounts[event.stageId] ?? 0) >= cap) {
+    return {
+      state,
+      commands: [
+        { type: "CAP_REACHED", studentId: event.studentId, stageId: event.stageId, interactionId: event.interactionId },
+        { type: "TRACE", event: mkTrace(now, "interaction", { reason: "round_cap_reached", cap, stageId: event.stageId, studentId: event.studentId, interactionId: event.interactionId }) },
+      ],
+    };
+  }
   // talent voice/answer inputs feed an invisible memory extraction; seed pendingMemory so birth
   // pre-generation waits for the transcript to be mined (contracts-v1.4).
   const willExtract = wantsMemoryExtraction(lesson, event.stageId, event.input);
@@ -313,6 +331,24 @@ function onInteract(
 /** The stage whose interaction pre-generates an output (Lesson 1: birth's `birth_speech`). */
 function birthSpeechStage(lesson: LessonConfig): StageConfig | undefined {
   return lesson.stages.find((st) => st.interaction?.type === "birth_speech");
+}
+
+/** The declared round cap for a stage's CONVERSATIONAL interaction (voice_chat maxTurns /
+ *  multimodal_talent maxInteractions). Selection flows (structured_qa, image_gen) have no
+ *  round cap. Resolves the student's variant when given (first-interaction fallback). */
+function roundCapFor(lesson: LessonConfig, stageId: StageId, variantId: string | undefined): number | undefined {
+  const st = stageById(lesson, stageId);
+  // Caller passes SERVER-truth variant first. An unmatched/bogus variantId FALLS THROUGH
+  // to the stage's own interaction (review fix: it must never resolve to "no cap" —
+  // that made the cap bypassable by a client-controlled field on Lesson-1's capped
+  // no-variant stages). variants[0] covers a variant stage interacted before selection.
+  const i =
+    (variantId !== undefined ? st?.variants?.find((v) => v.id === variantId)?.interaction : undefined) ??
+    st?.interaction ??
+    st?.variants?.[0]?.interaction;
+  if (i?.type === "voice_chat") return i.maxTurns;
+  if (i?.type === "multimodal_talent") return i.maxInteractions;
+  return undefined;
 }
 
 /** True when this talent input should be mined for a memory (audio inputs on a memoryExtraction stage). */

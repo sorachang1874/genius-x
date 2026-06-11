@@ -59,6 +59,20 @@ export interface ServerHandle {
 
 const consoleTrace: TraceSink = { record: (e) => console.log("[trace]", e.kind, e.payload) };
 
+/**
+ * GATEWAY_MAX_CONCURRENT must be a positive integer (default 8). FAIL LOUD at boot on a
+ * malformed value: a typo ("abc" → NaN) would otherwise disable the DF-v2-19 concurrency
+ * floor silently — the forbidden invisible fallback, on an operator knob no less.
+ */
+export function parseGatewayMaxConcurrent(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return 8;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`GATEWAY_MAX_CONCURRENT must be a positive integer, got "${raw}"`);
+  }
+  return n;
+}
+
 export async function startClassroomServer(opts: ServerOptions = {}): Promise<ServerHandle> {
   let lesson = opts.lesson;
   if (!lesson) {
@@ -81,6 +95,10 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     // brand-style.md: every image call carries the versioned brand style (v0 placeholder,
     // DF-v2-18). A gateway without it traces brand_style_absent per call.
     brandStyle: BRAND_STYLE_V0,
+    // DF-v2-19 operational floor: bound the provider burst a class-wide unlock creates
+    // (queue wait precedes the capability deadline; the thinking animation covers it).
+    // Malformed env fails loud at boot — never a silently-unbounded gateway.
+    maxConcurrentCalls: parseGatewayMaxConcurrent(process.env.GATEWAY_MAX_CONCURRENT),
   });
   const webBaseUrl = opts.webBaseUrl ?? "http://localhost:5173";
   const app = buildHttp(store, {

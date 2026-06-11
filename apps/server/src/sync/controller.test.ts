@@ -1126,3 +1126,75 @@ describe("cold-context trace taxonomy + privacy (Step-4 review fixes)", () => {
     expect(traceJson).not.toContain(MARKER_MEMORY); // traces carry counts/ids, never context text
   });
 });
+
+// --- P4 Step 5: operational floor ---
+
+describe("round-cap enforcement (decision ⑦: warm wrap-up, never a dead button)", () => {
+  it("past the cap: NO provider call, the friend warmly wraps up, the deny is countable", async () => {
+    const llmSeen: CtlLlmReq[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { llmSeen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "再讲一个", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, gw);
+    // icebreak voice_chat maxTurns = 3; this child already COMPLETED 3 rounds.
+    await store.save(seed("icebreak", { k1: freshStudent({ interactionCounts: { icebreak: 3 } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r4", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => emit.student.some((m) => m.msg.type === "AI_OUTPUT"));
+    const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT")!.msg as { output: { text?: string } };
+    expect(out.output.text).toContain("开心"); // the friend winds down warmly
+    expect(out.output.text!).not.toMatch(/\b(AI|ai|prompt|llm|token|model)\b/); // banned wording holds
+    expect(llmSeen).toHaveLength(0); // NO AI call was made
+    const t = trace.events.find((e) => e.payload.reason === "round_cap_reached");
+    expect(t).toBeDefined();
+    expect(t!.payload.cap).toBe(3);
+    // UNDER the cap the flow is untouched:
+    await store.save(seed("icebreak", { k2: freshStudent({ interactionCounts: { icebreak: 2 } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k2", stageId: "icebreak", interactionId: "r5", input: { kind: "voice", audioRef: "ref://b" } });
+    await untilTrue(() => llmSeen.length === 1); // normal AI round
+  });
+});
+
+describe("scene counters (decision ⑥: counters, not limits)", () => {
+  it("scene exit emits per-student round counters (rounds > 0 only)", async () => {
+    await store.save(seed("icebreak", {
+      k1: freshStudent({ interactionCounts: { icebreak: 2 } }),
+      k2: freshStudent(), // zero rounds — no counter noise
+    }));
+    await controller.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "shape", assistantId: "a1" });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "scene_counters"));
+    const counters = trace.events.filter((e) => e.payload.reason === "scene_counters");
+    expect(counters).toHaveLength(1); // k1 only
+    expect(counters[0]!.payload).toMatchObject({ studentId: "k1", stageId: "icebreak", rounds: 2 });
+  });
+});
+
+describe("cap bypass hardening (review fix: client-controlled variantId must never pick the cap)", () => {
+  it("a BOGUS variantId past the cap still serves CAP_REACHED and makes NO gateway call", async () => {
+    const llmSeen: CtlLlmReq[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { llmSeen.push(r); return { capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }; },
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "再来", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, gw);
+    await store.save(seed("icebreak", { k1: freshStudent({ interactionCounts: { icebreak: 3 } }) }));
+    // a modified client smuggles a variantId on a NO-VARIANT capped stage:
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "rX", variantId: "bogus-variant", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "round_cap_reached"));
+    expect(llmSeen).toHaveLength(0); // the cap held — no AI round happened
+    const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT");
+    expect(out).toBeDefined(); // and the child still got the warm wrap-up
+  });
+});

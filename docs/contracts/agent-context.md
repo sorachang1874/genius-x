@@ -204,6 +204,22 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 
 ## Changelog
 
+- **v1 + Step-5 annotations** (2026-06-10, lead-serialized — completes Phase 4's
+  operational floor): round caps ENFORCED (reducer denies past maxTurns/maxInteractions
+  with the additive `CAP_REACHED` command; the runtime serves the friend's warm wrap-up —
+  decision ⑦ default, never a dead button; `round_cap_reached` countable); per-gateway
+  CONCURRENCY GATE (DF-v2-19: FIFO semaphore over llm/image/extract calls, composition
+  default 8 via GATEWAY_MAX_CONCURRENT; queue wait precedes the capability deadline and
+  traces `gateway_queue_wait` ≥ 1s); `scene_counters` per student at scene exit (decision
+  ⑥ counters-not-limits; token estimates join with real providers); degraded image
+  fallbacks rotate per child (`ImageGenRequest.seed` = studentId; the 8-placeholder pool
+  bounds the guarantee — the DF-v2-18 designer set must be ≥ class size for true
+  uniqueness). tts/asr stay UNGATED deliberately: cheap, latency-critical, and their
+  concurrency is implicitly bounded by the gated llm upstream (each tts follows a gated
+  reply). GATEWAY_MAX_CONCURRENT fails LOUD on a malformed value (never silently
+  unbounded). `scene_token_estimate` joins with real providers — Step 5 ships round
+  counters only.
+
 - **v1 + Step-4 annotations** (2026-06-10, lead-serialized): COLD path IMPLEMENTED —
   `ContextBuilder` (`apps/server/src/agent/context.ts`, Agent I's first module): canon
   from the pre-4.5 source (`GeniusXProfile`; `ip_characters` replaces it behind the same
