@@ -499,6 +499,10 @@ export class IdentityService {
    * Lesson-1 companion fields that the runtime produced (COALESCE keeps later non-null
    * values authoritative — re-running a write-back never erases). Never exposed over HTTP.
    */
+  /** P4.5 RESIDUAL (Step B removes this): the projected genius_x columns below are now
+ *  ALSO written by IpCharacterService's mirror (replace semantics). Until the Step-B
+ *  rewire makes the mirror the single writer, this COALESCE writer must not run AFTER a
+ *  mirror in the same lesson-end path — Step B deletes the projected-column writes here. */
   async recordLessonCompletion(
     studentId: string,
     lessonId: string,

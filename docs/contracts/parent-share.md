@@ -1,6 +1,6 @@
 # Parent Share Contract (Phase 3)
 
-**Status**: Frozen v1.2 (v1.1 + the Phase-4 episodic-memory DENY line — see Changelog)
+**Status**: Frozen v1.3 (v1.2 + the Phase-4.5 curation rev, coupled to workspace.md v1.2 — see Changelog)
 **Owner**: Parent surfaces (Agent K) · share service in `apps/server/src/share`
 **Phase**: Phase 3 — Parent read-only artifact
 **Typed realization**: `packages/contracts/src/parent-share.ts`
@@ -119,7 +119,8 @@ preflight below binding the content pipeline.
 | `share_tokens.expires_at` | Share Service | table | mint+90d | mint time | view gate | none | with row | served shares all have `expires_at > NOW()` (app-tested) |
 | `share_tokens(student_id, tenant_id)` | Share Service | composite FK → `students(id, tenant_id)` | valid student | derived at mint | isolation | none — mint rejected | with row | FK enforced |
 | `ParentShareView.certificate` | Share Service | newest `birth_certificate` work's `contentJson` | render-ready JSON | workspace read, filtered | H5 hero card | absent when none | n/a | DENY-list serialization test |
-| `ParentShareView.works` | Share Service | workspace works (recency-first, ≤20) | `SharedWork[]` | filtered projection | H5 gallery | empty list | n/a | DENY-list serialization test |
+| `ParentShareView.works` | Share Service | workspace works — **CURATED (v1.3, decision ②): latest Work per artifact type** (the "每课精选" finals; iteration history collapses behind `iterations`) | `SharedWork[]` | latest-per-type projection | H5 gallery | empty list | n/a | DENY-list serialization test |
+| `ParentShareView.iterations` (v1.3) | Share Service | per artifact type with > 1 completion: `{type, total, slices}` — `slices` = up to 4 EVENLY-SAMPLED drafts oldest→newest (e.g. 1/15→6/15→11/15→15/15), each privacy-filtered like a `SharedWork` | additive array | sampled projection | H5 expandable container (打磨轨迹) | absent when no type iterates | n/a | DENY-list test covers slices too |
 | Notification seam | Share Service | `NotificationSink` (server) | fire-and-forget, **sync or async** (`void \| Promise<void>`) | called after mint; carries `studentId` (operator surface — disambiguation) + `hasArtifacts` (hollow-link flag) | operator (console default) → WeChat later | failure traced, never blocks — **including async rejections** (swallowed; an async sink must never die as an unhandledRejection) | n/a | mint succeeds even when sink throws OR rejects (both tested) |
 
 ---
@@ -194,6 +195,12 @@ preflight below binding the content pipeline.
 
 ## Changelog
 
+- **v1.3** (2026-06-10, lead-serialized with Phase 4.5 — coupled to workspace.md v1.2's
+  one-Work-per-completion-EVENT rev, decision ② three-layer browse): the gallery becomes
+  CURATED (latest Work per artifact type = the 每课精选 finals); the additive
+  `iterations` field carries up to 4 evenly-sampled drafts per iterating type (the
+  打磨轨迹 the parent expands); full history stays a Phase-6 authenticated surface.
+  Without this rev, every-iteration recording would flood the gallery with drafts.
 - **v1.2** (2026-06-09, lead-serialized with the Phase-4 contract freeze): episodic
   memories (`key="episode"`) added to the DENY list — raw or curated, not parent-served
   pending the founder's scene-content-visibility decision (agent-context.md). The DENY-list

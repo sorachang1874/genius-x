@@ -1,6 +1,6 @@
 # Workspace Contract (Phase 2)
 
-**Status**: Frozen v1.1 (v1 + Phase-4/4.5 pending amendments, lead-serialized — see Changelog)
+**Status**: Frozen v1.2 (v1.1 + the Phase-4.5 works-lifecycle rev — see Changelog)
 **Owner**: Workspace Service (Agent H)
 **Phase**: Phase 2 — Student workspace foundation
 **Typed realization**: `packages/contracts/src/workspace.ts` + `workspace-api.ts`
@@ -106,12 +106,19 @@ All fields new in v1 (Migration = new v1).
    workspace record id is known, it rides as `sourceInteractionId` and `recordMemory`
    ATOMICALLY appends the memory id into that interaction's `memoriesExtracted`
    (same-student only — a cross-student pointer is rejected, see owner matrix).
-3. **Stage completion → artifact work**: a stage that declares `output: ArtifactType`
-   produces ONE Work when that stage COMPLETES for the student (`stageStatus →
-   completed`). Content derivation is per artifact type (the per-lesson declarative map
-   is DF-v2-14): `avatar_image` → `contentUrl` = the student's `outputs["avatarUrl"]`;
-   `birth_certificate` → `contentJson` below. Lesson-001 companion change: v1.2.0 adds
-   `output: "avatar_image"` to the shape stage (`birth_certificate` was already on birth).
+3. **Stage completion → artifact work** (REVISED v1.2, Phase 4.5 — decision ②/works
+   lifecycle): a stage that declares `output: ArtifactType` produces ONE Work per
+   completion **EVENT** — re-completions (in-scene refinement, the IP concept's normal
+   creative path) each record their own immutable Work; the portfolio is the ITERATION
+   HISTORY, newest = current. The former one-per-FIRST-completion rule (which kept the
+   child's first draft and discarded refinements) is retired; the
+   `workspace_work_stale_recomplete` divergence trace becomes `workspace_work_iteration`
+   (countable iteration volume, not an anomaly). A transport-level duplicate redelivery of the SAME completion is still an EVENT — duplicates are absorbed by parent-side curation (latest-per-type) and stay countable via the iteration trace. **This rev ships in the SAME
+   serialization as parent-share.md's curation rev — recording every iteration without
+   curation rules floods the parent gallery.** Content derivation is per artifact type
+   (the per-lesson declarative map is DF-v2-14): `avatar_image` → `contentUrl` = the
+   student's `outputs["avatarUrl"]`; `birth_certificate` → `contentJson` below.
+   Lesson-001 companion change: v1.2.0 adds `output: "avatar_image"` to the shape stage.
 4. **Birth certificate** (the birth stage's `output`, recorded at ITS completion — not the
    final/closure stage, which declares no artifact): `contentJson` is the
    `BirthCertificate` shape from student.ts, memories mapped to `{label, value}[]` via the
@@ -218,15 +225,20 @@ Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-co
 | --- | --- | --- | --- | --- |
 | `StudentMemory.key = "episode"` carve-out | H (write path), I (producer) | schema-valid `EpisodeValue` JSON only (`parseEpisodeValue` — the SAME validator the gateway uses) | see the amended `StudentMemory.key` row above; undeclared-key preflight excludes `episode` | **IMPLEMENTED (P4 Step 3)** |
 | `InteractionRecord.safety` | H | `ok \| input_filtered \| output_filtered` | additive column (migration 004); recorder sets it from `AiMeta.filtered`; **Phase-4 scope: CONVERSATIONAL exchanges only** — image exchanges (doodle/answers) always record `ok` (their degradation is visible via `output.degraded`; image-path filtered-marking folds in with real moderation, M6); **backfill `"ok"` is a labeling DEFAULT, not evidence of review** — readers injecting pre-migration transcripts into model context must exclude/re-review rows with `output.degraded = true` | **IMPLEMENTED (P4 Step 3)** |
-| `WorkMetadata.ipCharacterVersion?` | H (column), 4.5 writers | positive int (version pointer) | links artifacts to the character version they depict; absence traced `work_lineage_missing` (accept-with-trace, back-compat) | Phase 4.5 |
-| Works lifecycle rev: one Work per completion **EVENT** | H + C | — | replaces lifecycle rule 3 ("first completion only"); MUST ship in the same lead serialization as the parent-share curation rev (decision ② — else drafts flood the parent gallery) | Phase 4.5 |
+| `WorkMetadata.ipCharacterVersion?` | H (column), 4.5 writers | positive int (version pointer) | links artifacts to the character version they depict; absence traced `work_lineage_missing` (accept-with-trace, back-compat) | **IMPLEMENTED (P4.5, migration 005)** |
+| Works lifecycle rev: one Work per completion **EVENT** | H + C | — | replaces lifecycle rule 3; shipped WITH parent-share v1.3 curation (decision ②) | **IMPLEMENTED (P4.5)** |
 
 ## Changelog
 
+- **v1.2** (2026-06-10, lead-serialized with Phase 4.5 — coupled to parent-share.md
+  v1.3): works lifecycle rule 3 revised to one Work per completion EVENT (iteration =
+  first-class history; `workspace_work_iteration` replaces the stale_recomplete
+  divergence trace); `WorkMetadata.ipCharacterVersion` lands (migration 005) —
+  pending-amendments table entries marked implemented.
 - **v1.1** (2026-06-09, lead-serialized with the Phase-4 contract freeze): `episode`
   reserved-kind carve-out on `StudentMemory.key` (+ preflight exclusion); pending-amendments
   table (`safety` column, `ipCharacterVersion` lineage, works-lifecycle rev pointer);
   companion links to agent-context.md / ip-character.md.
 - **v1** (2026-06-09): initial freeze.
 
-_Workspace Contract · Phase 2 · Frozen v1.1 · 2026-06-09_
+_Workspace Contract · Phase 2 · Frozen v1.2 · 2026-06-10_

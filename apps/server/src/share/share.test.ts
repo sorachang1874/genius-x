@@ -182,8 +182,15 @@ describe("review round-1 mandates (Phase 3 security review)", () => {
     const minted = await share.mintShareToken({ studentId: kid, lessonId: "lesson-001" });
     const view = await share.getShareView(minted.token);
     expect(view.certificate).toMatchObject({ studentName: "窗口娃" }); // hero present despite 21 newer works
-    expect(view.works).toHaveLength(20); // gallery window unchanged, certificate never inside it
-    expect(view.works.every((w) => w.type === "doodle")).toBe(true);
+    // v1.3 CURATION (decision ②): the gallery is the LATEST work per type, drafts
+    // collapse into the sampled 打磨轨迹 — never a wall of 21 near-duplicates.
+    expect(view.works).toHaveLength(1);
+    expect(view.works[0]!.contentText).toBe("涂鸦 20"); // the final
+    expect(view.iterations).toHaveLength(1);
+    expect(view.iterations![0]).toMatchObject({ type: "doodle", total: 21 });
+    expect(view.iterations![0]!.slices).toHaveLength(4); // evenly sampled, oldest→newest
+    expect(view.iterations![0]!.slices[0]!.contentText).toBe("涂鸦 0"); // first kept
+    expect(view.iterations![0]!.slices[3]!.contentText).toBe("涂鸦 20"); // last kept
   });
 
   it("served contentJson is deep-scrubbed of DENIED keys (defense-in-depth on writer discipline)", async () => {
@@ -227,5 +234,23 @@ describe("review round-1 mandates (Phase 3 security review)", () => {
     expect(await code(share.getShareView(minted.token))).toBe("SHARE_NOT_FOUND");
     const remaining = await ctx.sql.query("SELECT COUNT(*)::int AS n FROM share_tokens WHERE lesson_id = 'lesson-purge'");
     expect((remaining.rows[0] as { n: number }).n).toBe(0);
+  });
+});
+
+describe("v1.3 curation hardening (P4.5-A review)", () => {
+  it("DENY scrub covers iteration SLICES (a denied key in a non-final draft never leaks)", async () => {
+    await workspace.recordWork({
+      studentId,
+      type: "doodle",
+      contentJson: { note: "草稿", sessionId: "slice-leak-secret" }, // denied key in a DRAFT
+      metadata: { lessonId: "lesson-scrub", stageId: "shape", degraded: false },
+    });
+    // lesson-scrub now has 2 doodles → the first becomes a SLICE, not the final
+    const minted = await share.mintShareToken({ studentId, lessonId: "lesson-scrub" });
+    const view = await share.getShareView(minted.token);
+    expect(view.iterations).toBeDefined();
+    const json = JSON.stringify(view);
+    expect(json).not.toContain("sessionId");
+    expect(json).not.toContain("slice-leak-secret");
   });
 });
