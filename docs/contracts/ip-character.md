@@ -61,6 +61,10 @@ ip_character_versions    (append-only, immutable — the growth timeline)
 - A refinement = atomically: bump `ip_characters` + insert the version row. Versions are
   never edited or deleted (retention follows workspace policy; right-to-erasure path
   DF-v2-17 includes both tables).
+- **Late catch-up is a real refinement, not a retry** (P4.5-B clarification): a re-run
+  whose patch carries data absent at the first write (e.g. a late-landing avatar work
+  found by the `late_prepare` path) legitimately bumps a version — idempotency binds
+  IDENTICAL snapshots only.
 - **Refinement idempotency** (the existing system deliberately RE-RUNS write-backs:
   `late_prepare` mode, operator re-record, the admin re-apply tool): a write whose
   `base_canon` + `surface` equal the current row is a **NO-OP** — no version bump, traced
@@ -105,7 +109,7 @@ character service's mirror step.
 | `appearanceRef` | `genius_x_avatar_url` | resolve the referenced work's `contentUrl` (same-student scoped; NOT the ref itself — the column is a URL; thumbnail never). **Surface carries NO appearanceRef ⇒ the column is left UNTOUCHED** (a pre-4.5 legacy URL may be unrecoverable as a work ref and must not be erased — P4.5-A review amendment); a later refinement WITH a ref re-takes ownership |
 | `personality` | `genius_x_personality_tag` | verbatim |
 | `backstory` | `genius_x_background_setting` | verbatim |
-| — (no surface counterpart) | `genius_x_birthday_speech` | **NOT character state** — a lesson-001 ritual field. It stays writable by the SAME mirror service call with today's COALESCE latest-wins semantics, sourced from the lesson write-back input as now |
+| — (no surface counterpart) | `genius_x_birthday_speech` | **NOT character state** — a lesson-001 ritual field with COALESCE latest-wins semantics. Implementation note (P4.5-B, lead-serialized): the ritual write stays in identity's `recordLessonCompletion` (the same lesson-end call path) rather than inside the mirror function — functionally equivalent, single lesson-end writer preserved |
 
 **Mirror write semantics, pinned**: projected fields are **replace-from-canonical** (the
 mirror always equals the projection — including writing NULL when a surface field is
@@ -146,7 +150,7 @@ identity.md's COALESCE idempotency rule is superseded for the projected columns 
 | --- | --- |
 | IP service/table unavailable | Context builds without canon (`context_canon_miss` traced); lesson runs; write-backs queue as today's profile write-back does (fire-and-forget, traced) |
 | Refinement write fails | Traced (`ip_refine_failed`); the classroom output (work) still recorded; operator re-applies via admin tool (Phase 4.5 deliverable) |
-| Skin recorded without version ref | Workspace accepts (back-compat) but traces `work_lineage_missing` — countable drift |
+| Lineage lookup fails at record time | Work still records, `work_lineage_missing` traced (countable); pre-character rows intentionally unstamped, untraced |
 
 ## Validation & preflight
 

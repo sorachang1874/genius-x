@@ -12,6 +12,7 @@ import { InMemorySessionStore, type SessionStore } from "./session/store";
 import { InMemoryTurnBufferStore, type TurnBufferStore } from "./session/turnbuffer";
 import type { IdentityService } from "./identity/service";
 import type { WorkspaceService } from "./workspace/service";
+import type { IpCharacterService } from "./workspace/ip-character";
 import { consoleNotificationSink, LessonShareMinter, type NotificationSink, type ShareService } from "./share/service";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
@@ -31,6 +32,8 @@ export interface ServerOptions {
   identity?: IdentityService;
   /** Workspace Service (Phase 2). Absent ⇒ workspace reads disabled + classroom writes skipped (traced). */
   workspace?: WorkspaceService;
+  /** IP character entity (Phase 4.5). Absent ⇒ lesson-end IP writes skipped (traced); canon falls back to the profile mirror. */
+  ipCharacter?: IpCharacterService;
   /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content).
    *  The injected gateway owns ALL its deps INCLUDING brandStyle — omitting brandStyle is
    *  loud (`brand_style_absent` traced per image call), never silently unstyled. */
@@ -120,7 +123,7 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
   // guard is the controller's deny-unknown-student resume, Phase 1 Step 5).
   const io = new Server(app.server, { cors: { origin: opts.corsOrigin ?? "*" } });
   const turnBuffer = opts.turnBuffer ?? new InMemoryTurnBufferStore();
-  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity, opts.workspace, shareMinter, turnBuffer);
+  const controller = new ClassroomController(lesson, makeReducer(lesson), store, ioEmitter(io), trace, clock, gateway, opts.identity, opts.workspace, shareMinter, turnBuffer, opts.ipCharacter);
   attachSocket(io, controller);
 
   const host = opts.host ?? "0.0.0.0";

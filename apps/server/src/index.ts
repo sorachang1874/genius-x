@@ -10,6 +10,7 @@ import { createIdentityPool } from "./identity/db";
 import { IdentityService } from "./identity/service";
 import { WorkspaceService } from "./workspace/service";
 import { ShareService } from "./share/service";
+import { IpCharacterService } from "./workspace/ip-character";
 import { startClassroomServer } from "./server";
 
 async function main(): Promise<void> {
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   const identity = pool ? new IdentityService(pool) : undefined;
   const workspace = pool ? new WorkspaceService(pool) : undefined; // same pool, same lifecycle
   const share = pool ? new ShareService(pool) : undefined;
+  const ipCharacter = pool ? new IpCharacterService(pool) : undefined; // P4.5: same pool, same lifecycle
   if (!identity) {
     console.warn(
       "[bootstrap] identity routes DISABLED — no DATABASE_URL configured " +
@@ -99,6 +101,7 @@ async function main(): Promise<void> {
     ...(tenantId && { tenantId }),
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
     ...(turnBuffer && { turnBuffer }),
+    ...(ipCharacter && { ipCharacter }),
   });
   console.log(`genius-x server (mode=${config.mode}, identity=${identity ? "on" : "OFF"}) listening on ${handle.url}`);
 

@@ -27,6 +27,7 @@ import type { EpisodeValue, StudentMemory, TraceEvent, TraceSink } from "@genius
 import { CONTEXT_EPISODE_TOP_K, CONTEXT_SEMANTIC_TOP_K, CONTEXT_VERSION, parseEpisodeValue } from "@genius-x/contracts";
 import type { IdentityService } from "../identity/service";
 import type { WorkspaceService } from "../workspace/service";
+import type { IpCharacterService } from "../workspace/ip-character";
 
 export interface ColdContext {
   version: string;
@@ -45,6 +46,8 @@ export class ContextBuilder {
   constructor(
     private readonly identity: IdentityService | undefined,
     private readonly workspace: WorkspaceService | undefined,
+    /** P4.5-B: the canonical canon source; the GeniusXProfile mirror is the fallback. */
+    private readonly ipCharacter: IpCharacterService | undefined,
     private readonly trace: TraceSink,
     private readonly now: () => string,
   ) {}
@@ -85,9 +88,34 @@ export class ContextBuilder {
     return cold;
   }
 
-  /** Canon from the pre-4.5 source (GeniusXProfile). An EMPTY profile is correctly no
-   *  canon (a first lesson) — NOT a miss, untraced (owner-matrix amendment, Step 4). */
+  /** Canon: the ip_characters record FIRST (the canonical entity, P4.5-B), GeniusXProfile
+   *  mirror as the fallback — the SAME seam the contract promised. An EMPTY profile/no
+   *  character is correctly no canon (a first lesson) — NOT a miss, untraced. */
   private async canon(sessionId: string, studentId: string): Promise<string[]> {
+    if (this.ipCharacter) {
+      try {
+        const ch = await this.ipCharacter.getCharacter(studentId);
+        if (ch) {
+          const lines: string[] = [];
+          if (ch.surface.name) lines.push(`你的名字：${ch.surface.name}`);
+          if (ch.surface.personality) lines.push(`你的性格：${ch.surface.personality}`);
+          if (ch.surface.backstory) lines.push(`你来自：${ch.surface.backstory}`);
+          if (lines.length > 0 && this.identity) {
+            try {
+              const student = await this.identity.getStudent(studentId);
+              if (student?.displayName) lines.push(`孩子的名字：${student.displayName}`);
+            } catch {
+              // the child's name line is optional garnish — canon itself already serves
+            }
+          }
+          if (lines.length > 0) return lines;
+          // an EMPTY surface falls through to the mirror (which may carry legacy fields)
+        }
+      } catch (err) {
+        this.mk("context_canon_miss", { cause: "character_lookup_failed", error: String((err as Error)?.name ?? err), sessionId, studentId });
+        // fall through to the mirror — degraded canon beats no canon
+      }
+    }
     if (!this.identity) {
       if (!this.identityAbsenceTraced) {
         this.identityAbsenceTraced = true;

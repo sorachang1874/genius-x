@@ -35,17 +35,20 @@ describe("identity e2e — full enrollment lifecycle", () => {
     expect(meimei.tenantId).toBe(tenantId);
     expect(didi.tenantId).toBe(tenantId);
 
-    // 3. The classroom runs Lesson 1: server-internal progress writes (avatar from Shape,
-    //    speech from Birth, lesson completion at closure).
-    await ctx.service.applyProgressUpdate(meimei.id, {
-      geniusX: { avatarUrl: "cos://demo/meimei-avatar.png", backgroundSetting: "彩虹城堡" },
-    });
+    // 3. The classroom runs Lesson 1: server-internal progress writes. P4.5-B single-
+    //    writer rule: PROJECTED companion fields are REJECTED here (the IP mirror owns
+    //    them); the ritual field + progress remain this surface's job.
+    await expect(
+      ctx.service.applyProgressUpdate(meimei.id, {
+        geniusX: { avatarUrl: "cos://demo/meimei-avatar.png", backgroundSetting: "彩虹城堡" },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" }); // fail closed, never accept-and-ignore
     const afterLesson = await ctx.service.applyProgressUpdate(meimei.id, {
       geniusX: { birthdaySpeech: "美美你好，我出生啦！" },
       progress: { completedLessonIds: ["lesson-001"], badges: ["lesson-001-complete"] },
     });
     expect(afterLesson.progress.completedLessonIds).toContain("lesson-001");
-    expect(afterLesson.geniusX.avatarUrl).toBe("cos://demo/meimei-avatar.png"); // earlier write kept
+    expect(afterLesson.geniusX.birthdaySpeech).toBe("美美你好，我出生啦！");
 
     // 4. Parent edits the profile (allowlist only) — companion state survives untouched.
     const renamed = await ctx.service.updateStudent(meimei.id, { displayName: "美美酱" });
