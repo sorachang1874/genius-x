@@ -433,3 +433,61 @@ describe("LlmRequest.context (cold path — context_v1)", () => {
     expect(t).toBeDefined();
   });
 });
+
+describe("concurrency gate (DF-v2-19 — the class-burst floor)", () => {
+  it("maxConcurrentCalls bounds in-flight provider calls; FIFO; queue waits traced", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const provider = stub({
+      llm: async () => {
+        inFlight++; peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 25));
+        inFlight--;
+        return { capability: "llm", text: "ok", meta: { source: "primary", degraded: false } };
+      },
+    });
+    const events: TraceEvent[] = [];
+    const gw = new AiGateway({
+      provider, safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(),
+      trace: { record: (e) => events.push(e) }, now: () => NOW,
+      maxConcurrentCalls: 2, queueWaitTraceMs: 5,
+    });
+    await Promise.all(Array.from({ length: 6 }, (_, i) => gw.llm({ promptVersion: "talent_v1", input: `第${i}个` })));
+    expect(peak).toBe(2); // never more than the gate
+    expect(events.some((e) => (e.payload as { reason?: string }).reason === "gateway_queue_wait")).toBe(true); // pressure visible
+  });
+
+  it("no gate configured = exactly the old unbounded behavior", async () => {
+    let peak = 0; let inFlight = 0;
+    const provider = stub({
+      llm: async () => {
+        inFlight++; peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight--;
+        return { capability: "llm", text: "ok", meta: { source: "primary", degraded: false } };
+      },
+    });
+    const { gw } = gatewayWith(provider);
+    await Promise.all(Array.from({ length: 4 }, () => gw.llm({ promptVersion: "talent_v1", input: "x" })));
+    expect(peak).toBe(4);
+  });
+});
+
+describe("per-child fallback rotation (no duplicate 'personal' friends in degraded mode)", () => {
+  it("different seeds yield different preset sets; same seed is deterministic; seedless = legacy", () => {
+    const lib = new PresetFallbackLibrary();
+    const a = lib.imageGen(3, "33333333-3333-4333-8333-000000000001").imageUrls;
+    const b = lib.imageGen(3, "33333333-3333-4333-8333-000000000002").imageUrls;
+    expect(a).not.toEqual(b); // two classmates: distinct friends
+    expect(lib.imageGen(3, "33333333-3333-4333-8333-000000000001").imageUrls).toEqual(a); // deterministic
+    expect(lib.imageGen(3).imageUrls).toEqual(["fallback://img/preset-0.png", "fallback://img/preset-1.png", "fallback://img/preset-2.png"]); // back-compat
+  });
+
+  it("a degraded image call serves the CHILD'S OWN rotation (seed threads end-to-end)", async () => {
+    const { gw } = makeGateway({ image: { fail: true } });
+    const a = await gw.imageGen({ kind: "img2img", source: "ref", count: 3, seed: "child-a" });
+    const b = await gw.imageGen({ kind: "img2img", source: "ref", count: 3, seed: "child-b" });
+    expect(a.meta.degraded).toBe(true);
+    expect(a.imageUrls).not.toEqual(b.imageUrls);
+  });
+});

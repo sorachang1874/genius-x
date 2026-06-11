@@ -31,7 +31,14 @@ export type EngineCommand =
   | { type: "CALL_PREPARE"; studentId: string; stageId: StageId; preparedId: PreparedOutputId; promptVersion: string; outputKind: OutputKind }
   | { type: "BROADCAST"; message: ServerMessage }
   | { type: "PERSIST" }
-  | { type: "TRACE"; event: TraceEvent };
+  | { type: "TRACE"; event: TraceEvent }
+  /**
+   * Phase 4 operational floor (agent-context.md, founder decision ⑦ default): the student
+   * hit the stage's declared round cap (maxTurns/maxInteractions). NO AI call is made; the
+   * runtime serves the friend's WARM WRAP-UP line instead — the child never sees a dead
+   * button, the operator counts the cap (additive command, lead-serialized).
+   */
+  | { type: "CAP_REACHED"; studentId: string; stageId: StageId; interactionId: string };
 
 /** The reducer's typed return: next authoritative state + effects to execute. */
 export interface EngineResult {

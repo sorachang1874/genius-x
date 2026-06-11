@@ -85,9 +85,16 @@ interface Effects {
   completed?: { lessonId: string; students: Record<string, StudentRuntimeState> };
   /** Stage completions that produce a lesson-declared artifact (Phase 2 workspace works). */
   artifacts?: { studentId: string; stageId: string; type: ArtifactType; you: StudentRuntimeState }[];
-  /** Set on ANY class-wide stage transition — the exited SCENE (Phase 4 consolidation). */
-  sceneExited?: { stageId: string; studentIds: string[] };
+  /** Set on ANY class-wide stage transition — the exited SCENE (Phase 4 consolidation +
+   *  per-student round counters, decision ⑥: counters-not-limits). */
+  sceneExited?: { stageId: string; studentIds: string[]; rounds: Record<string, number> };
+  /** Round-cap denials (Phase 4 floor): the runtime serves the warm wrap-up per entry. */
+  capReached?: { studentId: string; stageId: string; interactionId: string }[];
 }
+
+/** The friend's WARM WRAP-UP when a round cap is reached (decision ⑦ default) — the child
+ *  taps and hears the friend wind the scene down, NEVER a dead button. Child-safe wording. */
+const CAP_WRAP_UP_LINE = "我们聊得好开心呀！先把现在的做完，待会儿还有更好玩的等着我们～";
 
 /** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
  *  (PRD §0). Child-safe: no AI/Prompt/LLM wording. Replaced by real content when providers land (DF-M4-1). */
@@ -187,8 +194,18 @@ export class ClassroomController {
       // here (consistent snapshot), consolidated outside the mutex (fire-and-forget).
       const sceneExited =
         persist && before.currentStageId !== result.state.currentStageId
-          ? { stageId: before.currentStageId, studentIds: Object.keys(result.state.students) }
+          ? {
+              stageId: before.currentStageId,
+              studentIds: Object.keys(result.state.students),
+              // Decision ⑥ (counters, not limits): per-student rounds of the exited scene.
+              rounds: Object.fromEntries(
+                Object.entries(result.state.students).map(([id, st]) => [id, st.interactionCounts[before.currentStageId] ?? 0]),
+              ),
+            }
           : undefined;
+      const capReached = result.commands
+        .filter((c): c is Extract<EngineCommand, { type: "CAP_REACHED" }> => c.type === "CAP_REACHED")
+        .map((c) => ({ studentId: c.studentId, stageId: c.stageId, interactionId: c.interactionId }));
       // Phase 2: a student COMPLETING a stage that declares an artifact (stage.output)
       // produces a workspace Work — captured here (consistent snapshot), written outside.
       const artifacts: Effects["artifacts"] = [];
@@ -224,7 +241,7 @@ export class ClassroomController {
       }
       return {
         next: persist ? result.state : undefined,
-        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }), ...(sceneExited && { sceneExited }) },
+        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }), ...(sceneExited && { sceneExited }), ...(capReached.length > 0 && { capReached }) },
       };
     });
     for (const t of effects.traces) this.trace.record(t);
@@ -242,6 +259,23 @@ export class ClassroomController {
     // Phase 2: artifact works (fire-and-forget; failures traced, classroom untouched).
     for (const artifact of effects.artifacts ?? []) {
       void this.recordStageWork(sessionId, artifact);
+    }
+    // Phase 4 floor: cap-reached children get the friend's WARM WRAP-UP (no AI call, no
+    // dead button — decision ⑦ default); each serve is the countable round_cap_reached
+    // trace the reducer already emitted.
+    for (const cap of effects.capReached ?? []) {
+      this.emit.toStudent(sessionId, cap.studentId, {
+        type: "AI_OUTPUT", studentId: cap.studentId, stageId: cap.stageId, interactionId: cap.interactionId,
+        output: { text: CAP_WRAP_UP_LINE },
+      });
+    }
+    // Decision ⑥ (counters-not-limits): per-student scene round counters at scene exit.
+    if (effects.sceneExited) {
+      for (const [studentId, rounds] of Object.entries(effects.sceneExited.rounds)) {
+        if (rounds > 0) {
+          this.trace.record(this.mkTrace("interaction", { reason: "scene_counters", rounds, sessionId, studentId, stageId: effects.sceneExited.stageId }));
+        }
+      }
     }
     // Phase 4: end-of-scene episodic consolidation (fire-and-forget; per-student isolation;
     // failure = trace, the classroom never blocks — agent-context.md). Tracked per session
@@ -636,14 +670,15 @@ export class ClassroomController {
         return { output: { text: llm.text, audioUrl: tts.audioUrl }, degraded, round: { childText: option, llm } };
       }
       case "doodle": {
-        const img = await this.gateway.imageGen({ kind: "img2img", source: input.doodleRef, count: 3 }); mark(img.meta);
+        // seed = studentId: degraded fallbacks stay per-child distinct (DF-v2-18).
+        const img = await this.gateway.imageGen({ kind: "img2img", source: input.doodleRef, count: 3, seed: cmd.studentId }); mark(img.meta);
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
       case "answers": {
         // brand-style.md: the lesson's promptAssembly is a SCENE template ({questionId} →
         // chosen option), assembled here; the BRAND suffix is the gateway's job, never ours.
         const source = this.assembleImagePrompt(sessionId, cmd, input.answersByQuestionId);
-        const img = await this.gateway.imageGen({ kind: "text2img", source, count: 3 }); mark(img.meta);
+        const img = await this.gateway.imageGen({ kind: "text2img", source, count: 3, seed: cmd.studentId }); mark(img.meta);
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
       case "playPrepared":
@@ -669,8 +704,10 @@ export class ClassroomController {
     const stage = stageById(this.lesson, exited.stageId);
     const episodic = stage?.episodicMemory === true;
     const hasWorkspace = episodic ? this.ensureWorkspace(sessionId) : false;
-    // NOTE (interim, agent-context.md changelog): consolidation is SERIAL per student —
-    // no provider burst; bounded parallelism arrives with the Step-5 gateway queue.
+    // NOTE: consolidation stays SERIAL per student (each extractEpisode is individually
+    // slot-gated inside the gateway — at most ONE slot held at a time, never across
+    // students); the Step-5 gate bounds it alongside next-stage rounds. Parallelizing
+    // the loop is a future option, not a pending dependency.
     for (const studentId of exited.studentIds) {
       const key = { sessionId, studentId, stageId: exited.stageId };
       try {

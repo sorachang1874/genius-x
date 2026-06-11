@@ -107,3 +107,18 @@ describe("E-M1 — Lesson 1 over the real socket", () => {
     }
   }, 20000);
 });
+
+describe("GATEWAY_MAX_CONCURRENT parsing (operator knob fails loud, never silently unbounded)", () => {
+  it("defaults to 8 when unset/empty; accepts positive integers; throws on garbage", async () => {
+    const { parseGatewayMaxConcurrent } = await import("./server");
+    expect(parseGatewayMaxConcurrent(undefined)).toBe(8);
+    expect(parseGatewayMaxConcurrent("")).toBe(8);
+    expect(parseGatewayMaxConcurrent("12")).toBe(12);
+    // a typo must STOP the boot — NaN/0/negative/fractional would silently disable the
+    // DF-v2-19 concurrency floor (the forbidden invisible fallback on an operator knob)
+    expect(() => parseGatewayMaxConcurrent("abc")).toThrow(/GATEWAY_MAX_CONCURRENT/);
+    expect(() => parseGatewayMaxConcurrent("0")).toThrow(/GATEWAY_MAX_CONCURRENT/);
+    expect(() => parseGatewayMaxConcurrent("-3")).toThrow(/GATEWAY_MAX_CONCURRENT/);
+    expect(() => parseGatewayMaxConcurrent("2.5")).toThrow(/GATEWAY_MAX_CONCURRENT/);
+  });
+});

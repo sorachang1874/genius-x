@@ -92,7 +92,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 1** | Persistent identity & enrollment | 2-3 weeks | ✅ Complete (2026-06-09) |
 | **Phase 2** | Student workspace foundation | 3-4 weeks | ✅ Complete (2026-06-09) |
 | **Phase 3** | Parent read-only artifact | 2 weeks | ✅ Complete (2026-06-09) |
-| **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | 📋 Planned |
+| **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | ✅ Complete (2026-06-10) |
 | **Phase 4.5** | **IP character entity & versioning** (new): canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | 📋 Planned |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; **absorbs brand-style slice** (style-v0 gateway injection BEFORE first tool-produced works) | 3-4 weeks | 📋 Planned |
 | **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
@@ -285,4 +285,18 @@ deployment exposure rule (proxy allowlist; DF-v2-16 = process-enforced split). A
 security review: 1 blocker + 4 majors + 7 minors + 4 nits — ALL confirmed findings fixed
 with tests (202 server / 63 web green; real-PG16 smoke green).
 
-_Next milestone: Phase 4 — agent service with memory (context building, retrieval)_
+**Phase 4 delivered** (2026-06-10, PRs #18-#22): the companion REMEMBERS — in-scene
+(turn buffer: round 2 carries round 1, hot path), across scenes (episodic consolidation:
+each scene becomes ONE schema-valid memory — the AI-first carve-out), and across lessons
+(cold path: canon + latest-per-key semantic memories + episodes ride every conversational
+call as the versioned context_v1 block). Plus the operational floor: round caps enforced
+with the friend's warm wrap-up (decision ⑦), per-gateway concurrency gate (DF-v2-19),
+scene round counters (decision ⑥), per-child seeded fallback rotation, brand style-v0
+gateway injection (DF-v2-18 placeholder), safety parity (extractMemory/Episode output
+review, interactions.safety column, pre-submit image input review). Contracts:
+agent-context.md v1 (+Step 2-5 annotations), ip-character.md v1, brand-style.md v0,
+workspace.md v1.1, parent-share.md v1.2. Five adversarial review rounds; every confirmed
+finding fixed with tests (355 green; migrations 001-004 on real PG16).
+
+_Next milestone: Phase 4.5 — IP character entity & versioning (canon record, work lineage,
+works-lifecycle + parent-curation companion revs)_

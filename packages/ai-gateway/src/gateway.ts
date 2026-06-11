@@ -62,12 +62,76 @@ export interface GatewayDeps {
    * silent normal path — the moderation_deferred_m6 pattern).
    */
   brandStyle?: BrandStyleContract;
+  /**
+   * Per-gateway concurrency gate (DF-v2-19, agent-context.md operational floor): bounds
+   * concurrent EXPENSIVE provider calls (llm + image incl. consolidation bursts — a
+   * class-wide unlock synchronizes 20-30 children into one burst). Queue wait happens
+   * BEFORE the capability deadline starts (the child's thinking animation covers it) and
+   * is traced when ≥ queueWaitTraceMs. Omitted = unbounded (test/back-compat default;
+   * the composition root sets it).
+   */
+  maxConcurrentCalls?: number;
+  /** Queue waits at/above this (ms) trace `gateway_queue_wait`. Default 1000. */
+  queueWaitTraceMs?: number;
+}
+
+/** Minimal FIFO semaphore (no deps): acquire resolves with its release fn. */
+class Semaphore {
+  private inUse = 0;
+  private readonly waiters: (() => void)[] = [];
+  constructor(private readonly limit: number) {}
+  async acquire(): Promise<() => void> {
+    if (this.inUse < this.limit) {
+      this.inUse++;
+    } else {
+      // The releaser HANDS its slot to the woken waiter directly (inUse untouched) — a
+      // decrement-then-reincrement window would let a newcomer barge past FIFO and push
+      // in-flight calls to limit+1 (review fix).
+      await new Promise<void>((resolve) => this.waiters.push(resolve));
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = this.waiters.shift();
+      if (next) next(); // slot handed over — capacity never observable as free
+      else this.inUse--;
+    };
+  }
 }
 
 const DEFAULT_TIMEOUTS = { llm: 8000, tts: 2000, asr: 8000, image: 15000 };
 
 export class AiGateway {
-  constructor(private readonly d: GatewayDeps) {}
+  private readonly slots?: Semaphore;
+
+  constructor(private readonly d: GatewayDeps) {
+    if (d.maxConcurrentCalls !== undefined) {
+      // Fail LOUD on a non-positive/fractional value (the parseGatewayMaxConcurrent
+      // posture): an explicit 0 silently disabling the gate is the forbidden fallback.
+      if (!Number.isInteger(d.maxConcurrentCalls) || d.maxConcurrentCalls <= 0) {
+        throw new Error(`maxConcurrentCalls must be a positive integer, got ${d.maxConcurrentCalls}`);
+      }
+      this.slots = new Semaphore(d.maxConcurrentCalls);
+    }
+  }
+
+  /** Concurrency gate for expensive calls. Queue wait precedes the capability deadline
+   *  (thinking animation covers it); long waits are traced — pressure is never invisible. */
+  private async withSlot<T>(capability: string, fn: () => Promise<T>): Promise<T> {
+    if (!this.slots) return fn();
+    const t0 = Date.now();
+    const release = await this.slots.acquire();
+    const waited = Date.now() - t0;
+    if (waited >= (this.d.queueWaitTraceMs ?? 1000)) {
+      this.emit("interaction", { reason: "gateway_queue_wait", capability, ms: waited });
+    }
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
 
   async llm(req: LlmRequest): Promise<LlmTextResult> {
     const input = this.d.safety.reviewInput(req.input);
@@ -82,6 +146,7 @@ export class AiGateway {
         context = undefined;
       }
     }
+    return this.withSlot("llm", async () => {
     try {
       // Defensive history bound (agent-context.md): the turn buffer pre-bounds, but a
       // caller passing oversized history is truncated oldest-first — TRACED, never silent.
@@ -117,6 +182,7 @@ export class AiGateway {
     } catch (e) {
       return this.llmFallback(req.promptVersion, reason(e), []);
     }
+    });
   }
 
   async tts(req: TtsRequest): Promise<TtsResult> {
@@ -154,7 +220,7 @@ export class AiGateway {
       if (!input.ok) {
         this.emit("safety", { capability: "image_gen", reasons: input.reasons });
         this.emit("fallback", { capability: "image_gen", reason: "input_filtered", ...(styleVersion && { styleVersion }) });
-        return this.d.fallback.imageGen(req.count);
+        return this.d.fallback.imageGen(req.count, req.seed);
       }
     }
     // Brand style (brand-style.md): the ONE injection point no image call can bypass.
@@ -168,7 +234,9 @@ export class AiGateway {
     if (!this.d.brandStyle) {
       this.emit("interaction", { capability: "image_gen", note: "brand_style_absent" });
     }
-    // ONE end-to-end deadline for the whole capability (submit + poll + moderate) ≤ budget.
+    return this.withSlot("image_gen", async () => {
+    // ONE end-to-end deadline for the whole capability (submit + poll + moderate) ≤ budget
+    // — started AFTER the concurrency slot is acquired (queue wait never eats the budget).
     const deadline = Date.now() + this.timeout("image");
     const remaining = (): number => Math.max(0, deadline - Date.now());
     try {
@@ -181,7 +249,7 @@ export class AiGateway {
         if (!mod.ok) {
           this.emit("safety", { capability: "image_gen", reasons: mod.reasons });
           this.emit("fallback", { capability: "image_gen", reason: "image_moderation_failed", ...(styleVersion && { styleVersion }) });
-          return this.d.fallback.imageGen(req.count);
+          return this.d.fallback.imageGen(req.count, req.seed);
         }
       } else {
         this.emit("interaction", { capability: "image_gen", note: "moderation_deferred_m6" });
@@ -192,8 +260,9 @@ export class AiGateway {
       // Degraded generations are still brand-attributed (preset fallbacks carry the brand
       // version they were served under — conformance audits need this).
       this.emit("fallback", { capability: "image_gen", reason: reason(e), ...(styleVersion && { styleVersion }) });
-      return this.d.fallback.imageGen(req.count);
+      return this.d.fallback.imageGen(req.count, req.seed);
     }
+    });
   }
 
   /** Extract a memory point. Input-safety the transcript first; key MUST be lesson-declared. */
@@ -203,6 +272,7 @@ export class AiGateway {
       this.emit("safety", { capability: "extract_memory", reasons: input.reasons, stage: "input" });
       return { key: null, value: null };
     }
+    return this.withSlot("extract_memory", async () => {
     try {
       const r = await withTimeout(
         this.d.provider.llm({ promptVersion: req.promptVersion, input: req.transcript }),
@@ -233,6 +303,7 @@ export class AiGateway {
       this.emit("fallback", { capability: "extract_memory", reason: reason(e) });
       return { key: null, value: null };
     }
+    });
   }
 
   /**
@@ -248,6 +319,7 @@ export class AiGateway {
       this.emit("safety", { capability: "extract_episode", reasons: input.reasons, stage: "input" });
       return null;
     }
+    return this.withSlot("extract_episode", async () => {
     try {
       const r = await withTimeout(
         this.d.provider.llm({ promptVersion: req.promptVersion, input: joined }),
@@ -270,6 +342,7 @@ export class AiGateway {
       this.emit("fallback", { capability: "extract_episode", reason: reason(e) });
       return null;
     }
+    });
   }
 
   /** Poll for an image result up to an absolute deadline (never spins forever; each poll bounded). */

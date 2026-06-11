@@ -54,6 +54,14 @@ export interface ImageGenRequest {
   /** Doodle image ref (img2img) or assembled prompt (text2img). */
   source: string;
   count: number;
+  /**
+   * Per-child determinism seed (the studentId): degraded fallbacks rotate the preset pool
+   * by this seed so degraded classmates RARELY collide. The POOL SIZE bounds the
+   * guarantee (8 placeholders ⇒ collisions possible in a 30-child class): the designer
+   * fallback set (DF-v2-18) must be ≥ class size for true per-child uniqueness — the
+   * seed mechanics stay.
+   */
+  seed?: string;
 }
 
 /** Async image generation handle. */

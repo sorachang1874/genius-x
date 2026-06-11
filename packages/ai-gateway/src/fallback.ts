@@ -19,7 +19,12 @@ export interface FallbackLibrary {
   llm(promptVersion: string): LlmTextResult;
   tts(): TtsResult;
   asr(): AsrResult;
-  imageGen(count: number): ImageGenResult;
+  /**
+   * `seed` (the studentId) rotates the preset pool deterministically per child — degraded
+   * classmates rarely collide; the pool size bounds the guarantee (the DF-v2-18 designer
+   * set must be ≥ class size for true uniqueness; the seed mechanics stay).
+   */
+  imageGen(count: number, seed?: string): ImageGenResult;
 }
 
 export class PresetFallbackLibrary implements FallbackLibrary {
@@ -33,8 +38,25 @@ export class PresetFallbackLibrary implements FallbackLibrary {
   asr(): AsrResult {
     return { capability: "asr", transcript: "", meta: META };
   }
-  imageGen(count: number): ImageGenResult {
-    const imageUrls = Array.from({ length: Math.max(1, count) }, (_, i) => `fallback://img/preset-${i}.png`);
+  imageGen(count: number, seed?: string): ImageGenResult {
+    // Placeholder pool of 8 (designer set replaces it, DF-v2-18). Seedless = offset 0
+    // (back-compat); seeded = per-child deterministic rotation.
+    const POOL = 8;
+    const offset = seed === undefined ? 0 : fnv1a(seed) % POOL;
+    const imageUrls = Array.from(
+      { length: Math.max(1, count) },
+      (_, i) => `fallback://img/preset-${(offset + i) % POOL}.png`,
+    );
     return { capability: "image_gen", imageUrls, meta: META };
   }
+}
+
+/** Tiny stable string hash (FNV-1a, 32-bit) — determinism only, no crypto. */
+function fnv1a(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
 }
