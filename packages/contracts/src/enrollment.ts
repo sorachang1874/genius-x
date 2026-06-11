@@ -48,6 +48,7 @@ export interface ConsentInput {
   dataRetentionAgreed: boolean;
   parentCoWorkAllowed?: boolean; // default false
   mediaUsageAllowed?: boolean; // default false
+  ipPhysicalUseAllowed?: boolean; // default false — physical-carrier use (identity.md v1.1)
 }
 
 export interface EnrollStudentRequest {

@@ -29,7 +29,7 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 
 | Contract | Domain | Status | Phase |
 | --- | --- | --- | --- |
-| [`identity.md`](identity.md) | Student/parent persistent identity, tenant model, guardian consent | **frozen v1** | Phase 1 |
+| [`identity.md`](identity.md) | Student/parent persistent identity, tenant model, guardian consent (v1.1: + ip-physical-use purpose) | **frozen v1.1** | Phase 1 |
 | [`enrollment.md`](enrollment.md) | Enrollment API surface, error codes, classroom-join migration | **frozen v1** | Phase 1 |
 | [`workspace.md`](workspace.md) | Student workspace: works, interactions, memories | **frozen v1.1** (v1 + Phase-4/4.5 pending amendments) | Phase 2 |
 | [`agent-context.md`](agent-context.md) | Agent context: hot/cold split, turn buffer, `LlmRequest.history`, episodic memory, safety parity, budget floor | **frozen v1** (implementation: Phase 4 Steps 2–5) | Phase 4 |

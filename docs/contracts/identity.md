@@ -1,6 +1,6 @@
 # Identity Contract (Phase 1)
 
-**Status**: Frozen v1
+**Status**: Frozen v1.1 (v1 + the ip-physical-use consent purpose — see Changelog)
 **Owner**: Identity Service (Agent G)
 **Phase**: Phase 1 — Persistent identity & enrollment
 **Typed realization**: `packages/contracts/src/identity.ts`
@@ -136,6 +136,7 @@ interface GuardianConsent {
   dataRetentionAgreed: boolean;
   parentCoWorkAllowed: boolean;  // can parent initiate interactions? (Phase 6)
   mediaUsageAllowed: boolean;    // can works be used for showcase/promotion?
+  ipPhysicalUseAllowed: boolean; // can works & the IP character appear on PHYSICAL carriers? (v1.1)
 }
 ```
 
@@ -157,6 +158,7 @@ All fields below are **new in Phase 1** (Migration column = "new v1" unless note
 | `GuardianConsent.consentVersion` | Identity Service (policy version) | `guardian_consents.consent_version` | semantic version | request body (agreed version echoed back) | Parent co-work gate (Phase 6) | none | overwritten when policy changes | new v1 | version format valid |
 | `GuardianConsent.parentCoWorkAllowed` | Parent | `guardian_consents.parent_co_work_allowed` | boolean (default false) | parent input | Parent co-work gate (Phase 6) | default false | overwritten on consent update | new v1 | parent-initiated interaction requires `true` |
 | `GuardianConsent.mediaUsageAllowed` | Parent | `guardian_consents.media_usage_allowed` | boolean (default false) | parent input | Showcase/promotion (Content, Phase 7) | default false | overwritten on consent update | new v1 | a work shown in showcase ⇒ its student has `mediaUsageAllowed = true` |
+| `GuardianConsent.ipPhysicalUseAllowed` | Parent | `guardian_consents.ip_physical_use_allowed` | boolean (default false) | parent input | Physical-carrier pipeline (cards/cups/stickers/growth books — decision ④; APP-PRD §9) | default false — NEVER retro-assumed | overwritten on consent update (omission = false: consent is explicit per version) | new v1.1 (migration 007) | any item entering the physical pipeline ⇒ its student has `ipPhysicalUseAllowed = true` |
 | `ClassSession.tenantId` | Classroom Service | `ClassSession` (Redis) | valid tenant id | set at session creation (immutable) | Classroom join (isolation check) | none | with session | new v1 | every live session has a tenantId; join asserts `student.tenantId === session.tenantId` |
 | `PREMIUM_CLASSROOM` | Classroom model | `packages/contracts/src/identity.ts` (constant) | 20-30 students, 4-6 assistants, 1:5 | frozen constant | Seeds, capacity planning, Classroom (Phase 5+) | none | n/a | new v1 | Phase-1 seeds + capacity docs use 20-30 (the superseded "60" model is gone); per-class counts within range |
 
@@ -348,4 +350,14 @@ psql -c "SELECT COUNT(*) FROM students s JOIN parents p ON s.parent_id = p.id WH
 
 ---
 
-_Identity Contract · Phase 1 · Frozen v1 · 2026-06-09_
+## Changelog
+
+- **v1.1** (2026-06-10, founder-ratified — APP-PRD Q6): `ipPhysicalUseAllowed` added as a
+  DISTINCT consent purpose (PIPL: physical-carrier use ≠ digital showcase). Founder
+  framing: the goal is INCENTIVE (「让我的作品被看到」— the friend on cards/cups/stickers),
+  not commercialization; the consent copy must say so. Collected at enrollment from now
+  on so the merch path (decision ④) never needs a re-authorization campaign. Existing
+  rows default FALSE.
+- **v1** (2026-06-09): initial freeze.
+
+_Identity Contract · Phase 1 · Frozen v1.1 · 2026-06-10_

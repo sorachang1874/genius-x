@@ -20,6 +20,10 @@ agents — so **the docs and contracts ARE the team's shared memory**. Keep them
 
 - **No quiz/test logic.** Experiences, not exercises (浸泡式).
 - **No "Prompt / LLM / token / AI / model" wording in any child-facing UI.** It's a friend.
+  **Sole narrow exemption (founder-ratified 2026-06-10)**: the APP's launch/splash screen
+  carries the legally required AI-generated-content notice (《人工智能生成合成内容标识办法》
+  transitional posture — APP PRD §8.4). That one screen only; every in-experience surface
+  stays banned. Formal legal opinion deferred to app-store submission.
 - **No visible failure state for the child.** Every input gets a positive output.
 - **Latency is dressed as "thinking"** (animation + copy), never a blank wait.
 - **User-invisible fallback must stay operator-visible** — logged, counted, surfaced in
