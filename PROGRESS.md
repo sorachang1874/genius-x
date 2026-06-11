@@ -353,9 +353,21 @@ change, classroom suites untouched and green). Review minors all fixed (prototyp
 smuggle guard, degenerate-value rejections, achromatic hue exemption); DF-v2-27 records
 the countable-trace + loader-seam obligations for when non-default packs ship.
 
-_Next milestone: Phase 6.5 Step 3 — 乐园 v0 zero-AI floor (world registry + 伙伴之家 +
-换装间 + 画廊回放) + the parent unlock door (playground_session_tokens). Playground DB
-writes stay gated on data-and-privacy upgrade + workspace.md mode discriminator
-(agent-session.md gate ⑤). Phase 7 (real providers/media) deferred behind this. Pending
-external: brand/market design doc (DF-v2-18), 微信资质 (Q7 — start early, calendar lead
-time), decision ③ confirmation._
+**Phase 6.5 Step 3 delivered** (2026-06-10): 乐园 v0 + the unlock door. Server: migration
+008 (`playground_session_tokens` — hash-only, composite student FK, 35-min TTL CHECK,
+DB-enforced ONE-active via UNIQUE partial index); PlaygroundService (curfew + DAILY
+quota mint-enforced from token history — the v1.1 interim; uniform 404; one-read
+worldView with DENY); routes (`GET /playground/world` header-token-only = the third
+internet-facing family; the mint = parent-surface v1.2's second parent write,
+409 COMPANION_ASLEEP/RESTING via structural error). Web: PlaygroundApp (scrub-on-mount,
+server-anchored sleepy wind-down filling the grace window, 盖被子 ritual, client-cached
+asleep scene — a dead session NEVER shows error copy), world registry per world.md v1.1
+(doc-parsing key check, real export scan, import ban, rendered-output banned-wording on
+every state), parent 「把屏幕交给孩子」 door. Review: 3 confirmed majors + 13 low — ALL
+fixed (contracts v1.1 both). 445 tests; PG16 smoked. Gate ⑤ honored: v0 reads only.
+
+_Next milestone: Phase 6.5 Step 4 — L1 reflection (scheduler + deterministic companion
+diary + visit-greeting memory selection) and/or the parent panel (quota settings,
+DF-v2-28 config read). Playground writes stay gated on the data-and-privacy upgrade +
+workspace.md mode discriminator (gate ⑤). Phase 7 deferred behind APP integration.
+Pending external: brand/market design doc (DF-v2-18), 微信资质 (Q7), decision ③._

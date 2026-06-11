@@ -60,6 +60,7 @@ function api(overrides: Partial<ParentApi> = {}): ParentApi {
     children: async () => ({ children: CHILDREN }),
     timeline: async () => TIMELINE,
     addNote: async () => "ok",
+    unlockPlayground: async () => ({ token: "P".repeat(43) }),
     ...overrides,
   };
 }
@@ -145,6 +146,29 @@ describe("ParentHomeApp — growth timeline", () => {
     const { container } = await openChild({ timeline: async () => { throw new ParentGoneError(); } });
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("请联系老师"));
     expect(container.textContent ?? "").not.toContain("休息一下再来看看"); // not the retry copy
+  });
+});
+
+describe("ParentHomeApp — the playground unlock door (parent-surface.md v1.2)", () => {
+  it("curfew (409) shows the asleep guidance; never technical copy", async () => {
+    setUrl(`?parent=${TOKEN}`);
+    const { container } = render(<ParentHomeApp api={api({ unlockPlayground: async () => "asleep" })} />);
+    await waitFor(() => expect(screen.getByText("美美")).toBeDefined());
+    fireEvent.click(screen.getByText("美美"));
+    await waitFor(() => expect(screen.getByText("把屏幕交给孩子")).toBeDefined());
+    fireEvent.click(screen.getByText("把屏幕交给孩子"));
+    await waitFor(() => expect(screen.getByText(/它已经睡啦/)).toBeDefined());
+    expect(container.textContent ?? "").not.toMatch(/409|错误|失败/);
+  });
+
+  it("daily quota spent (COMPANION_RESTING) shows the resting copy", async () => {
+    setUrl(`?parent=${TOKEN}`);
+    render(<ParentHomeApp api={api({ unlockPlayground: async () => "resting" })} />);
+    await waitFor(() => expect(screen.getByText("美美")).toBeDefined());
+    fireEvent.click(screen.getByText("美美"));
+    await waitFor(() => expect(screen.getByText("把屏幕交给孩子")).toBeDefined());
+    fireEvent.click(screen.getByText("把屏幕交给孩子"));
+    await waitFor(() => expect(screen.getByText(/今天玩得够久啦/)).toBeDefined());
   });
 });
 

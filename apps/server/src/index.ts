@@ -12,6 +12,7 @@ import { WorkspaceService } from "./workspace/service";
 import { ShareService } from "./share/service";
 import { IpCharacterService } from "./workspace/ip-character";
 import { ParentSurfaceService } from "./parent/service";
+import { PlaygroundService } from "./playground/service";
 import { KeywordSafetyFilter } from "@genius-x/ai-gateway";
 import { startClassroomServer } from "./server";
 
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
   const share = pool ? new ShareService(pool) : undefined;
   const ipCharacter = pool ? new IpCharacterService(pool) : undefined; // P4.5: same pool, same lifecycle
   const parentSurface = pool ? new ParentSurfaceService(pool, new KeywordSafetyFilter()) : undefined; // P6
+  const playground = pool ? new PlaygroundService(pool) : undefined; // P6.5 (v0 read-only, gate ⑤)
   if (!identity) {
     console.warn(
       "[bootstrap] identity routes DISABLED — no DATABASE_URL configured " +
@@ -57,6 +59,14 @@ async function main(): Promise<void> {
 
   // Phase 3 retention sweep (parent-share.md: share tokens purge at expiry+30d). Boot-time
   // is the scheduled-job stand-in; the count is logged so deletions are operator-visible.
+  if (playground) {
+    try {
+      const purgedPg = await playground.purgeExpired();
+      if (purgedPg > 0) console.log(`[playground] retention sweep: purged ${purgedPg} session token(s) past expiry+24h`);
+    } catch (err) {
+      console.error("[playground] retention sweep FAILED (continuing):", (err as Error).name);
+    }
+  }
   if (parentSurface) {
     try {
       const purgedP = await parentSurface.purgeExpired();
@@ -114,6 +124,7 @@ async function main(): Promise<void> {
     ...(turnBuffer && { turnBuffer }),
     ...(ipCharacter && { ipCharacter }),
     ...(parentSurface && { parentSurface }),
+    ...(playground && { playground }),
   });
   console.log(`genius-x server (mode=${config.mode}, identity=${identity ? "on" : "OFF"}) listening on ${handle.url}`);
 

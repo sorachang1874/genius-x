@@ -14,6 +14,7 @@ import type { IdentityService } from "./identity/service";
 import type { WorkspaceService } from "./workspace/service";
 import type { IpCharacterService } from "./workspace/ip-character";
 import type { ParentSurfaceService } from "./parent/service";
+import type { PlaygroundService } from "./playground/service";
 import { consoleNotificationSink, LessonShareMinter, type NotificationSink, type ShareService } from "./share/service";
 import { ClassroomController, type Clock, type TraceSink } from "./sync/controller";
 import { attachSocket, ioEmitter } from "./sync/socket";
@@ -37,6 +38,7 @@ export interface ServerOptions {
   ipCharacter?: IpCharacterService;
   /** Parent surface (Phase 6). Absent ⇒ /parent/* disabled; lessons run without parent notes. */
   parentSurface?: ParentSurfaceService;
+  playground?: PlaygroundService;
   /** Test seam: inject a pre-configured gateway (e.g. FakeProvider with canned content).
    *  The injected gateway owns ALL its deps INCLUDING brandStyle — omitting brandStyle is
    *  loud (`brand_style_absent` traced per image call), never silently unstyled. */
@@ -115,6 +117,7 @@ export async function startClassroomServer(opts: ServerOptions = {}): Promise<Se
     ...(opts.workspace && { workspace: opts.workspace }),
     ...(opts.share && { share: opts.share }),
     ...(opts.parentSurface && { parentSurface: opts.parentSurface }),
+    ...(opts.playground && { playground: opts.playground }),
     webBaseUrl,
     ...(opts.corsOrigin && { corsOrigin: opts.corsOrigin }),
     trace,
