@@ -22,6 +22,8 @@ import type { ShareService } from "./share/service";
 import { registerPublicShareRoute, registerOperatorShareRoutes } from "./share/routes";
 import type { ParentSurfaceService } from "./parent/service";
 import { registerParentRoutes, registerParentAccessMint } from "./parent/routes";
+import { registerPlaygroundRoutes, registerPlaygroundMint } from "./playground/routes";
+import type { PlaygroundService } from "./playground/service";
 import { freshStudentState } from "./sync/controller";
 
 const ROLES: ReadonlySet<string> = new Set(["student", "assistant", "teacher", "parent", "admin"] satisfies Role[]);
@@ -55,6 +57,8 @@ export interface HttpOptions {
   share?: ShareService;
   /** Parent surface (Phase 6). Absent ⇒ /parent/* + the access mint not registered (404). */
   parentSurface?: ParentSurfaceService;
+  /** Playground v0 (agent-session.md): the child-at-home read surface + the parent mint. */
+  playground?: PlaygroundService;
   /**
    * Parent web origin for the mint route's composed capability URL (the server is the
    * SINGLE URL composer — parent-share.md). Default: dev Vite origin.
@@ -107,6 +111,10 @@ export function buildHttp(store: SessionStore, options: HttpOptions): FastifyIns
   // --- public surface (the proxy MAY forward /share/* and token-gated /parent/*) ---
   if (share) registerPublicShareRoute(app, share);
   if (options.parentSurface && workspace) registerParentRoutes(app, options.parentSurface, workspace);
+  // Playground (parent-share.md v1.5: third internet-facing family) — token-gated reads
+  // + the PARENT-token mint (parent-surface.md v1.2's second parent write).
+  if (options.playground) registerPlaygroundRoutes(app, options.playground);
+  if (options.playground && options.parentSurface) registerPlaygroundMint(app, options.parentSurface, options.playground);
 
   /** Fresh session shell (create-if-absent), bound to this server's tenant. */
   const newSession = (sessionId: string): ClassSession => ({

@@ -1,6 +1,6 @@
 # Agent Session Contract (playground — the friend at home)
 
-**Status**: Frozen v1 (scope = 乐园会话生命周期、时长/宵禁、零 AI 地板、五道闸)
+**Status**: Frozen v1.1 (v1 + the v0 implementation rev — see Changelog)
 **Owner**: Course runtime (Agent C) — session lifecycle; Agent service (Agent I) — context;
 parent surfaces (Agent K) — the unlock door
 **Typed realization**: `packages/contracts/src/agent-session.ts` (to be added)
@@ -25,7 +25,8 @@ caps — one security surface, two doors).
 parent taps 「把屏幕交给孩子」 (parent H5/小程序)
   → mint PLAYGROUND TOKEN — NEW table `playground_session_tokens` (token_hash PK
     sha256-hex, student_id + tenant_id composite FK to students(id, tenant_id),
-    expires_at; uniform 404; scope = ONE student, playground ONLY;
+    expires_at; TTL CHECK ≤ 35 min (= ceiling 30 + grace 5); uniform 404;
+    scope = ONE student, playground ONLY;
     TTL = session quota + GRACE WINDOW (5 min: server enforces read-only/no-AI
     during grace — the wind-down and close ritual complete inside it; session-close
     writes, incl. episodic consolidation, land inside grace).
@@ -64,7 +65,12 @@ assets so it plays without any server call.
    `playground_session_tokens`' companion settings table `playground_settings(student_id,
    tenant_id composite FK, daily_minutes CHECK ≤ 30, audio_minutes, updated_at)` —
    bounds DB-CHECKed (a parent write above the ceiling rejects). Changing numbers is an
-   ops act, not a release.
+   ops act, not a release. **v1.1 interim (until the config read + settings table land,
+   DF-v2-28)**: the DAILY bound is enforced AT THE MINT, gate-⑤-compatibly — the mint
+   sums today's (Asia/Shanghai day) consumed minutes from `playground_session_tokens`
+   (revoked tokens count elapsed time only) and grants the REMAINING quota (+grace),
+   rejecting when < 3 min remain (`playground_mint_quota_exhausted`, parent-gentle copy);
+   defaults are constants in code for v0, named as the deferral they are.
 2. **Zero-AI floor is the availability class**: theme dressing room, gallery replay,
    sticker collage (= the v0 playground). Gateway unavailable ⇒ the WHOLE session
    degrades to the floor ("朋友在专心画画,你先布置房间") with the dedicated
@@ -127,9 +133,16 @@ assets so it plays without any server call.
 | quota/curfew config | C | tenant defaults = `tenants.config` JSONB key `playground` (existing); per-child override = 🆕 `playground_settings` (composite FK, CHECK ≤ ceiling) | rule-1 bounds | session runtime, parent panel | most-restrictive fail-closed (failure row) | settings row follows DF-v2-17 erasure cascade | bounds test (parent write above ceiling rejects); composite-FK drift |
 | `tool_grants` | C (write at lesson end) / I (read) | 🆕 append-only table (rule 6: composite FK, UNIQUE + ON CONFLICT DO NOTHING) | granted rows only — no revocation (sole exception: DF-v2-17 erasure cascade) | playground tools, parent capability list | absent = not granted (object simply not rendered) | DF-v2-17 erasure cascade ONLY | append-only assertion (erasure-aware); idempotent-retry test; composite-FK drift |
 | session record | C | 🆕 `agent_sessions` (composite FK; lifecycle states above) | lifecycle states | metrics, quota accounting | n/a | retention 1y then aggregate-and-delete; DF-v2-17 cascade | one-active-per-student test; composite-FK drift |
-| trace taxonomy (CLOSED) | C | this row | exactly: `playground_floor_entered`, `playground_quota_config_miss`, `playground_session_opened/_closed`, `playground_token_revoked_by_remint`; greeting cold-miss REUSES `context_cold_miss` (agent-context.md) | operator metrics | n/a | exact-match trace tests (no other playground reasons may be emitted) |
+| trace taxonomy (CLOSED) | C | this row | exactly: `playground_floor_entered`, `playground_quota_config_miss`, `playground_session_opened/_closed`, `playground_token_revoked_by_remint`, `playground_mint_curfew_rejected`, `playground_mint_quota_exhausted` (v1.1 — parent-affecting rejections must be countable); greeting cold-miss REUSES `context_cold_miss` (agent-context.md). **v0 semantics**: opened==minted; `_closed/_floor_entered/_quota_config_miss` are allowed-but-not-yet-emitted (no session record pre-gate-⑤) — dashboards must not expect closes | operator metrics | n/a | exact-match trace tests: the emitted-reason set is a SUBSET of this list (CI) |
 
 ## Changelog
+
+- **v1.1** (2026-06-10, lead-serialized after the Step-3 adversarial review): closed
+  trace taxonomy gains `playground_mint_curfew_rejected` + `playground_mint_quota_
+  exhausted` (parent-affecting rejections are countable) with v0 emission semantics
+  pinned (opened==minted, no closes yet); the daily quota is mint-enforced from token
+  history (gate-⑤-compatible interim — config read & settings table = DF-v2-28); TTL
+  CHECK tightened to 35 min; the exact-match preflight is subset-style and CI-enforced.
 
 - **v1** (2026-06-10): initial freeze, converged pre-merge with the adversarial contract
   review (1 blocker + 6 majors fixed): `/playground/*` exposure serialized into
@@ -144,4 +157,4 @@ assets so it plays without any server call.
   follow-up at p95 queue-wait > 1s). Core: lifecycle + sleepy wind-down, zero-AI floor,
   five gates, no-mic input grammar, earned-is-forever grants, single memory substrate.
 
-_Agent Session Contract · APP integration · Frozen v1 · 2026-06-10_
+_Agent Session Contract · APP integration · Frozen v1.1 · 2026-06-10_

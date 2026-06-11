@@ -17,6 +17,9 @@ describe("EntryResolver — every legacy alias resolves exactly as before", () =
     ["?parent=ABC", "parent"],
     ["?parent=", "parent"],
     ["?share=A&parent=B", "share"], // pinned precedence: the safer scoped surface wins
+    ["?playground=ABC", "playground"],
+    ["?playground=", "playground"], // presence rule (IM-truncated hand-off)
+    ["?parent=A&playground=B", "parent"], // parent door outranks the minted session
     ["?role=assistant", "assistant"],
     ["?role=teacher", "teacher"],
     ["?role=unknown", "student"],

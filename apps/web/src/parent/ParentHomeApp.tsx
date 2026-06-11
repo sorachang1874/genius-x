@@ -41,6 +41,10 @@ export interface ParentApi {
   /** "ok" on stored; "rejected" on the boundary 400 (length/review/pending-cap);
    *  "gone" on the uniform 404 (dead token mid-session). */
   addNote(token: string, studentId: string, text: string): Promise<"ok" | "rejected" | "gone">;
+  /** The playground UNLOCK MINT (parent-surface.md v1.2): "asleep" (curfew) or
+   *  "resting" (daily quota spent) on 409, "gone" on the uniform 404; otherwise the
+   *  session token (handed to the child). */
+  unlockPlayground(token: string, studentId: string): Promise<{ token: string } | "asleep" | "resting" | "gone">;
 }
 
 const defaultApi: ParentApi = {
@@ -70,6 +74,19 @@ const defaultApi: ParentApi = {
     if (res.status === 400) return "rejected"; // boundary rejection — gentle copy, no detail
     if (res.status === 404) return "gone"; // dead token — re-request guidance, never "换个说法"
     throw new Error(`parent note failed (${res.status})`);
+  },
+  async unlockPlayground(token, studentId) {
+    const res = await fetch(`${serverBaseUrl()}/parent/children/${encodeURIComponent(studentId)}/playground-session`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.status === 201) return (await res.json()) as { token: string };
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return body.error === "COMPANION_RESTING" ? "resting" : "asleep";
+    }
+    if (res.status === 404) return "gone";
+    throw new Error(`playground unlock failed (${res.status})`);
   },
 };
 
@@ -223,8 +240,48 @@ function ChildTimeline({ child, api, token, onBack, onGone }: {
         </ol>
       )}
 
+      <PlaygroundUnlock studentId={child.studentId} displayName={child.displayName} api={api} token={token} onGone={onGone} />
       <NoteComposer studentId={child.studentId} displayName={child.displayName} api={api} token={token} onGone={onGone} />
     </div>
+  );
+}
+
+/** The playground door (parent-surface.md v1.2): mint a session, hand the screen over. */
+function PlaygroundUnlock({ studentId, displayName, api, token, onGone }: {
+  studentId: string;
+  displayName: string;
+  api: ParentApi;
+  token: string;
+  onGone: () => void;
+}): React.JSX.Element {
+  const [state, setState] = useState<"idle" | "opening" | "asleep" | "resting">("idle");
+
+  const unlock = async (): Promise<void> => {
+    if (state === "opening") return;
+    setState("opening");
+    try {
+      const r = await api.unlockPlayground(token, studentId);
+      if (r === "gone") return onGone();
+      if (r === "asleep" || r === "resting") return setState(r);
+      // Hand the screen to the child: REPLACE (review fix — the parent entry must not
+      // sit one Back-tap away from the child mid-visit). PlaygroundApp scrubs the token
+      // from the URL on mount (its transport rule).
+      window.location.replace(`/?playground=${encodeURIComponent(r.token)}`);
+    } catch {
+      setState("idle"); // transient — the button simply returns
+    }
+  };
+
+  return (
+    <section className="parent-home__playground" aria-label="把屏幕交给孩子">
+      <h3>让{displayName}去朋友家玩一会儿?</h3>
+      <p>开启后把屏幕交给孩子——时间到了,它的朋友会自己说晚安。</p>
+      <button type="button" onClick={() => void unlock()} disabled={state === "opening"}>
+        {state === "opening" ? "正在开门…" : "把屏幕交给孩子"}
+      </button>
+      {state === "asleep" && <p role="status">它已经睡啦——明天白天再来吧 🌙</p>}
+      {state === "resting" && <p role="status">今天玩得够久啦,它在休息——明天再来吧 ☁️</p>}
+    </section>
   );
 }
 

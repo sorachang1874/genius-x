@@ -12,10 +12,12 @@ import { ParentShareApp } from "./parent/ParentShareApp";
 import { ParentHomeApp } from "./parent/ParentHomeApp";
 import { resolveEntry } from "./shell/entry";
 import { ThemeProvider } from "./shell/theme/ThemeProvider";
+import { PlaygroundApp } from "./modes/playground/PlaygroundApp";
 
 const SURFACES = {
   share: ParentShareApp,
   parent: ParentHomeApp,
+  playground: PlaygroundApp,
   assistant: AssistantApp,
   teacher: TeacherScreen,
   student: StudentApp,
