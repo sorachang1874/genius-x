@@ -7,6 +7,7 @@ import { StudentApp } from "./student/StudentApp";
 import { AssistantApp } from "./assistant/AssistantApp";
 import { TeacherScreen } from "./teacher/TeacherScreen";
 import { ParentShareApp } from "./parent/ParentShareApp";
+import { ParentHomeApp } from "./parent/ParentHomeApp";
 
 export function App(): React.JSX.Element {
   const params = new URLSearchParams(window.location.search);
@@ -14,6 +15,10 @@ export function App(): React.JSX.Element {
   // PRESENCE (has), not truthiness: a link IM-truncated to "?share=" must land on the
   // parent app's warm "请联系老师" guidance, never on the student room-code screen.
   if (params.has("share")) return <ParentShareApp />;
+  // Phase 6: the authenticated parent home (?parent=<token>) — same presence rule.
+  // Share-before-parent precedence is INTENTIONAL: a link carrying both lands on the
+  // scoped share view (the safer surface); both are parent-facing either way.
+  if (params.has("parent")) return <ParentHomeApp />;
   const role = params.get("role");
   if (role === "assistant") return <AssistantApp />;
   if (role === "teacher") return <TeacherScreen />;

@@ -95,7 +95,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | ✅ Complete (2026-06-10) |
 | **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; brand-style slice live since P4 | 3-4 weeks | ✅ Complete (2026-06-10) |
-| **Phase 6** | Parent co-working — server slice (auth + timeline + notes) shipped; parent H5 (Step 3) next | 3 weeks | 🔄 In progress (server slice 2026-06-10) |
+| **Phase 6** | Parent co-working — server slice (auth + timeline + notes) + parent H5 (token-gated home) | 3 weeks | ✅ Complete (2026-06-10; SMS/WeChat mint = later, behind the frozen verifier seam) |
 | **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
 
@@ -333,7 +333,17 @@ agrees); relay marks moved to the CONTROLLER after a NON-DEGRADED reply (build-t
 marking silently lost notes under gateway fallback). Migration 006; 394 tests green; 006
 smoked on real PG16.
 
-_Next milestone: Phase 6 Step 3 — the parent H5 (token-gated web surface: children,
-timeline, note composer). Pending external inputs: brand/market design doc (replaces
-style-v0), team confirmation of decision ③, 微信资质, Phase-7 credentials checklist
-(capacity doc §5)._
+**Phase 6 Step 3 delivered** (2026-06-10): the parent H5 — token-gated home
+(`?parent=<token>`): children cards (companion surface), the growth timeline (诞生时刻 →
+第 N 次成长, lineage works), and the note composer (gentle full lifecycle). Adversarial
+review major: the 180-day all-children write-capable token must not inherit the share
+token's history-persistence acceptance — contract v1.1 pins **scrub-on-mount** (token
+captured into memory, value scrubbed from the address bar) + the no-referrer meta as
+binding preconditions; mid-session dead tokens (uniform 404) now show re-request guidance
+on every surface, never misleading retry/rewording copy. 408 tests green.
+
+_Next milestone: Phase 7 prep — real provider adapters + media pipeline (DF-v2-22),
+sticky routing + 300-client load harness (DF-v2-20/21). Long-term: DF-v2-24 (LLM
+streaming + sentence TTS), DF-v2-25 (native omni-modal interaction). Pending external
+inputs: brand/market design doc (replaces style-v0; +API ⇒ triggers DF-v2-23), team
+confirmation of decision ③, 微信资质, Phase-7 credentials checklist (capacity doc §5)._
