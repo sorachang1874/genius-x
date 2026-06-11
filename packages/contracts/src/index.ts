@@ -29,3 +29,4 @@ export * from "./ip-character";
 export * from "./tool";
 // Phase 6 — authenticated parent surface (docs/contracts/parent-surface.md).
 export * from "./parent-surface";
+export * from "./theme";

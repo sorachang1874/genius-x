@@ -3,9 +3,23 @@
  * later; this is just enough to run Lesson 1 stages 1–2 legibly on an iPad browser.
  */
 :root {
-  --bg: #fdf7ff;
-  --ink: #2b2350;
-  --magic: #5b3fff;
+  /* gx design tokens (theme.md v1) — the LOCKED contract surface. Values here are the
+   * brand-default pack (BRAND_DEFAULT_THEME mirrors them) so a no-JS/early-paint frame
+   * is already on-brand; the Shell ThemeProvider overwrites them per active pack.
+   * Components consume var(--gx-*) ONLY — never where a value came from. */
+  --gx-bg: #fdf7ff;
+  --gx-surface: #ffffff;
+  --gx-ink: #2b2350;
+  --gx-accent: #5b3fff;
+  --gx-glow: #ffd166;
+  --gx-radius: 16px;
+  --gx-font-scale: 1;
+  --gx-motion: 1;
+
+  /* Legacy aliases (pre-token names) — kept so unmigrated rules keep working. */
+  --bg: var(--gx-bg);
+  --ink: var(--gx-ink);
+  --magic: var(--gx-accent);
   font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -54,7 +68,7 @@ body {
   font-size: 1.2rem;
   padding: 16px 24px;
   border: none;
-  border-radius: 16px;
+  border-radius: var(--gx-radius);
   background: var(--magic);
   color: #fff;
   cursor: pointer;
@@ -102,17 +116,17 @@ button:disabled {
 }
 
 .bubble {
-  background: #fff;
-  border-radius: 16px;
+  background: var(--gx-surface);
+  border-radius: var(--gx-radius);
   padding: 12px 18px;
   max-width: 80%;
   box-shadow: 0 2px 8px rgba(91, 63, 255, 0.15);
 }
 
 .doodle-canvas {
-  background: #fff;
+  background: var(--gx-surface);
   border: 3px dashed var(--magic);
-  border-radius: 16px;
+  border-radius: var(--gx-radius);
   touch-action: none;
 }
 
@@ -128,7 +142,7 @@ button:disabled {
   height: 140px;
   padding: 0;
   overflow: hidden;
-  background: #fff;
+  background: var(--gx-surface);
   border: 2px solid var(--magic);
 }
 
@@ -266,7 +280,7 @@ button:disabled {
   background: #ff9d2e;
 }
 .certificate {
-  background: #fff;
+  background: var(--gx-surface);
   border: 4px solid var(--magic);
   border-radius: 20px;
   padding: 20px;
@@ -279,7 +293,7 @@ button:disabled {
 .certificate__avatar {
   width: 160px;
   height: 160px;
-  border-radius: 16px;
+  border-radius: var(--gx-radius);
   object-fit: cover;
 }
 .certificate__memories {

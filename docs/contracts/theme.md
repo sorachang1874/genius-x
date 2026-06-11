@@ -17,18 +17,19 @@ versioned JSON manifest; switching themes swaps the pack; no component knows whe
 pack came from. This is the decoupling seam the founder asked for — and the insurance
 that makes tier timing (Q2) a scheduling choice instead of a refactor.
 
-## ThemePackV1 (schema-validated — P1 AI-first; exact zod shape lands in contracts)
+## ThemePackV1 (schema-validated — P1 AI-first; closed-schema MANUAL validation in `@genius-x/contracts` — the package's no-zod convention; zod belongs at service boundaries)
 
 ```jsonc
 {
-  "themeId": "uuid",
+  "themeId": "id",              // derived packs: uuid; brand_default/skin packs: slug (global rows)
   "version": 1,                       // per-pack, immutable snapshots
   "source": "brand_default | derived | skin",
   "characterVersionId": "uuid|null",  // lineage when source=derived (P4.5 pattern)
   "expiresAt": "ISO|null",            // skins only — auto-revert, snapshot stays
-  "tokens": { /* 15-25 semantic tokens: color roles (bg/surface/ink/accent/glow),
-                 radius scale, motion duration/character, type scale, soundscape ref,
-                 idle-motion set ref, illustration slot refs */ },
+  "tokens": { /* v1 ships 11 tokens (the floor of the 15-25 envelope): color roles
+                 (bg/surface/ink/accent/glow), radius scale, motionIntensity, type
+                 scale, soundscape/idle-motion/illustration refs — additions are
+                 lead-serialized revisions of this contract */ },
   "assets": { /* named slots → URLs (safeSrc-constrained) */ }
 }
 ```
