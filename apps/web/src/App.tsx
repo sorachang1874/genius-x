@@ -1,26 +1,31 @@
 /**
- * Role entry. `?role=assistant` → assistant control panel; `?role=teacher` → 诞生礼 big-screen /
- * projection (M4b); otherwise the student client (room-code join → classroom). Real RBAC is shadow
- * (Better Auth, DF-8); the query param is a documented demo convenience (DF-M3-4).
+ * Role entry — now a thin consumer of the Shell (Phase 6.5): `resolveEntry` owns the
+ * URL→entry decision (all legacy query-param aliases preserved + precedence pinned
+ * there); `ThemeProvider` applies the active ThemePack (brand default in v1 — derived
+ * packs arrive with the playground work, theme.md). Real RBAC is shadow (Better Auth,
+ * DF-8); the ?role= query param is a documented demo convenience (DF-M3-4).
  */
 import { StudentApp } from "./student/StudentApp";
 import { AssistantApp } from "./assistant/AssistantApp";
 import { TeacherScreen } from "./teacher/TeacherScreen";
 import { ParentShareApp } from "./parent/ParentShareApp";
 import { ParentHomeApp } from "./parent/ParentHomeApp";
+import { resolveEntry } from "./shell/entry";
+import { ThemeProvider } from "./shell/theme/ThemeProvider";
+
+const SURFACES = {
+  share: ParentShareApp,
+  parent: ParentHomeApp,
+  assistant: AssistantApp,
+  teacher: TeacherScreen,
+  student: StudentApp,
+} as const;
 
 export function App(): React.JSX.Element {
-  const params = new URLSearchParams(window.location.search);
-  // Phase 3: a parent share capability link (?share=<token>) wins over role routing.
-  // PRESENCE (has), not truthiness: a link IM-truncated to "?share=" must land on the
-  // parent app's warm "请联系老师" guidance, never on the student room-code screen.
-  if (params.has("share")) return <ParentShareApp />;
-  // Phase 6: the authenticated parent home (?parent=<token>) — same presence rule.
-  // Share-before-parent precedence is INTENTIONAL: a link carrying both lands on the
-  // scoped share view (the safer surface); both are parent-facing either way.
-  if (params.has("parent")) return <ParentHomeApp />;
-  const role = params.get("role");
-  if (role === "assistant") return <AssistantApp />;
-  if (role === "teacher") return <TeacherScreen />;
-  return <StudentApp />;
+  const Surface = SURFACES[resolveEntry(window.location.search).kind];
+  return (
+    <ThemeProvider>
+      <Surface />
+    </ThemeProvider>
+  );
 }
