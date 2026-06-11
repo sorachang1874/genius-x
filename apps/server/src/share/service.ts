@@ -96,7 +96,7 @@ const iso = (v: unknown): string => (v instanceof Date ? v : new Date(String(v))
  */
 const DENIED_CONTENT_KEYS = new Set(["aiParams", "degraded", "sessionId", "stageId", "studentId", "tenantId", "parentId"]);
 
-function scrubDeniedKeys(value: unknown, dropped: string[]): unknown {
+export function scrubDeniedKeys(value: unknown, dropped: string[]): unknown {
   if (Array.isArray(value)) return value.map((v) => scrubDeniedKeys(v, dropped));
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};

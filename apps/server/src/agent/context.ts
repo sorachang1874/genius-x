@@ -28,6 +28,7 @@ import { CONTEXT_EPISODE_TOP_K, CONTEXT_SEMANTIC_TOP_K, CONTEXT_VERSION, parseEp
 import type { IdentityService } from "../identity/service";
 import type { WorkspaceService } from "../workspace/service";
 import type { IpCharacterService } from "../workspace/ip-character";
+import type { ParentNoteRelay } from "../parent/service";
 
 export interface ColdContext {
   version: string;
@@ -36,6 +37,10 @@ export interface ColdContext {
   hasCanon: boolean;
   semanticCount: number;
   episodeCount: number;
+  /** Parent-note ids riding this block — the CONTROLLER marks them relayed only after a
+   *  NON-DEGRADED contextful reply (parent-surface.md: a fallback answer never consumed
+   *  them; they stay unrelayed and retry next call). Empty when no notes injected. */
+  noteIds: string[];
 }
 
 export class ContextBuilder {
@@ -50,21 +55,27 @@ export class ContextBuilder {
     private readonly ipCharacter: IpCharacterService | undefined,
     private readonly trace: TraceSink,
     private readonly now: () => string,
+    /** Phase 6 (parent-surface.md): unrelayed parent notes — injected once, then marked. */
+    private readonly parentNotes?: ParentNoteRelay,
   ) {}
 
   /** Assemble the cold block for one student. Returns undefined when nothing is known. */
   async buildCold(sessionId: string, studentId: string): Promise<ColdContext | undefined> {
-    // Canon and memories are independent — fetch in parallel (hot-path latency).
-    const [canonLines, mem] = await Promise.all([
+    // Canon, memories, and parent notes are independent — fetch in parallel.
+    const [canonLines, mem, notes] = await Promise.all([
       this.canon(sessionId, studentId),
       this.memories(sessionId, studentId),
+      this.notes(sessionId, studentId),
     ]);
 
-    // context_v1 ASSEMBLY — headers, line formats, and section order ARE the version:
-    // ANY change here is a context_v2 — bump CONTEXT_VERSION in @genius-x/contracts FIRST
+    // context_v2 ASSEMBLY — headers, line formats, and section order ARE the version:
+    // ANY change here is a context_v3 — bump CONTEXT_VERSION in @genius-x/contracts FIRST
     // (a golden test pins the exact text). Provider/operator-facing; never child-rendered.
     const sections: string[] = [];
     if (canonLines.length > 0) sections.push(`【你的伙伴设定】\n${canonLines.join("\n")}`);
+    if (notes.length > 0) {
+      sections.push(`【爸爸妈妈想对你说】\n${notes.map((n) => n.note).join("\n")}`);
+    }
     if (mem.semantic.length > 0) {
       sections.push(`【你记得关于这个孩子的事】\n${mem.semantic.map((m) => `${m.key}: ${m.value}`).join("\n")}`);
     }
@@ -79,13 +90,28 @@ export class ContextBuilder {
       hasCanon: canonLines.length > 0,
       semanticCount: mem.semantic.length,
       episodeCount: mem.episodes.length,
+      // Relay marking moved to the CONTROLLER (review fix): marking at BUILD time lost
+      // notes whenever the gateway served a fallback (input/output filtered, provider
+      // error/timeout) — the note was "relayed" but the child never heard it.
+      noteIds: notes.map((n) => n.id),
     };
     // Counts only — never text (trace-redaction posture).
     this.mk("context_served", {
       sessionId, studentId, hasCanon: cold.hasCanon,
-      semantic: cold.semanticCount, episodes: cold.episodeCount,
+      semantic: cold.semanticCount, episodes: cold.episodeCount, notes: notes.length,
     });
     return cold;
+  }
+
+  /** Unrelayed parent notes (≤2 newest) — failure ⇒ the lesson runs without them. */
+  private async notes(sessionId: string, studentId: string): Promise<{ id: string; note: string }[]> {
+    if (!this.parentNotes) return [];
+    try {
+      return await this.parentNotes.unrelayedNotes(studentId, 2);
+    } catch (err) {
+      this.mk("parent_note_relay_failed", { error: String((err as Error)?.name ?? err), sessionId, studentId });
+      return [];
+    }
   }
 
   /** Canon: the ip_characters record FIRST (the canonical entity, P4.5-B), GeniusXProfile

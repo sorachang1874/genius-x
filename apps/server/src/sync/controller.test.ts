@@ -961,7 +961,7 @@ describe("cold context (canon + cross-lesson memories reach the prompt)", () => 
     await untilTrue(() => llmSeen.length === 1);
     const ctxBlock = llmSeen[0]!.context;
     expect(ctxBlock).toBeDefined();
-    expect(ctxBlock!.version).toBe("context_v1");
+    expect(ctxBlock!.version).toBe("context_v2");
     expect(ctxBlock!.text).toContain("小泥"); // canon: the friend knows its own name
     expect(ctxBlock!.text).toContain("勇敢");
     expect(ctxBlock!.text).toContain("favorite_toy: 积木"); // semantic memory
@@ -1067,7 +1067,7 @@ describe("cold-context trace taxonomy + privacy (Step-4 review fixes)", () => {
     expect(trace.events.filter((e) => e.payload.reason === "context_cold_miss" && e.payload.cause === "workspace_not_wired")).toHaveLength(1);
   });
 
-  it("GOLDEN context_v1 text — any change here is a context_v2 (bump CONTEXT_VERSION first)", async () => {
+  it("GOLDEN context_v2 text — any change here is a context_v3 (bump CONTEXT_VERSION first)", async () => {
     const seen: CtlLlmReq[] = [];
     const identity = {
       async getStudent() {
@@ -1095,6 +1095,57 @@ describe("cold-context trace taxonomy + privacy (Step-4 review fixes)", () => {
     const served = trace.events.find((e) => e.payload.reason === "context_served");
     expect(served!.payload).toMatchObject({ hasCanon: true, semantic: 1, episodes: 1 });
     expect(JSON.stringify(served!.payload)).not.toContain("小泥");
+  });
+
+  it("GOLDEN v2 NOTES variant — 【爸爸妈妈想对你说】 rides AFTER canon, before memories; non-degraded reply marks relayed (once), trace lands on success only", async () => {
+    const seen: CtlLlmReq[] = [];
+    const identity = {
+      async getStudent() {
+        return { id: "k1", tenantId: "t", parentId: "p", displayName: "回来娃", age: 7, geniusX: { name: "小泥", personalityTag: "勇敢", backgroundSetting: "彩虹城堡" }, progress: { completedLessonIds: ["lesson-001"], currentPhase: 1, badges: [] }, createdAt: NOW, updatedAt: NOW };
+      },
+    };
+    const marked: string[][] = [];
+    const relay = {
+      async unrelayedNotes() { return [{ id: "n1", note: "妈妈为你骄傲" }]; },
+      async markRelayed(ids: string[]) { marked.push(ids); },
+    };
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, ctxGateway(seen), identity as never, undefined, undefined, undefined, undefined, relay);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    expect(seen[0]!.context!.text).toBe(
+      "【你的伙伴设定】\n你的名字：小泥\n你的性格：勇敢\n你来自：彩虹城堡\n孩子的名字：回来娃\n\n【爸爸妈妈想对你说】\n妈妈为你骄傲",
+    );
+    await untilTrue(() => marked.length === 1); // marked AFTER the non-degraded reply
+    expect(marked[0]).toEqual(["n1"]);
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "parent_note_relayed"));
+    expect(JSON.stringify(trace.events)).not.toContain("妈妈为你骄傲"); // counts/ids only — never text
+  });
+
+  it("a DEGRADED reply leaves parent notes UNRELAYED (the fallback never consumed them — retried next call)", async () => {
+    const seen: CtlLlmReq[] = [];
+    const marked: string[][] = [];
+    const relay = {
+      async unrelayedNotes() { return [{ id: "n1", note: "妈妈为你骄傲" }]; },
+      async markRelayed(ids: string[]) { marked.push(ids); },
+    };
+    const gw = new GW({
+      provider: {
+        llm: async (r: CtlLlmReq) => { seen.push(r); throw new Error("provider down"); }, // ⇒ degraded fallback
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "我们继续聊", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, gw, undefined, undefined, undefined, undefined, undefined, relay);
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "icebreak", interactionId: "r1", input: { kind: "voice", audioRef: "ref://a" } });
+    await untilTrue(() => seen.length === 1);
+    await untilTrue(() => emit.student.some((m) => m.msg.type === "AI_OUTPUT")); // the round fully completed
+    expect(marked).toHaveLength(0); // note still pending — relays next call
+    expect(trace.events.some((e) => e.payload.reason === "parent_note_relayed")).toBe(false);
   });
 
   it("PRIVACY PIN (cold block): memory values + displayName reach the PROVIDER but never a client or the snapshot", async () => {

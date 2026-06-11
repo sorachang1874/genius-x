@@ -27,3 +27,5 @@ export * from "./brand-style";
 export * from "./ip-character";
 // Phase 5 — tool registry (docs/contracts/tool.md).
 export * from "./tool";
+// Phase 6 — authenticated parent surface (docs/contracts/parent-surface.md).
+export * from "./parent-surface";

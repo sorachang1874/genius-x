@@ -11,6 +11,8 @@ import { IdentityService } from "./identity/service";
 import { WorkspaceService } from "./workspace/service";
 import { ShareService } from "./share/service";
 import { IpCharacterService } from "./workspace/ip-character";
+import { ParentSurfaceService } from "./parent/service";
+import { KeywordSafetyFilter } from "@genius-x/ai-gateway";
 import { startClassroomServer } from "./server";
 
 async function main(): Promise<void> {
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
   const workspace = pool ? new WorkspaceService(pool) : undefined; // same pool, same lifecycle
   const share = pool ? new ShareService(pool) : undefined;
   const ipCharacter = pool ? new IpCharacterService(pool) : undefined; // P4.5: same pool, same lifecycle
+  const parentSurface = pool ? new ParentSurfaceService(pool, new KeywordSafetyFilter()) : undefined; // P6
   if (!identity) {
     console.warn(
       "[bootstrap] identity routes DISABLED — no DATABASE_URL configured " +
@@ -54,6 +57,14 @@ async function main(): Promise<void> {
 
   // Phase 3 retention sweep (parent-share.md: share tokens purge at expiry+30d). Boot-time
   // is the scheduled-job stand-in; the count is logged so deletions are operator-visible.
+  if (parentSurface) {
+    try {
+      const purgedP = await parentSurface.purgeExpired();
+      if (purgedP > 0) console.log(`[parent] retention sweep: purged ${purgedP} access token(s) past expiry+30d`);
+    } catch (err) {
+      console.error("[parent] retention sweep FAILED (continuing):", (err as Error).name);
+    }
+  }
   if (share) {
     try {
       const purged = await share.purgeExpired();
@@ -102,6 +113,7 @@ async function main(): Promise<void> {
     ...(process.env.CORS_ORIGIN && { corsOrigin: process.env.CORS_ORIGIN }),
     ...(turnBuffer && { turnBuffer }),
     ...(ipCharacter && { ipCharacter }),
+    ...(parentSurface && { parentSurface }),
   });
   console.log(`genius-x server (mode=${config.mode}, identity=${identity ? "on" : "OFF"}) listening on ${handle.url}`);
 
