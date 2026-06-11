@@ -15,10 +15,15 @@ import { SessionProvider, useSession, type SessionProviderProps } from "../share
 
 const STAGES = lesson001.stages;
 
-function nextStage(currentStageId?: string): StageConfig | undefined {
-  if (!currentStageId) return STAGES[0];
+/** scene.md: declared successors when present (the teacher's in-class scene choice),
+ *  else the linear next — lesson-001 renders exactly one button, unchanged. */
+function nextStages(currentStageId?: string): StageConfig[] {
+  if (!currentStageId) return STAGES[0] ? [STAGES[0]] : [];
   const idx = STAGES.findIndex((s) => s.stageId === currentStageId);
-  return idx >= 0 ? STAGES[idx + 1] : undefined;
+  if (idx < 0) return [];
+  const current = STAGES[idx]!;
+  const ids = current.next ?? (idx + 1 < STAGES.length ? [STAGES[idx + 1]!.stageId] : []);
+  return ids.map((id) => STAGES.find((s) => s.stageId === id)).filter((s): s is StageConfig => s !== undefined);
 }
 
 export function AssistantApp({ deps }: { deps?: SessionProviderProps["deps"] } = {}): React.JSX.Element {
@@ -41,15 +46,15 @@ function AssistantPanel(): React.JSX.Element {
   const current = STAGES.find((s) => s.stageId === session.currentStageId);
   // only offer "unlock next" once the class actually exists (a student has joined → currentStageId
   // is known). Before that, unlocking would target intro and be denied as "unknown session".
-  const next = session.currentStageId ? nextStage(session.currentStageId) : undefined;
+  const successors = nextStages(session.currentStageId);
+  const next = successors[0]; // legacy single-successor flows (force-advance targets it)
   const assistantId = session.assistantId ?? "assistant-1";
 
-  const unlock = (): void => {
-    if (!next) return;
-    if (next.unlock === "assistant") {
-      session.send({ type: "ASSISTANT_UNLOCK", stageId: next.stageId, assistantId });
+  const unlock = (target: StageConfig): void => {
+    if (target.unlock === "assistant") {
+      session.send({ type: "ASSISTANT_UNLOCK", stageId: target.stageId, assistantId });
     } else {
-      session.send({ type: "TEACHER_UNLOCK", stageId: next.stageId });
+      session.send({ type: "TEACHER_UNLOCK", stageId: target.stageId });
     }
   };
 
@@ -84,10 +89,14 @@ function AssistantPanel(): React.JSX.Element {
       <section className="assistant-app__controls">
         {next ? (
           <>
-            <button type="button" onClick={unlock}>
-              解锁下一环节：{next.name}
-              <small>（{next.unlock === "assistant" ? "助教" : "老师"}解锁）</small>
-            </button>
+            {/* scene.md: one button per declared successor — the teacher's in-class scene
+                choice. Linear lessons (lesson-001) render exactly one, unchanged. */}
+            {successors.map((target) => (
+              <button key={target.stageId} type="button" onClick={() => unlock(target)}>
+                {successors.length > 1 ? `进入场景：${target.name}` : `解锁下一环节：${target.name}`}
+                <small>（{target.unlock === "assistant" ? "助教" : "老师"}解锁）</small>
+              </button>
+            ))}
 
             {!showForceAdvance ? (
               <button

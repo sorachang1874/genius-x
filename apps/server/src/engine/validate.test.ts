@@ -133,3 +133,64 @@ describe("episodicMemory placement (agent-context.md: STAGE-scoped, fail closed)
     if (!r.ok) expect(r.errors.some((e) => e.includes("STAGE-scoped"))).toBe(true);
   });
 });
+
+describe("scene graph + tool resolution (Phase 5: scene.md / tool.md preflights)", () => {
+  const sceneLesson = (): LessonConfig => {
+    const l = clone(lesson001);
+    // a branching middle: shape may go to talent OR straight to birth
+    l.stages[2]!.next = ["talent", "birth"];
+    l.stages[3]!.next = ["birth"];
+    return l;
+  };
+
+  it("accepts a branching scene library with exactly one reachable terminal", () => {
+    expect(validateLessonConfig(sceneLesson()).ok).toBe(true);
+  });
+
+  it("rejects unknown next refs, multiple terminals, unreachable scenes, and dead ends", () => {
+    const badRef = sceneLesson();
+    badRef.stages[2]!.next = ["nope"];
+    expect(validateLessonConfig(badRef).ok).toBe(false);
+
+    const twoTerminals = clone(lesson001);
+    twoTerminals.stages[2]!.next = []; // shape becomes a SECOND terminal
+    const r2 = validateLessonConfig(twoTerminals);
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.errors.some((e) => e.includes("exactly ONE terminal") || e.includes("cannot reach"))).toBe(true);
+
+    const unreachable = sceneLesson();
+    unreachable.stages[1]!.next = ["shape"]; // icebreak only → shape; but talent declared… still reachable via shape. Make one truly dead:
+    unreachable.stages[0]!.next = ["shape"]; // intro skips icebreak entirely
+    unreachable.stages[1]!.next = ["shape"];
+    const r3 = validateLessonConfig(unreachable);
+    expect(r3.ok).toBe(false);
+    if (!r3.ok) expect(r3.errors.some((e) => e.includes("unreachable"))).toBe(true);
+  });
+
+  it("resolves declared tools against the registry; unknown tools and brand-vocab fragments fail closed", () => {
+    const withTool = clone(lesson001);
+    withTool.stages[2]!.tools = ["magic_brush"];
+    expect(validateLessonConfig(withTool, [{ toolId: "magic_brush", version: "v1", childName: "魔法画笔", mechanic: "image_refine", options: [{ id: "hat", label: "戴帽子", promptFragment: "戴上一顶小帽子" }] }]).ok).toBe(true);
+
+    const unknownTool = clone(lesson001);
+    unknownTool.stages[2]!.tools = ["nope_tool"];
+    expect(validateLessonConfig(unknownTool, []).ok).toBe(false);
+
+    const brandFragment = clone(lesson001);
+    brandFragment.stages[2]!.tools = ["bad_tool"];
+    const r = validateLessonConfig(brandFragment, [{ toolId: "bad_tool", version: "v1", childName: "工具", mechanic: "image_refine", options: [{ id: "x", label: "水彩", promptFragment: "水彩画风的感觉" }] }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("brand-style language"))).toBe(true);
+  });
+});
+
+describe("tool child-facing copy (banned wording, fail closed)", () => {
+  it("rejects a tool childName or option label carrying banned wording", () => {
+    const l = clone(lesson001);
+    l.stages[2]!.tools = ["ai_tool"];
+    const r = validateLessonConfig(l, [{ toolId: "ai_tool", version: "v1", childName: "AI 画笔", mechanic: "image_refine", options: [] }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes("banned child-facing wording"))).toBe(true);
+    expect(validateLessonConfig(l, [{ toolId: "ai_tool", version: "v1", childName: "魔法画笔", mechanic: "image_refine", options: [{ id: "x", label: "大模型风", promptFragment: "x" }] }]).ok).toBe(false);
+  });
+});

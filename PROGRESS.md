@@ -94,7 +94,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 3** | Parent read-only artifact | 2 weeks | ✅ Complete (2026-06-09) |
 | **Phase 4** | Agent service with memory — **scope expanded** (2026-06-09): cross-lesson memory + in-scene multi-round running context (hot/cold split) + episodic memory kind + operational floor (concurrency, cost counters, safety holes) | 4-5 weeks | ✅ Complete (2026-06-10) |
 | **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
-| **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; **absorbs brand-style slice** (style-v0 gateway injection BEFORE first tool-produced works) | 3-4 weeks | 📋 Planned |
+| **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; brand-style slice live since P4 | 3-4 weeks | ✅ Complete (2026-06-10) |
 | **Phase 6** | Parent co-working | 3 weeks | 📋 Planned |
 | **Phase 7** | Rich media pipeline (narrowed: async media + video/3D + style-conformance checks; brand slice moved to P5) | 4-5 weeks | 📋 Planned |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
@@ -308,6 +308,15 @@ writers cut over, projected fields fail closed); works carry character-version l
 parent-side curation (latest-per-type finals + 打磨轨迹 slices — decision ②'s coupling
 honored). Review blocker fixed: deterministic latest-per-type via works.seq.
 
-_Next milestone: Phase 5 — tool registry & tool-calling (tools = in-scene creation
-instruments; brand-style slice already live at the gateway). Pending external inputs:
-brand/market design doc (replaces style-v0), team confirmation of decision ③._
+**Phase 5 delivered** (2026-06-10, PR #25): scene.md v1 (scene==stage formalized; scene
+LIBRARY + in-class selection via declared successors — decision ⑤ option 2; exactly-one-
+terminal completion; linear lessons untouched; assistant panel renders one button per
+successor) + tool.md v1 (closed gateway-bound mechanics — tools can never name an
+endpoint; brand composition rule; no free text into prompts; provenance = the interaction
+record). First real tool: 魔法画笔 (image_refine) — the iterative aesthetics loop: own-work
+ownership validated, declared options only, img2img guidance styled with the brand suffix,
+enforced image-scene round caps (warm wrap-up), every denial countable + warm-redirected.
+
+_Next milestone: Phase 6 — parent co-working (authenticated parent accounts, growth
+timeline). Pending external inputs: brand/market design doc (replaces style-v0), team
+confirmation of decision ③, 微信资质._

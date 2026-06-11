@@ -491,3 +491,20 @@ describe("per-child fallback rotation (no duplicate 'personal' friends in degrad
     expect(a.imageUrls).not.toEqual(b.imageUrls);
   });
 });
+
+describe("img2img guidance prompt (tool.md image_refine — styled, reviewed)", () => {
+  it("the guidance prompt gets the brand suffix; unsafe guidance never reaches the provider", async () => {
+    const submitted: ImageGenRequest[] = [];
+    const provider = stub({ imageSubmit: async (r: ImageGenRequest) => { submitted.push(r); return { jobId: "j" }; } });
+    const events: TraceEvent[] = [];
+    const gw = new AiGateway({ provider, safety: new KeywordSafetyFilter(), fallback: new PresetFallbackLibrary(), trace: { record: (e) => events.push(e) }, now: () => NOW, brandStyle: BRAND_STYLE_V0 });
+    await gw.imageGen({ kind: "img2img", source: "cos://own/a.png", prompt: "戴上一顶小帽子", count: 3, seed: "k1" });
+    expect(submitted[0]!.prompt).toBe(`戴上一顶小帽子，${BRAND_STYLE_V0.promptSuffix}`); // styled
+    expect(submitted[0]!.source).toBe("cos://own/a.png"); // the ref untouched
+
+    const bad = await gw.imageGen({ kind: "img2img", source: "cos://own/a.png", prompt: "变得暴力一点", count: 3, seed: "k1" });
+    expect(submitted).toHaveLength(1); // blocked BEFORE submit
+    expect(bad.meta.degraded).toBe(true);
+    expect(events.some((e) => e.kind === "safety" && (e.payload as { capability?: string }).capability === "image_gen")).toBe(true);
+  });
+});

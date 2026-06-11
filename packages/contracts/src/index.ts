@@ -25,3 +25,5 @@ export * from "./agent-context";
 export * from "./brand-style";
 // Phase 4.5 — IP character entity (docs/contracts/ip-character.md).
 export * from "./ip-character";
+// Phase 5 — tool registry (docs/contracts/tool.md).
+export * from "./tool";

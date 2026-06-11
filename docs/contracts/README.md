@@ -35,8 +35,8 @@ See `docs/architecture/scalable-architecture-v2.md` for the full design.
 | [`agent-context.md`](agent-context.md) | Agent context: hot/cold split, turn buffer, `LlmRequest.history`, episodic memory, safety parity, budget floor | **frozen v1** (implementation: Phase 4 Steps 2–5) | Phase 4 |
 | [`ip-character.md`](ip-character.md) | IP character entity: layered canon model, version snapshots, works lineage, GeniusXProfile transition | **frozen v1** (implementation: Phase 4.5) | Phase 4.5 |
 | [`brand-style.md`](brand-style.md) | Brand style: gateway-level injection rule + trace stamping (binding); style VALUES are v0 placeholders pending the brand design doc (DF-v2-18) | **frozen v0** (injection rule implemented) | Phase 4+ (values: external) |
-| `tool.md` | Tool registry and tool-calling framework | planned — not yet authored | Phase 5 |
-| `scene.md` | Scene library / in-class selection / multi-round mechanics | planned — owner C-vs-I undecided (lead assigns before fan-out) | Phase 5 |
+| [`tool.md`](tool.md) | Tools = in-scene creation instruments: closed gateway-bound mechanics, brand composition, no-free-text inputs, `image_refine` | **frozen v1** (implementation: P5 Step 3) | Phase 5 |
+| [`scene.md`](scene.md) | Scene library + in-class selection (decision ⑤); scene==stage formalized; mechanics×prompts rule | **frozen v1** (owner = C, lead decision 2026-06-10; implementation: P5 Step 2) | Phase 5 |
 | [`parent-share.md`](parent-share.md) | Parent read-only share artifact (capability URL, privacy filter, deployment exposure rule) | **frozen v1.2** | Phase 3 (co-working = Phase 6) |
 | `content.md` | Media storage, processing, and CDN delivery | planned — not yet authored | Phase 7 |
 

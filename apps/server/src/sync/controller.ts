@@ -23,8 +23,9 @@ import { EPISODE_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE, clampTurnText } from "@ge
 import type { LlmTextResult, TurnBufferEntry } from "@genius-x/contracts";
 import type { AiGateway } from "@genius-x/ai-gateway";
 import type { TurnBufferStore } from "../session/turnbuffer";
+import { toolById } from "@genius-x/course-config";
 import type { Reducer } from "../engine";
-import { stageById } from "../engine/nextStage";
+import { stageById, terminalStageId } from "../engine/nextStage";
 import type { SessionStore } from "../session/store";
 import { validateClassSessionForLesson } from "../session/validateSession";
 import { IdentityServiceError, type IdentityService } from "../identity/service";
@@ -92,11 +93,17 @@ interface Effects {
   sceneExited?: { stageId: string; studentIds: string[]; rounds: Record<string, number> };
   /** Round-cap denials (Phase 4 floor): the runtime serves the warm wrap-up per entry. */
   capReached?: { studentId: string; stageId: string; interactionId: string }[];
+  /** Tool denials (Phase 5): the runtime serves the warm redirect per entry. */
+  toolDenied?: { studentId: string; stageId: string; interactionId: string }[];
 }
 
 /** The friend's WARM WRAP-UP when a round cap is reached (decision ⑦ default) — the child
  *  taps and hears the friend wind the scene down, NEVER a dead button. Child-safe wording. */
 const CAP_WRAP_UP_LINE = "我们聊得好开心呀！先把现在的做完，待会儿还有更好玩的等着我们～";
+
+/** The friend's warm REDIRECT when a tool/option isn't available here (tool.md) —
+ *  countable for operators, never a dead button. Child-safe wording. */
+const TOOL_REDIRECT_LINE = "这个魔法我们待会儿再玩～先试试现在这个好不好？";
 
 /** Friendly preset台词 if birth pre-generation degrades to nothing — the child always hears something
  *  (PRD §0). Child-safe: no AI/Prompt/LLM wording. Replaced by real content when providers land (DF-M4-1). */
@@ -193,7 +200,7 @@ export class ClassroomController {
       // Lesson complete = the class transitioned INTO the final stage (incl. via
       // FORCE_ADVANCE — an operator decision still ends the lesson). Captured inside the
       // mutex for a consistent snapshot; written back OUTSIDE it (fire-and-forget).
-      const finalStageId = this.lesson.stages[this.lesson.stages.length - 1]!.stageId;
+      const finalStageId = terminalStageId(this.lesson); // scene.md: terminal = no successors
       const completed =
         persist && before.currentStageId !== finalStageId && result.state.currentStageId === finalStageId
           ? { lessonId: before.lessonId, students: result.state.students }
@@ -213,6 +220,9 @@ export class ClassroomController {
           : undefined;
       const capReached = result.commands
         .filter((c): c is Extract<EngineCommand, { type: "CAP_REACHED" }> => c.type === "CAP_REACHED")
+        .map((c) => ({ studentId: c.studentId, stageId: c.stageId, interactionId: c.interactionId }));
+      const toolDenied = result.commands
+        .filter((c): c is Extract<EngineCommand, { type: "TOOL_DENIED" }> => c.type === "TOOL_DENIED")
         .map((c) => ({ studentId: c.studentId, stageId: c.stageId, interactionId: c.interactionId }));
       // Phase 2: a student COMPLETING a stage that declares an artifact (stage.output)
       // produces a workspace Work — captured here (consistent snapshot), written outside.
@@ -251,7 +261,7 @@ export class ClassroomController {
       }
       return {
         next: persist ? result.state : undefined,
-        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }), ...(sceneExited && { sceneExited }), ...(capReached.length > 0 && { capReached }) },
+        out: { broadcasts, traces, calls, prepares, ...(completed && { completed }), ...(artifacts.length > 0 && { artifacts }), ...(sceneExited && { sceneExited }), ...(capReached.length > 0 && { capReached }), ...(toolDenied.length > 0 && { toolDenied }) },
       };
     });
     for (const t of effects.traces) this.trace.record(t);
@@ -277,6 +287,13 @@ export class ClassroomController {
       this.emit.toStudent(sessionId, cap.studentId, {
         type: "AI_OUTPUT", studentId: cap.studentId, stageId: cap.stageId, interactionId: cap.interactionId,
         output: { text: CAP_WRAP_UP_LINE },
+      });
+    }
+    // Phase 5: undeclared tool/option ⇒ the friend's warm REDIRECT (same pattern).
+    for (const deny of effects.toolDenied ?? []) {
+      this.emit.toStudent(sessionId, deny.studentId, {
+        type: "AI_OUTPUT", studentId: deny.studentId, stageId: deny.stageId, interactionId: deny.interactionId,
+        output: { text: TOOL_REDIRECT_LINE },
       });
     }
     // Decision ⑥ (counters-not-limits): per-student scene round counters at scene exit.
@@ -570,7 +587,7 @@ export class ClassroomController {
       // A slow prepare can resolve AFTER the class already transitioned into the final stage —
       // the lesson-end write-back snapshot missed this speech. Flag it for a supplemental,
       // idempotent single-student write (outside the mutex) so the speech is never lost.
-      const finalStageId = this.lesson.stages[this.lesson.stages.length - 1]!.stageId;
+      const finalStageId = terminalStageId(this.lesson); // scene.md: terminal = no successors (matches applyEvent)
       const late =
         persist && result.state.currentStageId === finalStageId
           ? { lessonId: s.lessonId, you: result.state.students[studentId]! }
@@ -695,6 +712,36 @@ export class ClassroomController {
         const img = await this.gateway.imageGen({ kind: "text2img", source, count: 3, seed: cmd.studentId }); mark(img.meta);
         return { output: { imageUrls: img.imageUrls }, degraded };
       }
+      case "refine": {
+        // tool.md image_refine: the reducer already gated tool-declared-on-stage; here we
+        // resolve registry/option/ownership — any miss is the warm redirect (countable),
+        // never free text into a prompt and never another child's work.
+        const tool = toolById(input.toolId);
+        const option = tool?.options?.find((o) => o.id === input.optionId);
+        const base = await this.refineBaseOwned(cmd.studentId, input.baseImageRef);
+        if (!tool || tool.mechanic !== "image_refine" || !option || !base) {
+          this.trace.record(this.mkTrace("interaction", {
+            reason: "tool_denied",
+            cause: !tool ? "tool_not_registered" : tool.mechanic !== "image_refine" ? "wrong_mechanic" : !option ? "option_not_declared" : "base_ref_not_owned", // (not-owned covers missing contentUrl too)
+            toolId: input.toolId, optionId: input.optionId,
+            sessionId, stageId, studentId: cmd.studentId, interactionId: cmd.interactionId,
+          }));
+          return { output: { text: TOOL_REDIRECT_LINE }, degraded: false };
+        }
+        const img = await this.gateway.imageGen({
+          kind: "img2img",
+          source: base.contentUrl,
+          prompt: option.promptFragment, // SCENE content — the gateway appends the brand suffix
+          count: 3,
+          seed: cmd.studentId,
+        }); mark(img.meta);
+        this.trace.record(this.mkTrace("interaction", {
+          reason: img.meta.degraded ? "tool_refine_degraded" : "tool_refine_ok",
+          toolId: tool.toolId, toolVersion: tool.version, optionId: option.id,
+          sessionId, stageId, studentId: cmd.studentId, interactionId: cmd.interactionId,
+        }));
+        return { output: { imageUrls: img.imageUrls }, degraded };
+      }
       case "playPrepared":
         // never reached — playPrepared is intercepted in onMessage (replay of a stored output,
         // not an AI call). Defensive: degrade rather than throw.
@@ -753,6 +800,20 @@ export class ClassroomController {
           reason: "episode_consolidation_failed", error: String((err as Error)?.name ?? err), ...key,
         }));
       }
+    }
+  }
+
+  /** tool.md v1: the refine base must be the student's OWN recorded work WITH a renderable
+   *  contentUrl (same-student pointer discipline; in-flight candidates are a later slice).
+   *  Returns the work (single fetch — the happy path reuses it) or null = deny. */
+  private async refineBaseOwned(studentId: string, baseImageRef: string): Promise<{ contentUrl: string } | null> {
+    if (!this.workspace) return null;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(baseImageRef)) return null;
+    try {
+      const w = await this.workspace.getWork(baseImageRef);
+      return w.studentId === studentId && w.contentUrl ? { contentUrl: w.contentUrl } : null;
+    } catch {
+      return null;
     }
   }
 
@@ -973,9 +1034,11 @@ export class ClassroomController {
       const inputText =
         "answersByQuestionId" in input
           ? JSON.stringify(input.answersByQuestionId)
-          : "option" in input && input.option !== undefined && transcript !== undefined
-            ? JSON.stringify({ option: input.option, transcript })
-            : (transcript ?? ("option" in input ? input.option : undefined));
+          : "toolId" in input
+            ? JSON.stringify({ toolId: input.toolId, optionId: input.optionId, baseImageRef: input.baseImageRef }) // tool.md rule 5: the interaction record IS the provenance (declared ids only)
+            : "option" in input && input.option !== undefined && transcript !== undefined
+              ? JSON.stringify({ option: input.option, transcript })
+              : (transcript ?? ("option" in input ? input.option : undefined));
       const images = output.imageUrls && output.imageUrls.length > 0;
       const outputKind = output.audioUrl ? "audio" : images ? "images" : output.text ? "text" : "none";
       // Image outputs (shape doodle/answers lines) persist their URL list as canonical

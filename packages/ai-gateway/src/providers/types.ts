@@ -53,6 +53,12 @@ export interface ImageGenRequest {
   kind: "img2img" | "text2img";
   /** Doodle image ref (img2img) or assembled prompt (text2img). */
   source: string;
+  /**
+   * Phase 5 (tool.md image_refine): img2img GUIDANCE prompt — SCENE content only (a
+   * declared tool option's fragment); the gateway appends the brand suffix to it
+   * (brand-style.md: with a guidance prompt present, img2img is styled, not just stamped).
+   */
+  prompt?: string;
   count: number;
   /**
    * Per-child determinism seed (the studentId): degraded fallbacks rotate the preset pool

@@ -57,6 +57,17 @@ export interface StageConfig {
    * contract — the validator rejects this field on an interaction.
    */
   episodicMemory?: boolean;
+  /**
+   * Phase 5 (scene.md): declared allowed SUCCESSORS — the teacher selects which scene
+   * runs next from this set. ABSENT = linear (implicit next-in-array; every existing
+   * lesson unchanged). `[]` = terminal stage (lesson completes on entering it).
+   */
+  next?: StageId[];
+  /**
+   * Phase 5 (tool.md): tools available IN this scene (ids resolve against the git
+   * registry — validator fails closed on an unresolvable ref).
+   */
+  tools?: string[];
 }
 
 export interface StageVariant {
@@ -104,6 +115,12 @@ export interface ImageGenInteraction {
   type: "image_gen";
   model: string; // adapter id, NOT a hard provider binding (D3)
   outputCount: number;
+  /**
+   * Phase 5 (tool.md): ENFORCED round cap for image scenes (generation + refine taps) —
+   * past it the friend warmly wraps up (the CAP_REACHED path; never a dead button).
+   * Absent = uncapped (pre-P5 behavior; the operational floor's counters still apply).
+   */
+  maxRounds?: number;
 }
 
 // (StageConfig.episodicMemory is declared on the stage type below — STAGE-scoped, matching

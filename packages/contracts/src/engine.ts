@@ -38,7 +38,13 @@ export type EngineCommand =
    * runtime serves the friend's WARM WRAP-UP line instead — the child never sees a dead
    * button, the operator counts the cap (additive command, lead-serialized).
    */
-  | { type: "CAP_REACHED"; studentId: string; stageId: StageId; interactionId: string };
+  | { type: "CAP_REACHED"; studentId: string; stageId: StageId; interactionId: string }
+  /**
+   * Phase 5 (tool.md): an undeclared tool/option invocation was denied — the runtime
+   * serves the friend's warm REDIRECT (the CAP_REACHED pattern: countable for operators,
+   * never a dead button for the child). Additive, lead-serialized.
+   */
+  | { type: "TOOL_DENIED"; studentId: string; stageId: StageId; interactionId: string };
 
 /** The reducer's typed return: next authoritative state + effects to execute. */
 export interface EngineResult {
