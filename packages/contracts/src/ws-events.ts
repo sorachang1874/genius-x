@@ -20,6 +20,9 @@ export type InteractionInput =
   | { kind: "answers"; answersByQuestionId: Record<string, string> } // shape B-line dialogue
   | { kind: "talentOption"; option: string } // talent pick
   | { kind: "talentAnswer"; option?: string; audioRef: AudioRef }
+  /** Phase 5 (tool.md): iterative refinement — base ref + DECLARED tool/option ids only
+   *  (no free text; the reducer denies undeclared ids; same-student ref discipline). */
+  | { kind: "refine"; baseImageRef: string; toolId: string; optionId: string }
   | { kind: "playPrepared"; preparedId: PreparedOutputId }; // birth: replay a server pre-generated output
 
 /** A student's CHOICE / finish (not an interaction). Source: D-M2 v2 (Codex #3). */

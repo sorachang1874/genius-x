@@ -22,7 +22,7 @@ import type {
   PreparedOutput,
 } from "@genius-x/contracts";
 import { evalAdvanceCondition } from "./guards";
-import { nextStageId, stageById } from "./nextStage";
+import { allowedSuccessors, stageById } from "./nextStage";
 
 export type Reducer = (state: ClassSession, event: EngineEvent, now: string) => EngineResult;
 
@@ -94,12 +94,15 @@ function tryAdvance(
   args: AdvanceArgs,
 ): EngineResult {
   const current = stageById(lesson, state.currentStageId);
-  const nextId = nextStageId(lesson, state.currentStageId);
-  if (!current || nextId === null) return denied(state, now, "no next stage");
+  // Phase 5 (scene.md): the teacher SELECTS among declared successors; linear lessons
+  // keep the single implicit successor (semantics unchanged).
+  const successors = allowedSuccessors(lesson, state.currentStageId);
+  if (!current || successors.length === 0) return denied(state, now, "no next stage");
+  if (!successors.includes(args.targetStageId))
+    return denied(state, now, `target ${args.targetStageId} not in allowed successors [${successors.join(", ")}]`);
+  const nextId = args.targetStageId;
   const next = stageById(lesson, nextId);
   if (!next) return denied(state, now, "next stage not found");
-  if (args.targetStageId !== nextId)
-    return denied(state, now, `target ${args.targetStageId} != next ${nextId}`);
 
   if (args.forced) {
     if (args.assistantId === undefined || !state.assistants.includes(args.assistantId))
@@ -310,6 +313,20 @@ function onInteract(
       ],
     };
   }
+  // Phase 5 (tool.md): a refine invocation must name a tool DECLARED on this stage —
+  // anything else is deny-with-trace (the controller serves the warm redirect; ids only).
+  if (event.input.kind === "refine") {
+    const st = stageById(lesson, event.stageId);
+    if (!st?.tools?.includes(event.input.toolId)) {
+      return {
+        state,
+        commands: [
+          { type: "TOOL_DENIED", studentId: event.studentId, stageId: event.stageId, interactionId: event.interactionId },
+          { type: "TRACE", event: mkTrace(now, "interaction", { reason: "tool_denied", cause: "tool_not_declared", stageId: event.stageId, studentId: event.studentId, interactionId: event.interactionId }) },
+        ],
+      };
+    }
+  }
   // talent voice/answer inputs feed an invisible memory extraction; seed pendingMemory so birth
   // pre-generation waits for the transcript to be mined (contracts-v1.4).
   const willExtract = wantsMemoryExtraction(lesson, event.stageId, event.input);
@@ -333,9 +350,9 @@ function birthSpeechStage(lesson: LessonConfig): StageConfig | undefined {
   return lesson.stages.find((st) => st.interaction?.type === "birth_speech");
 }
 
-/** The declared round cap for a stage's CONVERSATIONAL interaction (voice_chat maxTurns /
- *  multimodal_talent maxInteractions). Selection flows (structured_qa, image_gen) have no
- *  round cap. Resolves the student's variant when given (first-interaction fallback). */
+/** The declared round cap: voice_chat maxTurns / multimodal_talent maxInteractions /
+ *  image_gen maxRounds (P5 — bounds refine + generation taps). structured_qa is a
+ *  selection flow (no cap). Resolves the student's variant when given. */
 function roundCapFor(lesson: LessonConfig, stageId: StageId, variantId: string | undefined): number | undefined {
   const st = stageById(lesson, stageId);
   // Caller passes SERVER-truth variant first. An unmatched/bogus variantId FALLS THROUGH
@@ -348,6 +365,7 @@ function roundCapFor(lesson: LessonConfig, stageId: StageId, variantId: string |
     st?.variants?.[0]?.interaction;
   if (i?.type === "voice_chat") return i.maxTurns;
   if (i?.type === "multimodal_talent") return i.maxInteractions;
+  if (i?.type === "image_gen") return i.maxRounds; // P5: refine/generation taps capped when declared
   return undefined;
 }
 

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import type { StudentPredicate, AdvanceCondition, LessonConfig } from "@genius-x/contracts";
 import { EPISODE_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
+import type { ToolDefinition } from "@genius-x/contracts";
 
 /** Brand-style language is the GATEWAY's job (brand-style.md): the enumerated denylist a
  *  lesson's promptAssembly must not contain — scene content only, fail closed. */
@@ -37,7 +38,7 @@ const aiInteraction = z.union([
     maxTurns: z.number().int().positive(),
     thinkingAnimation: z.string().optional(),
   }),
-  z.object({ type: z.literal("image_gen"), model: z.string(), outputCount: z.number().int().positive() }),
+  z.object({ type: z.literal("image_gen"), model: z.string(), outputCount: z.number().int().positive(), maxRounds: z.number().int().positive().optional() }),
   z.object({
     type: z.literal("structured_qa"),
     promptTemplate: z.string(),
@@ -84,6 +85,8 @@ const stageConfig = z.object({
     .optional(),
   output: z.string().optional(),
   episodicMemory: z.boolean().optional(), // Phase 4: STAGE-scoped (agent-context.md)
+  next: z.array(z.string()).optional(), // Phase 5 (scene.md): declared successors
+  tools: z.array(z.string()).optional(), // Phase 5 (tool.md): in-scene tools
 });
 
 const lessonConfig = z.object({
@@ -124,8 +127,10 @@ function outputRefs(c: AdvanceCondition, acc: string[]): void {
   }
 }
 
-/** Validate shape + cross-references against the lesson's own declarations. Fails closed. */
-export function validateLessonConfig(raw: unknown): ValidationResult {
+/** Validate shape + cross-references against the lesson's own declarations (+ the tool
+ *  registry when given — scene.md/tool.md scene-graph and tool-resolution preflights).
+ *  Fails closed. */
+export function validateLessonConfig(raw: unknown, toolRegistry?: readonly ToolDefinition[]): ValidationResult {
   const parsed = lessonConfig.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
@@ -214,6 +219,66 @@ export function validateLessonConfig(raw: unknown): ValidationResult {
         }
         if (BRAND_STYLE_VOCABULARY_RE.test(i.promptAssembly)) {
           errors.push(`stage "${st.stageId}" promptAssembly contains brand-style language (brand-style.md: scene content only — the brand suffix is injected by the gateway)`);
+        }
+      }
+    }
+  }
+
+  // Phase 5 (scene.md): scene-graph preflights — `next` refs exist; EXACTLY ONE terminal
+  // (computed successors empty); every stage reaches the terminal; every stage reachable
+  // from the first (a declared-but-unreachable scene is dead config = drift). Fail closed.
+  {
+    const ids = lesson.stages.map((st) => st.stageId);
+    const succ = (id: string): string[] => {
+      const st = lesson.stages.find((x) => x.stageId === id)!;
+      if (st.next !== undefined) return st.next;
+      const i = ids.indexOf(id);
+      return i + 1 < ids.length ? [ids[i + 1]!] : [];
+    };
+    for (const st of lesson.stages) {
+      for (const n of st.next ?? []) {
+        if (!ids.includes(n)) errors.push(`stage "${st.stageId}" next references unknown stage "${n}"`);
+      }
+    }
+    if (errors.length === 0) {
+      const terminals = ids.filter((id) => succ(id).length === 0);
+      if (terminals.length !== 1) errors.push(`lesson must have exactly ONE terminal stage (found: ${terminals.join(", ") || "none"})`);
+      const reach = (from: string): Set<string> => {
+        const seen = new Set<string>([from]);
+        const queue = [from];
+        while (queue.length > 0) {
+          for (const n of succ(queue.shift()!)) if (!seen.has(n)) { seen.add(n); queue.push(n); }
+        }
+        return seen;
+      };
+      const fromFirst = reach(ids[0]!);
+      for (const id of ids) {
+        if (!fromFirst.has(id)) errors.push(`stage "${id}" is unreachable from the first stage (dead scene)`);
+        else if (terminals.length === 1 && !reach(id).has(terminals[0]!)) errors.push(`stage "${id}" cannot reach the terminal stage (dead end)`);
+      }
+    }
+  }
+  // Phase 5 (tool.md): every declared tool resolves against the registry; option fragments
+  // are scene content only (brand vocabulary lives in the gateway contract).
+  if (toolRegistry !== undefined) {
+    for (const st of lesson.stages) {
+      for (const toolId of st.tools ?? []) {
+        const t = toolRegistry.find((x) => x.toolId === toolId);
+        if (!t) {
+          errors.push(`stage "${st.stageId}" declares unknown tool "${toolId}"`);
+          continue;
+        }
+        const BANNED_CHILD_WORDING_RE = /\b(AI|ai|prompt|llm|token|model)\b|人工智能|大模型/;
+        if (BANNED_CHILD_WORDING_RE.test(t.childName)) {
+          errors.push(`tool "${toolId}" childName contains banned child-facing wording`);
+        }
+        for (const o of t.options ?? []) {
+          if (BANNED_CHILD_WORDING_RE.test(o.label)) {
+            errors.push(`tool "${toolId}" option "${o.id}" label contains banned child-facing wording`);
+          }
+          if (BRAND_STYLE_VOCABULARY_RE.test(o.promptFragment)) {
+            errors.push(`tool "${toolId}" option "${o.id}" promptFragment contains brand-style language (brand-style.md: scene content only)`);
+          }
         }
       }
     }

@@ -5,7 +5,7 @@
 import { Server } from "socket.io";
 import type { LessonConfig } from "@genius-x/contracts";
 import { AiGateway, BRAND_STYLE_V0, FakeProvider, KeywordSafetyFilter, PresetFallbackLibrary } from "@genius-x/ai-gateway";
-import { lesson001 } from "@genius-x/course-config";
+import { lesson001, TOOL_REGISTRY } from "@genius-x/course-config";
 import { makeReducer } from "./engine";
 import { validateLessonConfig } from "./engine/validate";
 import { InMemorySessionStore, type SessionStore } from "./session/store";
@@ -77,12 +77,11 @@ export function parseGatewayMaxConcurrent(raw: string | undefined): number {
 }
 
 export async function startClassroomServer(opts: ServerOptions = {}): Promise<ServerHandle> {
-  let lesson = opts.lesson;
-  if (!lesson) {
-    const validated = validateLessonConfig(lesson001);
-    if (!validated.ok) throw new Error(`Invalid lesson config: ${validated.errors.join("; ")}`);
-    lesson = validated.lesson;
-  }
+  // EVERY lesson validates at boot (provided or default) — scene-graph/tool preflights
+  // fail closed; tests needing invalid configs construct the controller directly.
+  const validated = validateLessonConfig(opts.lesson ?? lesson001, TOOL_REGISTRY);
+  if (!validated.ok) throw new Error(`Invalid lesson config: ${validated.errors.join("; ")}`);
+  const lesson = validated.lesson;
 
   const store = opts.store ?? new InMemorySessionStore();
   const trace = opts.trace ?? consoleTrace;

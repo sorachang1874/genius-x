@@ -215,12 +215,17 @@ export class AiGateway {
     // safety parity): a text2img source is PROSE that may embed client-derived content —
     // review it like llm input. img2img sources are refs, not prose (no review point; the
     // post-generation imageModerator covers the output side).
-    if (req.kind === "text2img") {
-      const input = this.d.safety.reviewInput(req.source);
-      if (!input.ok) {
-        this.emit("safety", { capability: "image_gen", reasons: input.reasons });
-        this.emit("fallback", { capability: "image_gen", reason: "input_filtered", ...(styleVersion && { styleVersion }) });
-        return this.d.fallback.imageGen(req.count, req.seed);
+    {
+      // Review EVERY prose field present, regardless of kind (a text2img request carrying
+      // a stray prompt field must not smuggle unreviewed text to the provider).
+      const proses = [req.kind === "text2img" ? req.source : undefined, req.prompt].filter((x): x is string => x !== undefined);
+      for (const prose of proses) {
+        const input = this.d.safety.reviewInput(prose);
+        if (!input.ok) {
+          this.emit("safety", { capability: "image_gen", reasons: input.reasons });
+          this.emit("fallback", { capability: "image_gen", reason: "input_filtered", ...(styleVersion && { styleVersion }) });
+          return this.d.fallback.imageGen(req.count, req.seed);
+        }
       }
     }
     // Brand style (brand-style.md): the ONE injection point no image call can bypass.
@@ -230,7 +235,9 @@ export class AiGateway {
     const styled: ImageGenRequest =
       this.d.brandStyle && req.kind === "text2img"
         ? { ...req, source: req.source === "" ? this.d.brandStyle.promptSuffix : `${req.source}，${this.d.brandStyle.promptSuffix}` }
-        : req;
+        : this.d.brandStyle && req.kind === "img2img" && req.prompt !== undefined
+          ? { ...req, prompt: req.prompt === "" ? this.d.brandStyle.promptSuffix : `${req.prompt}，${this.d.brandStyle.promptSuffix}` }
+          : req;
     if (!this.d.brandStyle) {
       this.emit("interaction", { capability: "image_gen", note: "brand_style_absent" });
     }

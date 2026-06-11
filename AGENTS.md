@@ -88,7 +88,7 @@ Define the contract in `docs/contracts/` **before** relying on the field.
 | A | Assistant / control surface | `apps/web/src/assistant` |
 | B | Student classroom flow | `apps/web/src/student` |
 | C | Course runtime (state machine, WS, API) | `apps/server` |
-| D | AI gateway (safety, budget, routing, fallback, **brand-style injection** — every image call carries the versioned style contract) | `packages/ai-gateway` |
+| D | AI gateway (safety, budget, routing, fallback, **brand-style injection**, **tool dispatch** — tools bind to a closed gateway mechanics enum, tool.md) | `packages/ai-gateway` |
 | E | Contracts, schema, docs, **test harness** | `packages/contracts`, `docs/`, smoke harness |
 | F | Platform shadow (CMS, auth, Langfuse, promptfoo) — pluggable | `apps/cms`, `packages/auth`, `tools/` |
 

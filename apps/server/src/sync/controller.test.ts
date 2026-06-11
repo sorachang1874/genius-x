@@ -1366,3 +1366,156 @@ describe("canon source switch (P4.5-B review: the headline path now pinned)", ()
     expect(trace.events.some((e) => e.payload.reason === "work_lineage_missing")).toBe(true);
   });
 });
+
+// --- Phase 5: scene selection + image_refine tool dispatch ---
+
+describe("scene selection (scene.md: the teacher picks among declared successors)", () => {
+  function sceneLesson() {
+    const l = JSON.parse(JSON.stringify(lesson001)) as typeof lesson001;
+    l.stages[2]!.next = ["talent", "birth"]; // shape: teacher may run talent OR skip to birth
+    l.stages[3]!.next = ["birth"];
+    return l;
+  }
+
+  it("an allowed non-linear successor unlocks; a non-successor is denied", async () => {
+    const l = sceneLesson();
+    const c = new ClassroomController(l, makeReducer(l), store, emit, trace, clock, makeGateway(trace));
+    await store.save(seed("shape", { k1: freshStudent({ stageStatus: { shape: "completed" }, outputs: { avatarUrl: "u" } }) }));
+    // skip talent entirely — the teacher selects birth directly (declared successor)
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "birth", assistantId: "a1" });
+    await untilTrue(() => emit.session.some((m) => m.msg.type === "STAGE_UNLOCK" && (m.msg as { stageId: string }).stageId === "birth"));
+    // from birth, "shape" is NOT a successor — denied (operator-visible)
+    await c.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "shape", assistantId: "a1" });
+    await untilTrue(() => trace.events.some((e) => String(e.payload.reason ?? "").includes("not in allowed successors")));
+  });
+
+  it("LINEAR lessons are untouched (no next fields ⇒ exactly the old semantics)", async () => {
+    await store.save(seed("icebreak", { k1: freshStudent() }));
+    await controller.onMessage("s1", { type: "FORCE_ADVANCE", stageId: "talent", assistantId: "a1" }); // skipping shape: denied
+    await untilTrue(() => trace.events.some((e) => String(e.payload.reason ?? "").includes("not in allowed successors")));
+    expect(emit.session.filter((m) => m.msg.type === "STAGE_UNLOCK")).toHaveLength(0);
+  });
+});
+
+describe("image_refine tool dispatch (tool.md — the aesthetics loop)", () => {
+  function toolLesson() {
+    const l = JSON.parse(JSON.stringify(lesson001)) as typeof lesson001;
+    l.stages[2]!.tools = ["magic_brush"];
+    return l;
+  }
+  function refineGateway(submitted: { kind: string; source: string; prompt?: string; seed?: string }[]) {
+    return new GW({
+      provider: {
+        llm: async () => ({ capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }),
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "t", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async (r: { kind: string; source: string; prompt?: string; seed?: string }) => { submitted.push(r); return { jobId: "j" }; },
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["v1", "v2", "v3"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+  }
+
+  it("refines the child's OWN work through img2img with the declared fragment + seed", async () => {
+    const OWN_WORK = "33333333-3333-4333-8333-0000000000bb";
+    const ws = {
+      async getWork(id: string) {
+        if (id !== OWN_WORK) throw new Error("not found");
+        return { id, studentId: "k1", contentUrl: "cos://own/avatar.png" };
+      },
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const submitted: { kind: string; source: string; prompt?: string; seed?: string }[] = [];
+    const l = toolLesson();
+    const c = new ClassroomController(l, makeReducer(l), store, emit, trace, clock, refineGateway(submitted), undefined, ws as unknown as WorkspaceService);
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "rf1", variantId: "drawing", input: { kind: "refine", baseImageRef: OWN_WORK, toolId: "magic_brush", optionId: "hat" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "tool_refine_ok")); // fires after the full gen
+    expect(submitted[0]).toMatchObject({ kind: "img2img", source: "cos://own/avatar.png", seed: "k1" });
+    expect(submitted[0]!.prompt).toBe("戴上一顶可爱的小帽子"); // SCENE fragment (brand suffix is the gateway's job — this gateway has no brand contract)
+    const ok = trace.events.find((e) => e.payload.reason === "tool_refine_ok");
+    expect(ok!.payload).toMatchObject({ toolId: "magic_brush", toolVersion: "magic_brush_v1", optionId: "hat" });
+  });
+
+  it("ANOTHER child's work as base ⇒ warm redirect + tool_denied(base_ref_not_owned); never a generation", async () => {
+    const ws = {
+      async getWork(id: string) { return { id, studentId: "SOMEONE_ELSE", contentUrl: "cos://other.png" }; },
+      async recordWork() { return { id: "w" }; }, async recordInteraction() { return { id: "i" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const submitted: { kind: string }[] = [];
+    const l = toolLesson();
+    const c = new ClassroomController(l, makeReducer(l), store, emit, trace, clock, refineGateway(submitted as never), undefined, ws as unknown as WorkspaceService);
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "rf2", variantId: "drawing", input: { kind: "refine", baseImageRef: "33333333-3333-4333-8333-0000000000cc", toolId: "magic_brush", optionId: "hat" } });
+    await untilTrue(() => emit.student.some((m) => m.msg.type === "AI_OUTPUT")); // the redirect IS the completion signal
+    expect(trace.events.some((e) => e.payload.reason === "tool_denied" && e.payload.cause === "base_ref_not_owned")).toBe(true);
+    expect(submitted).toHaveLength(0);
+    const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT")!.msg as { output: { text?: string } };
+    expect(out.output.text).toContain("魔法"); // the warm redirect, not a dead button
+  });
+
+  it("a tool NOT declared on the stage is denied by the REDUCER with the warm redirect", async () => {
+    const c = new ClassroomController(lesson001, makeReducer(lesson001), store, emit, trace, clock, makeGateway(trace)); // lesson-001: no tools anywhere
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "rf3", variantId: "drawing", input: { kind: "refine", baseImageRef: "33333333-3333-4333-8333-0000000000dd", toolId: "magic_brush", optionId: "hat" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "tool_denied" && e.payload.cause === "tool_not_declared"));
+    const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT")!.msg as { output: { text?: string } };
+    expect(out.output.text).toContain("魔法");
+  });
+});
+
+describe("P5 review-mandated pins", () => {
+  it("image_gen.maxRounds is ENFORCED: past it, refine taps get the warm wrap-up, no provider call", async () => {
+    const l = JSON.parse(JSON.stringify(lesson001)) as typeof lesson001;
+    l.stages[2]!.tools = ["magic_brush"];
+    const drawing = l.stages[2]!.variants!.find((v) => v.id === "drawing")!;
+    if (drawing.interaction.type === "image_gen") drawing.interaction.maxRounds = 2;
+    const submitted: unknown[] = [];
+    const gw = new GW({
+      provider: {
+        llm: async () => ({ capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }),
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "t", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async (r: unknown) => { submitted.push(r); return { jobId: "j" }; },
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["a"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(l, makeReducer(l), store, emit, trace, clock, gw);
+    // child already COMPLETED 2 image rounds on shape — the cap
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" }, interactionCounts: { shape: 2 } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "rfX", variantId: "drawing", input: { kind: "refine", baseImageRef: "33333333-3333-4333-8333-0000000000ee", toolId: "magic_brush", optionId: "hat" } });
+    await untilTrue(() => trace.events.some((e) => e.payload.reason === "round_cap_reached"));
+    expect(submitted).toHaveLength(0); // no provider call past the cap
+    const out = emit.student.find((m) => m.msg.type === "AI_OUTPUT")!.msg as { output: { text?: string } };
+    expect(out.output.text).toContain("开心"); // the warm wrap-up
+  });
+
+  it("PROVENANCE: the refine exchange persists toolId/optionId/baseImageRef in the interaction record", async () => {
+    const OWN = "33333333-3333-4333-8333-0000000000bb";
+    const recorded: { input: { kind: string; text?: string } }[] = [];
+    const ws = {
+      async getWork(id: string) { return { id, studentId: "k1", contentUrl: "cos://own/a.png" }; },
+      async recordInteraction(req: { input: { kind: string; text?: string } }) { recorded.push(req); return { id: "i" }; },
+      async recordWork() { return { id: "w" }; }, async recordMemory() { return { id: "m" }; },
+    };
+    const l = JSON.parse(JSON.stringify(lesson001)) as typeof lesson001;
+    l.stages[2]!.tools = ["magic_brush"];
+    const gw = new GW({
+      provider: {
+        llm: async () => ({ capability: "llm" as const, text: "回应", meta: { source: "primary" as const, degraded: false } }),
+        tts: async () => ({ capability: "tts" as const, audioUrl: "u", meta: { source: "primary" as const, degraded: false } }),
+        asr: async () => ({ capability: "asr" as const, transcript: "t", meta: { source: "primary" as const, degraded: false } }),
+        imageSubmit: async () => ({ jobId: "j" }),
+        imagePoll: async () => ({ capability: "image_gen" as const, imageUrls: ["v1"], meta: { source: "primary" as const, degraded: false } }),
+      },
+      safety: new KSF(), fallback: new PFL(), trace, now: () => NOW,
+    });
+    const c = new ClassroomController(l, makeReducer(l), store, emit, trace, clock, gw, undefined, ws as unknown as WorkspaceService);
+    await store.save(seed("shape", { k1: freshStudent({ selectedVariant: { shape: "drawing" } }) }));
+    await c.onMessage("s1", { type: "INTERACT", studentId: "k1", stageId: "shape", interactionId: "rfP", variantId: "drawing", input: { kind: "refine", baseImageRef: OWN, toolId: "magic_brush", optionId: "wings" } });
+    await untilTrue(() => recorded.length === 1);
+    const parsed = JSON.parse(recorded[0]!.input.text!) as { toolId: string; optionId: string; baseImageRef: string };
+    expect(parsed).toEqual({ toolId: "magic_brush", optionId: "wings", baseImageRef: OWN }); // tool.md rule 5
+  });
+});
