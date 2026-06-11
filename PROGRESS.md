@@ -343,11 +343,19 @@ captured into memory, value scrubbed from the address bar) + the no-referrer met
 binding preconditions; mid-session dead tokens (uniform 404) now show re-request guidance
 on every surface, never misleading retry/rewording copy. 408 tests green.
 
-_Next milestone: Phase 6.5 APP integration (founder-authorized 2026-06-10) — contracts
-frozen (world/theme/agent-session v1 + parent-share v1.5 + parent-surface v1.2 +
-brand-style v0.1); next = Shell refactor (classroom behavior pinned by Lesson-1 smoke,
-one-tap entry DF-v2-26) → 乐园 v0 zero-AI floor → parent unlock door → L1 reflection.
-Playground DB writes gated on data-and-privacy upgrade + workspace.md mode discriminator
+**Phase 6.5 Step 2 delivered** (2026-06-10): the Shell — `resolveEntry` owns URL→entry
+(all legacy aliases + precedence pinned by tests); ThemeProvider applies ThemePackV1
+tokens as `--gx-*` CSS custom properties (theme.md realization in `@genius-x/contracts`:
+closed-schema manual parse, THEME_FLOORS_V0 with fail-closed contrast/wrap-band hue
+checks, BRAND_DEFAULT_THEME; invalid/floor-crossing/expired-skin packs NEVER render —
+brand default applies); styles.css tokenized (gx tokens + legacy aliases — zero visual
+change, classroom suites untouched and green). Review minors all fixed (prototype-
+smuggle guard, degenerate-value rejections, achromatic hue exemption); DF-v2-27 records
+the countable-trace + loader-seam obligations for when non-default packs ship.
+
+_Next milestone: Phase 6.5 Step 3 — 乐园 v0 zero-AI floor (world registry + 伙伴之家 +
+换装间 + 画廊回放) + the parent unlock door (playground_session_tokens). Playground DB
+writes stay gated on data-and-privacy upgrade + workspace.md mode discriminator
 (agent-session.md gate ⑤). Phase 7 (real providers/media) deferred behind this. Pending
 external: brand/market design doc (DF-v2-18), 微信资质 (Q7 — start early, calendar lead
 time), decision ③ confirmation._
