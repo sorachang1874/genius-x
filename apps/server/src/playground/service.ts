@@ -215,7 +215,7 @@ export class PlaygroundService {
     const diaryRows = await this.db.query(
       `SELECT value, created_at FROM memories
        WHERE student_id = $1 AND key = $2
-       ORDER BY created_at DESC, id DESC LIMIT 5`,
+       ORDER BY seq DESC LIMIT 5`,
       [studentId, DIARY_MEMORY_KEY],
     );
     const diary: WorldDiaryEntry[] = [];
@@ -233,12 +233,20 @@ export class PlaygroundService {
     let greeting: string | undefined;
     const newestEpisode = await this.db.query(
       `SELECT value FROM memories WHERE student_id = $1 AND key = $2
-       ORDER BY created_at DESC, id DESC LIMIT 1`,
+       ORDER BY seq DESC LIMIT 1`,
       [studentId, EPISODE_MEMORY_KEY],
     );
     if (newestEpisode.rows.length > 0) {
       const e = parseEpisodeValue((newestEpisode.rows[0] as { value: string }).value);
-      if (e !== null) greeting = `${e.summary}——我还想着呢！`;
+      if (e !== null) {
+        greeting = `${e.summary.replace(/[。！？～!?.\s]+$/u, "")}——我还想着呢！`;
+      } else {
+        // Corruption signal at the greeting read — counted, never silently swallowed
+        // (agent-session.md v1.2: REUSES context_cold_miss; review fix). Zero episodes
+        // is a LEGITIMATE first visit (the agent-context empty-profile precedent) —
+        // untraced by design.
+        this.mk("context_cold_miss", { cause: "episode_malformed", studentId });
+      }
     }
 
     const versions = await this.db.query(

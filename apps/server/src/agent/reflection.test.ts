@@ -71,7 +71,34 @@ describe("the deterministic diary (honest tier)", () => {
     expect(r.episodes.every((m) => m.key === EPISODE_MEMORY_KEY)).toBe(true);
   });
 
-  it("lessons can never DECLARE self_narrative; direct writes must be schema-valid", async () => {
+  it("CONCURRENT reflections cannot duplicate (DB backstop — migration 009 unique index)", async () => {
+    const kidB = (await ctx.service.enrollStudent({ parentId: (await ctx.makeParent(await ctx.makeTenant("并发租户"))), displayName: "并发娃", age: 7, consent: CONSENT_V1 })).id;
+    await addEpisode(kidB, "s7", "我们一起搭了一座桥");
+    const [a, b] = await Promise.all([
+      svc.reflectOnLesson(kidB, "lesson-007", "s7"),
+      svc.reflectOnLesson(kidB, "lesson-007", "s7"),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1); // exactly one wins
+    expect(await workspace.listDiaryEntries(kidB, 10)).toHaveLength(1);
+  });
+
+  it("truncation is sentence-bounded + COUNTED; trailing punctuation never doubles; madeCount is the CURATED count", async () => {
+    const kidC = (await ctx.service.enrollStudent({ parentId: (await ctx.makeParent(await ctx.makeTenant("截断租户"))), displayName: "截断娃", age: 8, consent: CONSENT_V1 })).id;
+    await addEpisode(kidC, "s8", `${"我们一起做了一件很长很长的事".repeat(30)}。`); // punctuated, ~420 chars (≤ episode cap 500)
+    await addEpisode(kidC, "s8", `${"然后又做了另一件很长的事".repeat(30)}！`); // composed total > 600 ⇒ truncation fires
+    // two drafts of ONE type ⇒ curated count = 1, never 2
+    await workspace.recordWork({ studentId: kidC, type: "avatar_image", contentUrl: "fake://1.png", metadata: { lessonId: "lesson-008", stageId: "shape", degraded: false } });
+    await workspace.recordWork({ studentId: kidC, type: "avatar_image", contentUrl: "fake://2.png", metadata: { lessonId: "lesson-008", stageId: "shape", degraded: false } });
+    expect(await svc.reflectOnLesson(kidC, "lesson-008", "s8")).toBe(true);
+    const d = parseDiaryValue((await workspace.listDiaryEntries(kidC, 1))[0]!.value)!;
+    expect(d.summary.length).toBeLessThanOrEqual(600);
+    expect(d.summary).not.toContain("。；"); // stripped punctuation never doubles at joins
+    expect(d.summary.endsWith("。") || d.summary.endsWith("…")).toBe(true); // sentence-bounded cut
+    expect(d.madeCount).toBe(1); // distinct types, not raw rows
+    expect(traced.some((e) => e.payload.reason === "reflection_truncated")).toBe(true);
+  });
+
+  it("direct diary writes must be schema-valid (lesson-declaration rejection is pinned in validate.test.ts)", async () => {
     await expect(
       workspace.recordMemory({
         studentId: kidA, key: DIARY_MEMORY_KEY, value: "not json",

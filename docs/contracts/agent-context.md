@@ -115,7 +115,7 @@ quality/safety control). Open-ended creation gets a new memory KIND validated by
 
 | Property | Rule |
 | --- | --- |
-| Reserved kind | `key = "episode"` — a RESERVED key, never in `declaredMemoryKeys` (validator rejects a lesson declaring it); the three-layer key check carves out exactly this value |
+| Reserved kind | `key = "episode"` — a RESERVED key, never in `declaredMemoryKeys` (validator rejects a lesson declaring it); the three-layer key check carves out exactly these two values (`episode`; `self_narrative` — workspace.md v1.3/v1.4, the companion diary, equally excluded from SEMANTIC retrieval so the cold block's content stays versioned) |
 | Shape | `value` = JSON `{ summary: string (≤ 500 chars), tags: string[] (≤ 5, each ≤ 20 chars) }` — schema-validated at the gateway AND the workspace boundary; oversize ⇒ rejected with trace, never truncated silently |
 | Producer | End-of-scene **consolidation**: when a scene exits (stage transition), the agent service summarizes that scene's buffer into ONE episodic memory via `gateway.extractEpisode` (new capability, same input-safety → call → schema-validate → output-safety pipeline as `llm`) |
 | Trigger config | **Stage-scoped** (matching the consolidation trigger): `StageConfig` gains optional `episodicMemory?: boolean`; the existing per-interaction `memoryExtraction: boolean` stays interaction-level for semantic keys, unchanged. The validator rejects `episodicMemory` on an interaction (wrong scope, fail closed) |

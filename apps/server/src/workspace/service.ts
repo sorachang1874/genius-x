@@ -513,10 +513,20 @@ export class WorkspaceService {
     const r = await this.db.query(
       `SELECT ${MEMORY_COLUMNS} FROM memories
        WHERE student_id = $1 AND key = $2 AND session_id = $3
-       ORDER BY created_at ASC, id ASC`,
+       ORDER BY seq ASC`,
       [studentId, EPISODE_MEMORY_KEY, sessionId],
     );
     return (r.rows as MemoryRow[]).map(toMemory);
+  }
+
+  /** Exact diary-idempotency read (one entry per student×lesson — workspace.md v1.4). */
+  async hasDiaryEntry(studentId: string, lessonId: string): Promise<boolean> {
+    requireUuid(studentId, "studentId");
+    const r = await this.db.query(
+      `SELECT 1 FROM memories WHERE student_id = $1 AND key = $2 AND lesson_id = $3 LIMIT 1`,
+      [studentId, DIARY_MEMORY_KEY, lessonId],
+    );
+    return r.rows.length > 0;
   }
 
   /** Diary entries (key="self_narrative"), newest first — the 摊开的日记 read. */
@@ -525,17 +535,18 @@ export class WorkspaceService {
     const r = await this.db.query(
       `SELECT ${MEMORY_COLUMNS} FROM memories
        WHERE student_id = $1 AND key = $2
-       ORDER BY created_at DESC, id DESC LIMIT $3`,
+       ORDER BY seq DESC LIMIT $3`,
       [studentId, DIARY_MEMORY_KEY, limit],
     );
     return (r.rows as MemoryRow[]).map((row) => ({ ...toMemory(row), lessonId: row.lesson_id }));
   }
 
-  /** Count one lesson's works for a student (the diary's only number). */
+  /** Count one lesson's CURATED works (distinct types — matches the wall's latest-per-
+   *  type framing; raw row counts would inflate with every refine — review fix). */
   async countLessonWorks(studentId: string, lessonId: string): Promise<number> {
     requireUuid(studentId, "studentId");
     const r = await this.db.query(
-      `SELECT COUNT(*)::int AS n FROM works WHERE student_id = $1 AND lesson_id = $2 AND type <> 'birth_certificate'`,
+      `SELECT COUNT(DISTINCT type)::int AS n FROM works WHERE student_id = $1 AND lesson_id = $2 AND type <> 'birth_certificate'`,
       [studentId, lessonId],
     );
     return (r.rows[0] as { n: number }).n;

@@ -1,6 +1,6 @@
 # Workspace Contract (Phase 2)
 
-**Status**: Frozen v1.3 (v1.2 + the self_narrative diary carve-out — see Changelog)
+**Status**: Frozen v1.4 (v1.3 + the diary hardening rev — see Changelog)
 **Owner**: Workspace Service (Agent H)
 **Phase**: Phase 2 — Student workspace foundation
 **Typed realization**: `packages/contracts/src/workspace.ts` + `workspace-api.ts`
@@ -224,7 +224,7 @@ Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-co
 | Field | Owner | Allowed values | Notes / preflight | Lands |
 | --- | --- | --- | --- | --- |
 | `StudentMemory.key = "episode"` carve-out | H (write path), I (producer) | schema-valid `EpisodeValue` JSON only (`parseEpisodeValue` — the SAME validator the gateway uses) | see the amended `StudentMemory.key` row above; undeclared-key preflight excludes `episode` | **IMPLEMENTED (P4 Step 3)** |
-| `StudentMemory.key = "self_narrative"` carve-out (v1.3) | H (write path), I (sole producer = lesson-end ReflectionService) | schema-valid `DiaryEntryValue` JSON only (`parseDiaryValue`); DETERMINISTIC v1 composed from the session's reviewed episode summaries + a works count (no model, no free text); defensive safety review before storage; idempotent per (student, lesson); EXCLUDED from semantic context retrieval (a diary must never leak into the cold block — context content is versioned); traces: `reflection_written` / `reflection_skipped` (cause ∈ already_written \| no_episodes) / `reflection_failed` (cause ∈ safety_rejected \| schema_invalid) / `reflection_crashed`; reader = playground worldView (摊开的日记, top 5) + parent curation later | undeclared-key preflight excludes `self_narrative` too; lessons can never declare it | **IMPLEMENTED (P6.5 Step 4)** |
+| `StudentMemory.key = "self_narrative"` carve-out (v1.3, hardened v1.4) | H (write path), I (sole producer = lesson-end ReflectionService — by CONVENTION: enforced by the writes-are-server-internal boundary + the validator preflight, not caller identity) | schema-valid `DiaryEntryValue` JSON only (`parseDiaryValue`); DETERMINISTIC v1 composed from the session's reviewed episode summaries (trailing punctuation stripped) + the CURATED works count (DISTINCT types — matches the wall, refines never inflate it); defensive safety review before storage; **idempotent per (student, lesson), DB-ENFORCED** (migration 009 partial unique index — re-takes never duplicate, concurrent writers lose to `already_written`); truncation cuts at a sentence boundary, code-point-safe, COUNTED; EXCLUDED from semantic context retrieval; ordering by `memories.seq` (migration 009 — the works.seq tie fix extended); traces (CLOSED): `reflection_written` / `reflection_skipped` (cause ∈ already_written \| no_episodes) / `reflection_failed` (cause ∈ safety_rejected \| schema_invalid) / `reflection_crashed` / `reflection_truncated` / `reflection_episode_malformed`; reader = playground worldView (摊开的日记, top 5, key-set exactly {summary, createdAt} on the wire) | undeclared-key preflight excludes `self_narrative` too; the LESSON VALIDATOR rejects a lesson declaring it (v1.4 — closing the extraction-path producer hole) | **IMPLEMENTED (P6.5 Step 4 + review hardening)** |
 | `InteractionRecord.safety` | H | `ok \| input_filtered \| output_filtered` | additive column (migration 004); recorder sets it from `AiMeta.filtered`; **Phase-4 scope: CONVERSATIONAL exchanges only** — image exchanges (doodle/answers) always record `ok` (their degradation is visible via `output.degraded`; image-path filtered-marking folds in with real moderation, M6); **backfill `"ok"` is a labeling DEFAULT, not evidence of review** — readers injecting pre-migration transcripts into model context must exclude/re-review rows with `output.degraded = true` | **IMPLEMENTED (P4 Step 3)** |
 | `WorkMetadata.ipCharacterVersion?` | H (column), 4.5 writers | positive int (version pointer) | links artifacts to the character version they DERIVE FROM (current at record time); a FAILED character lookup is traced `work_lineage_missing` (accept-with-trace); pre-character lesson-1 rows are intentionally unstamped — NOT drift, untraced (P4.5-B scoping amendment) | **IMPLEMENTED (P4.5, migration 005)** |
 | Works lifecycle rev: one Work per completion **EVENT** | H + C | — | replaces lifecycle rule 3; shipped WITH parent-share v1.3 curation (decision ②) | **IMPLEMENTED (P4.5)** |
@@ -236,6 +236,14 @@ Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-co
   first-class history; `workspace_work_iteration` replaces the stale_recomplete
   divergence trace); `WorkMetadata.ipCharacterVersion` lands (migration 005) —
   pending-amendments table entries marked implemented.
+- **v1.4** (2026-06-11, lead-serialized after the deferred Step-4 adversarial review —
+  4 confirmed majors fixed): lesson validator now rejects `self_narrative` declarations
+  (the extraction path could otherwise mint MODEL-AUTHORED diary entries served to the
+  child — the sole-producer chain's one hole); idempotency DB-enforced (migration 009
+  partial unique index; probe-proven check-then-write race closed); `memories.seq` added
+  (the works.seq created_at-tie fix extended to greeting/diary/episode-order reads);
+  madeCount = curated DISTINCT-type count; truncation sentence-bounded + counted;
+  malformed episode rows counted at every read.
 - **v1.3** (2026-06-11, lead-serialized with P6.5 Step 4): `self_narrative` reserved-kind
   carve-out — the companion diary (L1 reflection, deterministic tier). Same discipline as
   `episode`: schema-valid only, never lesson-declarable, preflight-excluded; ADDITIONALLY

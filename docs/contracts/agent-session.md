@@ -1,6 +1,6 @@
 # Agent Session Contract (playground — the friend at home)
 
-**Status**: Frozen v1.1 (v1 + the v0 implementation rev — see Changelog)
+**Status**: Frozen v1.2 (v1.1 + the greeting cold-miss semantics — see Changelog)
 **Owner**: Course runtime (Agent C) — session lifecycle; Agent service (Agent I) — context;
 parent surfaces (Agent K) — the unlock door
 **Typed realization**: `packages/contracts/src/agent-session.ts` (to be added)
@@ -34,7 +34,10 @@ parent taps 「把屏幕交给孩子」 (parent H5/小程序)
     divergence from share-token re-mint semantics — the token IS the session lock);
     a second device opening mid-session gets the warm "朋友已经在那边和你玩啦" state)
   → child's world opens (visit ritual: the friend notices, greets from episodic
-    memory — cold-context miss ⇒ generic warm greeting, traced)
+    memory. v1.2 semantics: ZERO episodes = a legitimate first visit — generic warm
+    greeting, UNTRACED (the agent-context empty-profile precedent); a MALFORMED newest
+    episode = a corruption signal — generic warm greeting + `context_cold_miss`
+    (cause=episode_malformed), counted never swallowed)
   → free visit (zero-AI floor always; AI-tier objects only behind gates ①-④, rule 3)
   → wind-down (quota approaching: the friend gets sleepy — gradual, never a popup)
   → close ritual (the child tucks the friend in; world goes to night; "明天见")
@@ -137,6 +140,11 @@ assets so it plays without any server call.
 
 ## Changelog
 
+- **v1.2** (2026-06-11, lead-serialized after the deferred Step-4 review): greeting
+  cold-miss semantics pinned — zero episodes is a legitimate untraced first visit;
+  a malformed newest episode traces `context_cold_miss` (cause=episode_malformed).
+  The v1 wording ("miss ⇒ traced") conflated the two; code and contract now agree.
+
 - **v1.1** (2026-06-10, lead-serialized after the Step-3 adversarial review): closed
   trace taxonomy gains `playground_mint_curfew_rejected` + `playground_mint_quota_
   exhausted` (parent-affecting rejections are countable) with v0 emission semantics
@@ -157,4 +165,4 @@ assets so it plays without any server call.
   follow-up at p95 queue-wait > 1s). Core: lifecycle + sleepy wind-down, zero-AI floor,
   five gates, no-mic input grammar, earned-is-forever grants, single memory substrate.
 
-_Agent Session Contract · APP integration · Frozen v1.1 · 2026-06-10_
+_Agent Session Contract · APP integration · Frozen v1.2 · 2026-06-11_

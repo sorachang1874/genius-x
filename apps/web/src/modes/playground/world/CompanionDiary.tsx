@@ -6,6 +6,10 @@
  */
 import type { WorldObjectProps } from "./registry";
 
+/** The classroom's timezone — diary dates must match the child's day, not UTC
+ *  (an 07:30 lesson must not read as yesterday — review fix). */
+const diaryDate = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", timeZone: "Asia/Shanghai" });
+
 export function CompanionDiary({ world }: WorldObjectProps): React.JSX.Element | null {
   if (world.diary.length === 0) return null;
   return (
@@ -14,7 +18,7 @@ export function CompanionDiary({ world }: WorldObjectProps): React.JSX.Element |
       <ol>
         {world.diary.map((entry, i) => (
           <li key={`${entry.createdAt}-${i}`}>
-            <time dateTime={entry.createdAt}>{entry.createdAt.slice(5, 10).replace("-", "月")}日</time>
+            <time dateTime={entry.createdAt}>{diaryDate.format(new Date(entry.createdAt))}</time>
             <p>{entry.summary}</p>
           </li>
         ))}

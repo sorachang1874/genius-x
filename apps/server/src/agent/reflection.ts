@@ -38,35 +38,45 @@ export class ReflectionService {
   /**
    * Reflect on one student's lesson: episodes of THIS session → one diary entry.
    * Returns true when an entry was written (false = skipped, traced with cause).
+   * Idempotency is DB-ENFORCED (migration 009 partial unique index): one entry per
+   * (student, lesson), forever — re-takes never duplicate; the exact-match read below
+   * is the fast path, the unique index is the backstop under concurrency (probe-proven
+   * race in the deferred review: two concurrent calls both passed a windowed read-check).
    */
   async reflectOnLesson(studentId: string, lessonId: string, sessionId: string): Promise<boolean> {
-    // Idempotency (the P4.5 retry rule): one entry per (student, lesson) — re-runs no-op.
-    const existing = await this.workspace.listDiaryEntries(studentId, 50);
-    if (existing.some((d) => d.lessonId === lessonId)) {
+    if (await this.workspace.hasDiaryEntry(studentId, lessonId)) {
       this.mk("reflection_skipped", { cause: "already_written", studentId, lessonId });
       return false;
     }
 
-    // The diary reads what consolidation wrote: this SESSION's episodes only.
+    // The diary reads what consolidation wrote: this SESSION's episodes only. A
+    // malformed episode row is a corruption signal — counted, never silently dropped.
     const episodes = await this.workspace.listSessionEpisodes(studentId, sessionId);
-    const summaries = episodes
-      .map((e) => parseEpisodeValue(e.value)?.summary)
-      .filter((x): x is string => typeof x === "string");
+    let malformed = 0;
+    const summaries: string[] = [];
+    for (const e of episodes) {
+      const parsed = parseEpisodeValue(e.value);
+      if (parsed === null) malformed++;
+      else summaries.push(stripTrailingPunctuation(parsed.summary));
+    }
     if (summaries.length === 0) {
       // A degraded lesson (no consolidations landed) writes NO diary — absence is the
       // honest state; countable, never a fabricated memory.
-      this.mk("reflection_skipped", { cause: "no_episodes", studentId, lessonId });
+      this.mk("reflection_skipped", { cause: "no_episodes", studentId, lessonId, malformed });
       return false;
     }
     const madeCount = await this.workspace.countLessonWorks(studentId, lessonId);
 
     // DETERMINISTIC composition from reviewed data (no model, no free text beyond the
     // episode summaries themselves). First-person companion voice, banned-wording-safe
-    // template; bounded.
+    // template; bounded — truncation cuts at a sentence boundary, code-point-safe, and
+    // is COUNTED (the repo's never-silently-truncate rule).
     let summary = `今天${summaries.join("；然后")}。`;
     if (madeCount > 0) summary += `我们一起做了${madeCount}件小东西，都好好收着呢。`;
+    let truncated = false;
     if (summary.length > DIARY_SUMMARY_MAX_CHARS) {
-      summary = `${summary.slice(0, DIARY_SUMMARY_MAX_CHARS - 1)}…`;
+      truncated = true;
+      summary = truncateAtSentence(summary, DIARY_SUMMARY_MAX_CHARS);
     }
 
     // Belt-and-braces review (episode summaries were reviewed at their write).
@@ -83,16 +93,45 @@ export class ReflectionService {
       this.mk("reflection_failed", { cause: "schema_invalid", studentId, lessonId });
       return false;
     }
-    await this.workspace.recordMemory({
-      studentId,
-      key: DIARY_MEMORY_KEY,
-      value,
-      context: { lessonId, stageId: "lesson_end", sessionId },
-      importance: 0.5,
-    });
+    try {
+      await this.workspace.recordMemory({
+        studentId,
+        key: DIARY_MEMORY_KEY,
+        value,
+        context: { lessonId, stageId: "lesson_end", sessionId },
+        importance: 0.5,
+      });
+    } catch (err) {
+      // The DB backstop (uniq_memories_diary_per_lesson): a concurrent writer won —
+      // exactly the already-written outcome, never an error.
+      if (String((err as Error).message ?? err).includes("uniq_memories_diary_per_lesson")) {
+        this.mk("reflection_skipped", { cause: "already_written", studentId, lessonId });
+        return false;
+      }
+      throw err;
+    }
+    if (truncated) this.mk("reflection_truncated", { studentId, lessonId, composedFrom: summaries.length });
+    if (malformed > 0) this.mk("reflection_episode_malformed", { studentId, lessonId, malformed });
     this.mk("reflection_written", { studentId, lessonId, episodes: summaries.length, madeCount });
     return true;
   }
+}
+
+/** Trailing 。！？～ strip — real-LLM episode summaries may end punctuated; the
+ *  composer's joins (；然后 / ——我还想着呢) must not double up. */
+export function stripTrailingPunctuation(s: string): string {
+  return s.replace(/[。！？～!?.\s]+$/u, "");
+}
+
+/** Code-point-safe truncation at the last sentence boundary (。or ；) before the cap —
+ *  never a split surrogate, never a mid-sentence cut when a boundary exists. */
+export function truncateAtSentence(s: string, max: number): string {
+  const head = [...s].slice(0, max - 1).join("");
+  const lastBoundary = Math.max(head.lastIndexOf("。"), head.lastIndexOf("；"));
+  if (lastBoundary <= 0) return `${head}…`;
+  const cut = head.slice(0, lastBoundary + 1);
+  // a list-separator boundary (；) closes as a sentence — the diary never ends mid-list
+  return cut.endsWith("；") ? `${cut.slice(0, -1)}。` : cut;
 }
 
 /** Re-exported for callers that compose greetings from the same episode source. */
