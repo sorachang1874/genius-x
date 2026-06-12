@@ -204,6 +204,10 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 
 ## Changelog
 
+- **裁决记录**(2026-06-12,创始人 D1——本契约挂起项了断):策展后的情节摘要可
+  进入家长报告/时间线;逐字记录永久 DENY(安全升级唯一例外)。实现随家长报告
+  切片落地(届时本契约与 parent-share.md 同步修订)。
+
 - **v1 + Step-5 annotations** (2026-06-10, lead-serialized — completes Phase 4's
   operational floor): round caps ENFORCED (reducer denies past maxTurns/maxInteractions
   with the additive `CAP_REACHED` command; the runtime serves the friend's warm wrap-up —
