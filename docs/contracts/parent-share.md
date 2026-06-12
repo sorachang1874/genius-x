@@ -208,6 +208,10 @@ preflight below binding the content pipeline.
 
 ## Changelog
 
+- **裁决记录**(2026-06-12,创始人 D1):episodes 的 DENY 维持于「逐字/原始」层;
+  **策展摘要**(经安全审查的衍生物)获准进入家长报告与时间线——实现随家长报告
+  切片做正式修订(本行仅记录裁决,不改变当前 DENY 行为)。
+
 - **v1.5** (2026-06-10, lead-serialized with the agent-session.md freeze): the BINDING
   exposure rule gains token-gated `GET/POST /playground/*` as the THIRD internet-facing
   route family — the child-at-home playground surface (agent-session.md). Same review
