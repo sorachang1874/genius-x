@@ -2,7 +2,7 @@
 
 ## Last updated
 
-2026-06-11 (PHASES 1-6 + 6.5 Steps 1-4 COMPLETE; development PAUSED at founder's request — see docs/reports/2026-06-11-progress-report.md)
+2026-06-11 (development RESUMED; Step-4 deferred review completed — all findings fixed)
 
 ## Current state
 
@@ -379,9 +379,19 @@ world.md `companion_diary` object shipped. 450 tests green. NOTE: the customary
 adversarial review round for this slice is DEFERRED to development resumption
 (founder paused development 2026-06-11 for a progress report).
 
-**DEVELOPMENT PAUSED** (founder, 2026-06-11) — snapshot report:
-[`docs/reports/2026-06-11-progress-report.md`](docs/reports/2026-06-11-progress-report.md).
-Resume point: review the Step-4 slice, then parent panel (DF-v2-28) / 心愿种子 co-creation.
-Playground writes stay gated on gate ⑤. Phase 7 deferred behind APP integration.
-Pending external: brand/market design doc (DF-v2-18), 微信资质 (Q7 — calendar risk,
-start early), decision ③._
+**DEVELOPMENT RESUMED** (founder, 2026-06-11). **Step-4 deferred review completed and
+ALL findings fixed** (4 confirmed majors + 11 low): lesson validator now rejects
+`self_narrative` declarations (the one hole letting the extraction path mint
+MODEL-AUTHORED diary entries served to the child — closed, tested); diary idempotency
+DB-ENFORCED (migration 009 partial unique index; probe-proven concurrent-write race
+closed); `memories.seq` added (the works.seq tie fix extended to greeting/diary/episode
+reads); `world_diary_malformed` serialized into world.md v1.2's closed taxonomy + the CI
+subset test widened beyond prefix filtering; greeting cold-miss semantics pinned
+(agent-session v1.2); truncation sentence-bounded + counted; madeCount = curated
+DISTINCT-type count; diary wire shape pinned; UTC date bug fixed (Asia/Shanghai).
+workspace.md → v1.4. 453 tests; 009 smoked on real PG16.
+
+_Next: parent panel (DF-v2-28 — quota settings: tenants.config playground key +
+playground_settings, most-restrictive fail-closed) → 心愿种子 co-creation. Gate ⑤ still
+blocks playground writes. Pending external: brand doc (DF-v2-18), 微信资质 (Q7 —
+calendar risk), decision ③._
