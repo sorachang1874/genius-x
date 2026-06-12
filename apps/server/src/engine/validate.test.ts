@@ -85,6 +85,14 @@ describe("review-mandated preflights (P4 Step 1c)", () => {
     if (!r.ok) expect(r.errors.some((e) => e.includes('reserved key "episode"'))).toBe(true);
   });
 
+  it("rejects a lesson declaring the RESERVED 'self_narrative' diary key (workspace.md v1.3 — else the extraction path could mint model-authored diary entries)", () => {
+    const bad = clone(lesson001);
+    bad.declaredMemoryKeys.push("self_narrative");
+    const r = validateLessonConfig(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.some((e) => e.includes('reserved key "self_narrative"'))).toBe(true);
+  });
+
   it("rejects a non-tokenizable question id when a promptAssembly exists (CJK id would silently un-template)", () => {
     const bad = clone(lesson001);
     const dialogue = bad.stages[2]!.variants!.find((v) => v.id === "dialogue")!;

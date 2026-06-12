@@ -1,6 +1,6 @@
 # World Contract (APP integration — the friend's home)
 
-**Status**: Frozen v1.1 (v1 + the enforcement-fidelity rev — see Changelog)
+**Status**: Frozen v1.2 (v1.1 + the diary-read taxonomy rev — see Changelog)
 **Owner**: Student classroom flow / child surfaces (Agent B) — rendering; Lead — the mapping table
 **Typed realization**: `packages/contracts/src/world.ts` (to be added with the Shell work)
 **Companion contracts**: [`theme.md`](theme.md)(世界长什么样)、[`agent-session.md`](agent-session.md)
@@ -79,9 +79,14 @@ ip-character.md, theme.md, agent-session.md). The registry is code, versioned in
 | --- | --- | --- | --- | --- | --- | --- |
 | mapping table | Lead (serialized) | this doc | closed rows above | Shell renderer, world components | n/a | registry-mirror CI (mechanism above) |
 | object copy | B | component strings | banned-wording-clean, form-agnostic | child UI | n/a | banned-wording scan (extended to world components) |
-| trace taxonomy (CLOSED) | B | this row | exactly: `world_object_miss`, `world_render_floor` | operator metrics | n/a | trace-reason exact-match tests |
+| trace taxonomy (CLOSED) | B (client renders) + C (server worldView reads — v1.2) | this row | exactly: `world_object_miss`, `world_render_floor`, `world_diary_malformed` (v1.2 — the server-side diary read counts corrupted rows) | operator metrics | n/a | trace-reason exact-match tests; the playground suite's subset test covers world_*-prefixed reasons too (v1.2 — prefix evasion closed) |
 
 ## Changelog
+
+- **v1.2** (2026-06-11, lead-serialized after the deferred Step-4 review):
+  `world_diary_malformed` added to the closed taxonomy (emitter = the server-side
+  worldView read, owner note added); the CI subset test widened beyond the playground_
+  prefix so out-of-contract world_* reasons can no longer evade the gate.
 
 - **v1.1** (2026-06-10, lead-serialized after the Step-3 adversarial review): the
   mapping table gains the `Registry key` column (the CI test parses this doc — the
@@ -96,4 +101,4 @@ ip-character.md, theme.md, agent-session.md). The registry is code, versioned in
   speech = AI 档), deletion note (no stored data here), closed trace taxonomy.
   Core: closed asset→object mapping, form-agnostic, earned-not-prestocked.
 
-_World Contract · APP integration · Frozen v1.1 · 2026-06-10_
+_World Contract · APP integration · Frozen v1.2 · 2026-06-11_

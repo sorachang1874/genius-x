@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 import type { StudentPredicate, AdvanceCondition, LessonConfig } from "@genius-x/contracts";
-import { EPISODE_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
+import { EPISODE_MEMORY_KEY, DIARY_MEMORY_KEY, PROMPT_ASSEMBLY_TOKEN_RE } from "@genius-x/contracts";
 import type { ToolDefinition } from "@genius-x/contracts";
 
 /** Brand-style language is the GATEWAY's job (brand-style.md): the enumerated denylist a
@@ -158,6 +158,12 @@ export function validateLessonConfig(raw: unknown, toolRegistry?: readonly ToolD
   // declaring it would let child-derived free values flow under the reserved key.
   if (memoryKeys.has(EPISODE_MEMORY_KEY)) {
     errors.push(`declaredMemoryKeys must not contain the reserved key "${EPISODE_MEMORY_KEY}" (agent-context.md)`);
+  }
+  // workspace.md v1.3: "self_narrative" is equally reserved (the companion diary). A
+  // lesson declaring it would let the EXTRACTION path mint model-authored diary entries
+  // served straight to the child — the sole-producer chain (ReflectionService) breaks.
+  if (memoryKeys.has(DIARY_MEMORY_KEY)) {
+    errors.push(`declaredMemoryKeys must not contain the reserved key "${DIARY_MEMORY_KEY}" (workspace.md v1.3)`);
   }
 
   // certificate labels/order must reference declared memory keys (fail closed — contracts-v1.4)

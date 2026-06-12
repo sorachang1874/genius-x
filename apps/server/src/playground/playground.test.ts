@@ -89,14 +89,18 @@ describe("the unlock door (parent-surface.md v1.2 / agent-session.md token class
     expect(traced.some((e) => e.payload.reason === "playground_mint_quota_exhausted")).toBe(true);
   });
 
-  it("CLOSED trace taxonomy (agent-session.md v1.1): every emitted reason is in the contract set", () => {
+  it("CLOSED trace taxonomies (agent-session.md v1.2 + world.md v1.2): EVERY reason this service emits is contract-declared — no prefix evasion", () => {
     const CLOSED = new Set([
+      // agent-session.md v1.2
       "playground_floor_entered", "playground_quota_config_miss",
       "playground_session_opened", "playground_session_closed",
       "playground_token_revoked_by_remint", "playground_mint_curfew_rejected",
       "playground_mint_quota_exhausted",
+      // world.md v1.2 (server worldView reads) + the contracted context reuse
+      "world_object_miss", "world_render_floor", "world_diary_malformed",
+      "context_cold_miss",
     ]);
-    const emitted = traced.map((e) => String(e.payload.reason)).filter((r) => r.startsWith("playground_"));
+    const emitted = traced.map((e) => String(e.payload.reason)); // ALL reasons — review fix
     expect(emitted.length).toBeGreaterThan(0);
     for (const r of emitted) expect(CLOSED.has(r), `out-of-contract trace reason: ${r}`).toBe(true);
   });
@@ -129,6 +133,7 @@ describe("the v0 world view (world.md — read-only, gate ⑤)", () => {
     const json = JSON.stringify(world);
     expect(json).not.toContain(kidA); // studentId never on the wire
     expect(json).not.toContain("baseForm"); // base canon never serves
-    expect(json).not.toMatch(/sessionId|stageId|aiParams|degraded/); // DENY extends
+    expect(json).not.toMatch(/sessionId|stageId|aiParams|degraded|lessonId|madeCount/); // DENY extends (diary fields pinned)
+    expect(Object.keys(world.diary[0]!).sort()).toEqual(["createdAt", "summary"]); // wire shape pinned, not just the mapping
   });
 });
