@@ -339,7 +339,7 @@ describe("migrate runner (applyMigrations/applySeeds)", () => {
     await applyMigrations(fresh, [migration], quiet);
     const edited: MigrationFile = { name: migration.name, sql: migration.sql + "\n-- edited after apply" };
     await expect(applyMigrations(fresh, [edited], quiet)).rejects.toThrow(/EDITED|checksum/);
-  });
+  }, 30_000); // fresh-PGlite boot on a cold CI runner can exceed the 5s default
 
   it("rolls back a failing migration atomically: no partial schema, no journal row", async () => {
     const fresh = adapter(new PGlite());
