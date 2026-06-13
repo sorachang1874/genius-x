@@ -5,7 +5,7 @@
 **Companion**: [`genius-x-manifesto.md`](genius-x-manifesto.md)、
 [`../architecture/scalable-architecture-v2.md`](../architecture/scalable-architecture-v2.md)、
 [`../DEFERRED.md`](../DEFERRED.md)、[`../contracts/README.md`](../contracts/README.md)
-**Last updated**: 2026-06-09
+**Last updated**: 2026-06-12
 
 ---
 
@@ -98,6 +98,10 @@
 
 ## 5. 路线图调整(净增约 2-3 周)
 
+> **实现进度(2026-06-12)**:本节 Phase 4 / 4.5 / 5 / 6 均已交付;Phase 6.5(应用整合)
+> Steps 1-4 完成。最新进度以 [`../../PROGRESS.md`](../../PROGRESS.md) 为准。下表保留为
+> 当时的规划记录。
+
 | 阶段 | 调整 |
 | --- | --- |
 | **Phase 4**(位置不动,**范围扩大**) | 跨课记忆 + **场景内多轮运行上下文**(热/冷分径)+ 情节记忆 kind + DF-v2-15 去重 + 运营底盘(并发队列、成本计数、安全洞修补、轮缓存独立于课堂状态) |
@@ -116,6 +120,10 @@
 (提示词前缀 / 参考图 / 微调模型 — 影响 DF-1 供应商选型)。
 
 ## 6. 待办契约(各阶段开工时 lead 冻结)
+
+> **状态(2026-06-12)**:本节所列 `ip-character.md` / `scene.md` / `brand-style.md` /
+> `agent-context.md` 均已**冻结并实现**;契约总账见
+> [`../contracts/README.md`](../contracts/README.md)。下文保留为当时的待办记录。
 
 `ip-character.md`(canon 分层模型 + 谱系;owner = H)· `scene.md`(场景库/选择/多轮/
 收尾;**owner 未定 — C(课程运行时)还是 I(agent 服务),fan-out 前由 lead 指定**)·

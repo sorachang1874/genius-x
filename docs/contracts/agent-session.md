@@ -3,7 +3,7 @@
 **Status**: Frozen v1.2 (v1.1 + the greeting cold-miss semantics — see Changelog)
 **Owner**: Course runtime (Agent C) — session lifecycle; Agent service (Agent I) — context;
 parent surfaces (Agent K) — the unlock door
-**Typed realization**: `packages/contracts/src/agent-session.ts` (to be added)
+**Typed realization**: `packages/contracts/src/playground.ts` (PlaygroundSessionResult / PlaygroundWorldView)
 **Companion contracts**: [`world.md`](world.md)、[`theme.md`](theme.md)、
 [`parent-surface.md`](parent-surface.md)(解锁门)、[`scene.md`](scene.md)(AI 档复用)、
 [`tool.md`](tool.md)(封闭机制枚举;grant 模型的家 = 本契约规则 6)、[`data-and-privacy.md`](data-and-privacy.md)、APP PRD §5/§6

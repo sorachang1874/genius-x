@@ -1,5 +1,10 @@
 # Genius X · MVP 产品需求文档（PRD）
 
+
+> **状态(2026-06-12)**:MVP 已交付(M1-M4,见 [`../../PROGRESS.md`](../../PROGRESS.md));
+> 附录 D「开发前需产品决策」已全部裁决;容量模型以 [`../contracts/identity.md`](../contracts/identity.md)
+> 的 `PREMIUM_CLASSROOM`(20-30 学员)为准。本文档保留为 MVP 需求规格的历史记录。
+
 > **文档版本**：v0.1 草稿
 > **适用阶段**：MVP（V0.5）—— 跑通第一堂课完整流程
 > **目标读者**：技术负责人 / 全栈工程师（Onboarding 文档）

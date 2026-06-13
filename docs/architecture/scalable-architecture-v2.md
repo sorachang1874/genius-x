@@ -2,7 +2,14 @@
 
 > **Purpose**: Forward-looking architecture design to support student-centric persistent workspaces, personal AI agents with memory, parent co-working, rich media capabilities, and multi-city deployment.
 >
-> **Status**: Design phase — this document defines the target architecture before implementation.
+> **Status**: Design ratified 2026-06-08 — Phases 1-6 + 6.5 (Steps 1-4) are IMPLEMENTED.
+> This document is the canonical *target architecture*; live implementation status is
+> tracked in [`../../PROGRESS.md`](../../PROGRESS.md), and several design decisions have
+> since been refined/superseded in
+> [`../product/ip-character-concept-decisions.md`](../product/ip-character-concept-decisions.md)
+> (e.g. the 2026-06-09 IP-character anchor reframe; the P4 episodic + latest-per-key
+> memory model replacing the original importance-scored/decay sketch). Read those for
+> what is true *now*.
 >
 > **Author context**: Product vision from Manifesto + Lesson 1 MVP baseline + new requirements: persistent student workspaces, AI agents that co-evolve with children, tool-calling framework, parent co-working, multi-city scale, rich media (images/videos/3D models).
 
@@ -1351,4 +1358,4 @@ packages/contracts:
 _Genius X · Scalable Architecture v2.0_
 _Author: Claude (Opus 4.8) + Product Lead_
 _Date: 2026-06-08_
-_Status: Design phase — ready for team review_
+_Status: Design ratified 2026-06-08; implementation tracked in PROGRESS.md_

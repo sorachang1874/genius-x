@@ -110,4 +110,4 @@ child next lesson** (「爸爸妈妈想对你说」).
   parent-share.md v1.4 (not asserted unilaterally here), exact trace reasons named,
   timeline lineage works carry DENY-scrubbed contentJson like the share view.
 
-_Parent Surface Contract · Phase 6 · Frozen v1.1 · 2026-06-10_
+_Parent Surface Contract · Phase 6 · Frozen v1.2 · 2026-06-12_

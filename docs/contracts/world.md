@@ -2,7 +2,7 @@
 
 **Status**: Frozen v1.2 (v1.1 + the diary-read taxonomy rev — see Changelog)
 **Owner**: Student classroom flow / child surfaces (Agent B) — rendering; Lead — the mapping table
-**Typed realization**: `packages/contracts/src/world.ts` (to be added with the Shell work)
+**Typed realization**: `packages/contracts/src/playground.ts` (WorldWallItem / WorldAlbumPage / WorldDiaryEntry / PlaygroundWorldView)
 **Companion contracts**: [`theme.md`](theme.md)(世界长什么样)、[`agent-session.md`](agent-session.md)
 (孩子何时在世界里)、[`workspace.md`](workspace.md)、[`ip-character.md`](ip-character.md)、
 APP PRD §0.5(形态无关约束,创始人 2026-06-10)

@@ -19,7 +19,7 @@ Kind: `shadow` (pluggable platform) · `placeholder` (stands in for a real impl)
 | DF-7 | Course authoring | shadow | hand-authored `lesson-001.ts` (git) | Payload CMS (`apps/cms`) | when authoring Lesson 2+; CMS export must conform to `LessonConfig` | F · fast-follow |
 | DF-8 | Auth / RBAC | shadow | lightweight room-code/QR join; role from message type (trusted) | Better Auth | enforce connection-role verification when auth lands | F · fast-follow |
 | DF-9 | Tracing / prompt eval | shadow | no-op/console `TraceSink`; prompts in git | Langfuse (async sink) + promptfoo | adopt when prompt iteration heats up; never a runtime dep | F · early |
-| DF-10 | Parent end | **in-progress (Phase 3)** | Phase 3 delivers parent read-only H5 artifact; Phase 6 adds co-working | parent read-only artifact = Phase 3; parent co-working = Phase 6 | see scalable-architecture-v2.md §6 | K · **Phase 3/6** |
+| DF-10 | Parent end | **✅ RESOLVED (2026-06-10)** | Phase 3 parent read-only share H5 + Phase 6 authenticated home & co-working note both shipped | — | parent-share.md / parent-surface.md | K · ✅ |
 | DF-11 | Monorepo build cache | deferred-feature | pnpm workspaces only | Turborepo | when CI/builds drag | E · later |
 
 ## Scalable Architecture v2.0 deferrals (Phase 1+)
@@ -29,10 +29,10 @@ New deferrals for the student-centric persistent architecture. See `docs/archite
 | ID | Item | Kind | What we do now | Replace / complete trigger | Notes |
 | --- | --- | --- | --- | --- | --- |
 | DF-v2-1 | ~~Persistent student identity~~ | **✅ RESOLVED (2026-06-09, Phase 1)** | Parent enrollment creates permanent `studentId`; classroom join + WS resume are lookup-only; lesson completion writes back to the profile | — | See `docs/migration/mvp-to-phase1.md` |
-| DF-v2-2 | Student workspace | deferred-feature | Class artifacts lost after Redis expiry | Phase 2: PostgreSQL + object storage persistent workspace | Works, interactions, memories persist |
-| DF-v2-3 | AI agent long-term memory | deferred-feature | No cross-lesson memory | Phase 4: agent service with importance-scored memories | Agent co-evolves with child |
-| DF-v2-4 | Tool-calling framework | deferred-feature | No discoverable tools | Phase 5: tool registry + agent suggestions | Children call tools to create IPs |
-| DF-v2-5 | Parent co-working | deferred-feature | No parent-initiated interactions | Phase 6: parent can interact with child's agent | WeChat miniapp + OAuth |
+| DF-v2-2 | ~~Student workspace~~ | **✅ RESOLVED (2026-06-09, Phase 2)** | works/interactions/memories persist in PostgreSQL (append-only ledgers, migration 002) | — | — |
+| DF-v2-3 | ~~AI agent long-term memory~~ | **✅ RESOLVED (2026-06-10, Phase 4)** | hot turn buffer + cold context builder + episodic consolidation + companion diary (L1) | — | importance scoring/decay = future (this file, memory roadmap) |
+| DF-v2-4 | ~~Tool-calling framework~~ | **✅ RESOLVED (2026-06-10, Phase 5)** | closed mechanics enum + TOOL_REGISTRY; first tool 魔法画笔 (image_refine) | — | — |
+| DF-v2-5 | ~~Parent co-working~~ | **✅ RESOLVED (2026-06-10, Phase 6)** | parent home + growth timeline + note relay (co-working v1) | — | SMS/WeChat login replaces the operator mint behind the frozen verifier seam (Q7 — pending 资质) |
 | DF-v2-6 | Rich media (video/3D) | deferred-feature | Images only | Phase 7: video generation, 3D models, async processing | Physical souvenirs (3D print) |
 | DF-v2-7 | Multi-city tenant isolation | deferred-feature | Single deployment | Phase 8: tenant-aware queries, distributed locks | Data residency, 20-30 students/class (premium model) |
 | DF-v2-8 | Service extraction | deferred-feature | Modular monolith | Extract services when 100+ concurrent classrooms | Workspace, agent, content services |
@@ -87,3 +87,8 @@ New deferrals for the student-centric persistent architecture. See `docs/archite
 
 - 2026-06-03 — ledger created; seeded from M1/M2 deferrals.
 - 2026-06-08 — updated with Architecture v2.0 deferrals; DF-10 parent end now tracked as Phase 3/6.
+- 2026-06-10/11 — DF-v2-19..28 added (operational floor, capacity, real-adapter & media flow,
+  AI-as-a-Judge tuning, streaming/omni-modal long-term, one-tap entry, theme trace seam,
+  playground config). DF-1/DF-2 "M6" labels superseded: real providers + 天御 moderation
+  now land in **Phase 7 (deferred behind APP integration)**, not the retired "M6" milestone.
+- 2026-06-12 — DF-v2-2/3/4/5 + DF-10 marked RESOLVED (Phases 2/4/5/6 shipped).

@@ -34,12 +34,12 @@ tool-calling framework, rich media, and multi-city deployment.
 
 ### Test coverage
 
-✅ **Unit tests** (265 total):
-- ai-gateway: 19/19
-- server: 189/189 (PGlite migration/runner/preflight gates + identity suite + persistent-join
-  suite + workspace suite + the full-loop e2e: enroll → join → real interactions → memory
-  mining → closure → profile + PORTFOLIO read over HTTP)
-- web: 57/57
+✅ **Unit tests** (453 total, all green):
+- ai-gateway: 44
+- server: 303 (PGlite migration/runner/preflight gates + identity/workspace/IP-character/
+  agent-context/reflection/parent/playground suites + the full-loop e2e: enroll → join →
+  real interactions → memory mining → closure → profile + PORTFOLIO read over HTTP)
+- web: 106 (classroom stages + shell/theme + parent H5 + playground world)
 
 ✅ **E2E tests**:
 - Single student: `tools/demo-e2e-test.mjs`
@@ -50,13 +50,12 @@ tool-calling framework, rich media, and multi-city deployment.
 - CORS cross-origin configured
 - Port forwarding + VPN split tunnel documented
 
-### Known issues (documented, not blocking demo)
+### Known issues & technical debt
 
-See `docs/known-issues.md`:
-- Assistant panel state incomplete (P2)
-- Advance conditions not strictly enforced (P2)
-- Placeholder image broken (P2)
-- Fake TTS voice abrupt (P2, M6 resolves)
+The live ledger is [`docs/DEFERRED.md`](docs/DEFERRED.md) (every deferral has an explicit
+replacement trigger). The MVP-era issue list is archived at
+[`docs/archive/known-issues.md`](docs/archive/known-issues.md) (most items resolved by
+later milestones).
 
 ---
 
@@ -96,7 +95,7 @@ parent co-working, tool-calling framework, rich media, multi-city deployment.
 | **Phase 4.5** | **IP character entity & versioning**: canon record (layered model), work lineage, works-lifecycle + parent-curation amendment | 1-2 weeks | ✅ Complete (2026-06-10) |
 | **Phase 5** | Tool registry & tool-calling — tools = in-scene creation instruments; brand-style slice live since P4 | 3-4 weeks | ✅ Complete (2026-06-10) |
 | **Phase 6** | Parent co-working — server slice (auth + timeline + notes) + parent H5 (token-gated home) | 3 weeks | ✅ Complete (2026-06-10; SMS/WeChat mint = later, behind the frozen verifier seam) |
-| **Phase 6.5 (APP integration)** | ONE APP (founder pivot 2026-06-10, PRD v0.2 §10): contracts (world/theme/agent-session) → Shell refactor (+ one-tap classroom entry DF-v2-26) → 乐园 v0 zero-AI floor → parent unlock door → L1 reflection/diary → companion-conduct CI | 6-8 weeks | 🔄 In progress (contracts frozen 2026-06-10) |
+| **Phase 6.5 (APP integration)** | ONE APP (founder pivot 2026-06-10, PRD v0.2 §10): contracts (world/theme/agent-session) → Shell refactor (+ one-tap classroom entry DF-v2-26) → 乐园 v0 zero-AI floor → parent unlock door → L1 reflection/diary → companion-conduct CI | 6-8 weeks | 🔄 Steps 1-4 / 6 delivered (2026-06-12); next = parent panel DF-v2-28 |
 | **Phase 7** | Rich media pipeline + real providers (narrowed: async media + video/3D + style-conformance; brand slice moved to P5) | 4-5 weeks | 📋 Deferred behind APP integration (founder 2026-06-10; external credentials still pending) |
 | **Phase 8** | Multi-city deployment | 2-3 weeks | 📋 Planned |
 
@@ -136,77 +135,36 @@ Phases 4-8 are incremental expansions.
 
 ---
 
-## Contracts version
+## Contracts
 
-**Current**: v1.4 (MVP classroom-centric)
-**Next**: v2.0 (Phase 1+ scalable architecture)
-
-Key MVP changes:
-- v1.0: Initial contracts
-- v1.1: `TEACHER_UNLOCK`
-- v1.2: `PreparedOutput` / `AI_READY`
-- v1.3: `INTERACT` / `AI_OUTPUT` / `pending`
-- v1.4: `displayName` / `memories` / `PREPARE_DONE` / `PROJECTION` auth
-
-Phase 1+ contracts:
-- `identity.md`: Student/parent persistent identity, tenant model — **frozen v1**
-- `enrollment.md`: Enrollment API surface, error codes, join migration — **frozen v1**
-- `workspace.md`: works/interactions/memories + read API — **frozen v1** (Phase 2)
-- `parent-share.md`: capability-URL share + privacy DENY list + deployment exposure rule —
-  **frozen v1.1** (Phase 3; v1.1 = security-review amendments, lead-serialized)
-- `agent.md` / `tool.md` / `content.md`: planned — not yet authored
+The authoritative index with per-contract versions is
+[`docs/contracts/README.md`](docs/contracts/README.md). Snapshot (2026-06-12): **16
+frozen contracts** —
+identity **v1.1** · enrollment **v1.1** · workspace **v1.4** · parent-share **v1.5** ·
+parent-surface **v1.2** · agent-context **v1** (+D1 ruling) · ip-character **v1** ·
+scene **v1** · tool **v1** · brand-style **v0.1** · agent-session **v1.2** · world **v1.2** ·
+theme **v1** · course-engine / client-server / ai-gateway / safety / data-and-privacy v1/v0.
+(`content.md` for the Phase-7 media pipeline is the one not-yet-authored contract.)
 
 ---
 
 ## Development environment
 
-### WSL2 + Windows + VPN (current)
-
-Resolved challenges:
-- ✅ CORS cross-origin (@fastify/cors)
-- ✅ Windows port forwarding (`tools/wsl-port-forward.ps1`)
-- ✅ VPN split tunnel (`docs/vpn-split-tunnel-config.md`)
-- ✅ WSL2 network setup (`docs/wsl2-setup.md`)
-
-### Mac migration plan
-
-See `docs/migration-wsl2-to-mac.md`:
-- Environment setup: Homebrew, Node.js, pnpm
-- Project clone and dependency install
-- Validation checklist (typecheck, test, start services)
-- Estimated time: 45-85 minutes
+macOS (current). PostgreSQL 16 + Redis via `docker compose`. The historical
+WSL2/Windows/VPN setup and the completed Mac migration record are archived under
+[`docs/archive/`](docs/archive/).
 
 ---
 
 ## Documentation status
 
-### Product docs
-- ✅ `docs/product/genius-x-manifesto.md` — Product vision
-- ✅ `docs/product/genius-x-mvp-prd.md` — MVP requirements
-- ✅ `docs/product/genius-x-lesson1-rundown.md` — Lesson 1 flow
-
-### Architecture docs (new)
-- ✅ `docs/architecture/scalable-architecture-v2.md` — Full scalable architecture design (1,344 lines)
-- ✅ `docs/architecture/overview.md` — System overview (updated)
-- ✅ `docs/architecture/lesson-runtime.md` — Lesson runtime patterns
-- ✅ `docs/architecture/interaction-map.md` — Cross-module flows
-
-### Technical docs
-- ✅ `AGENTS.md` — AI agent collaboration rules (updated with Phase 1+ ownership map)
-- ✅ `docs/contracts/README.md` — Contract registry (updated with Phase 1+ contracts)
-- ✅ `docs/contracts/` — Boundary contracts (MVP + Phase 1 frozen; Phase 2+ planned)
-- ✅ `docs/demo-live-guide.md` — Demo guide
-- ✅ `docs/agents/README.md` — Multi-agent protocol
-- ✅ `docs/DEFERRED.md` — Shadow systems and deferrals ledger
-
-### Playbook integration
-- ✅ Latest `ai-assisted-engineering-playbook` reviewed (commit `5228b8d`)
-- ✅ New principles incorporated:
-  - User-invisible fallback must stay operator-visible
-  - Model output is a contract (prompt versioning, schema validation, records)
-  - Independent review gates for design/implementation/adoption
-  - Phase registry and artifact-first planning
-  - Schema and storage before code
+Full documentation map: [`docs/README.md`](docs/README.md). Key living docs —
+product anchor [`docs/product/ip-character-concept-decisions.md`](docs/product/ip-character-concept-decisions.md),
+latest blueprint [`docs/product/genius-x-app-prd-draft.md`](docs/product/genius-x-app-prd-draft.md),
+contract index [`docs/contracts/README.md`](docs/contracts/README.md),
+deferrals [`docs/DEFERRED.md`](docs/DEFERRED.md),
+collaboration protocol [`AGENTS.md`](AGENTS.md). Historical artifacts archived under
+[`docs/archive/`](docs/archive/).
 
 ---
 
@@ -260,7 +218,7 @@ See `docs/migration-wsl2-to-mac.md`:
 
 ## Known technical debt (managed, not blocking)
 
-See `docs/known-issues.md` and `docs/DEFERRED.md` for full ledger.
+See `docs/DEFERRED.md` for the full ledger.
 
 Key items:
 - DF-1: AI providers still `FakeProvider` (M6 swaps to real Tencent)

@@ -8,7 +8,7 @@ rubber-stamp). Prepend this to every review of Genius X.
 
 AI-companion enlightenment for children aged 4-10 (China market). Course-as-acquisition; the
 AI companion is the product. MVP = run **Lesson 1** (认识我的 AI 好朋友, 60 min) end-to-end on
-~15 iPads, then build toward a course-design platform.
+20-30 students per premium classroom (4-6 assistants, see identity.md PREMIUM_CLASSROOM), then build toward the evolving-IP-character companion (ONE APP — see docs/product/app-prd-draft + ip-character-concept-decisions).
 
 ## Product hard rules (technical work must honor)
 
@@ -47,7 +47,7 @@ gaming: no `--no-verify`/`as any`/`.skip()`/no-op stubs).
 
 ## Standing docs to read for any review
 
-`AGENTS.md` · `docs/architecture/lesson-runtime.md` · `docs/contracts/` · `NEXT_TODO.md`.
+`AGENTS.md` · `docs/architecture/lesson-runtime.md` · `docs/contracts/` · `PROGRESS.md` · `docs/DEFERRED.md`.
 
 ## Output format
 

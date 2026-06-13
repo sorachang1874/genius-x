@@ -9,7 +9,10 @@ boundary contracts in `docs/contracts/`. All shared types come from `@genius-x/c
 apps/web (A student / B assistant)
    │  ClientMessage / ServerMessage (WS) + HTTP join   ── client-server.md
    ▼
-apps/server  (C: XState stage machine + Socket.IO)     ── course-engine.md
+apps/server  (C: config-driven reducer + Socket.IO)      ── course-engine.md
+
+> Scope: this map covers the MVP classroom flow. Identity / workspace / agent-memory /
+> parent / playground flows (Phases 1-6.5, migrations 001-009) live in scalable-architecture-v2.md.
    │  capability calls (llm/tts/asr/imageGen/extractMemory/birthSpeech)
    ▼
 packages/ai-gateway (D: safety→budget→route→fallback)  ── ai-gateway.md, safety.md
@@ -32,7 +35,7 @@ Persistence: Redis (live ClassSession) · Postgres (archived profiles/artifacts)
 
 ```
 B assistant ──ASSISTANT_UNLOCK(stageId)──▶ C
-C: stage machine transition (XState) + persist currentStage
+C: reducer transition (pure config-driven, NOT XState) + persist currentStage
 C ──STAGE_UNLOCK(stageId)──▶ all A students   (SLO ≤500ms)
 A: render the unlocked stage
 ```
