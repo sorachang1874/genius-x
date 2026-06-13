@@ -245,4 +245,4 @@ preflight below binding the content pipeline.
   posture; URL-value preflight; mint 400-posture note; H5 empty state.
 - **v1** (2026-06-09): initial freeze.
 
-_Parent Share Contract · Phase 3 · Frozen v1.1 · 2026-06-09_
+_Parent Share Contract · Phase 3 · Frozen v1.5 · 2026-06-12_

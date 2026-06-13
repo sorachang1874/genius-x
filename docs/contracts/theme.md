@@ -2,7 +2,7 @@
 
 **Status**: Frozen v1 (scope = token schema + sources + derivation seams;具体视觉值随品牌文档)
 **Owner**: AI gateway / brand (Agent D) — derivation & brand locks; child surfaces (Agent B) — consumption
-**Typed realization**: `packages/contracts/src/theme.ts` (ThemePackV1, to be added with the Shell work)
+**Typed realization**: `packages/contracts/src/theme.ts` (ThemePackV1, THEME_FLOORS_V0)
 **Companion contracts**: [`world.md`](world.md)、[`ip-character.md`](ip-character.md)(派生输入)、
 [`brand-style.md`](brand-style.md)(品牌基因;style-v0 → 正式品牌包)、APP PRD §4
 **Last updated**: 2026-06-10

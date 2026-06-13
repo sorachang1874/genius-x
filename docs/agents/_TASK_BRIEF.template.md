@@ -1,6 +1,6 @@
 # Task Brief: <task-id> — <short title>
 
-> Owner agent: <A-F> · Coding agent: <Claude Code / Codex / Aider> · Branch: `<branch>`
+> Owner agent: <A-K> · Coding agent: <Claude Code / Codex / Aider> · Branch: `<branch>`
 
 ## Goal
 
@@ -32,7 +32,7 @@ What must NOT change.
 
 ## Implementation notes
 
-- Libraries/patterns to use (e.g. XState, Socket.IO, Vercel AI SDK + Zod).
+- Libraries/patterns to use (e.g. the config-driven reducer engine, Socket.IO, zod).
 - Patterns to borrow; pitfalls to avoid.
 
 ## Design note (submit BEFORE coding — lead reviews & approves)

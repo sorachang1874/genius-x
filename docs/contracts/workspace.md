@@ -255,4 +255,4 @@ Declared HERE so this contract never contradicts its Phase-4 readers ([`agent-co
   companion links to agent-context.md / ip-character.md.
 - **v1** (2026-06-09): initial freeze.
 
-_Workspace Contract · Phase 2 · Frozen v1.2 · 2026-06-10_
+_Workspace Contract · Phase 2 · Frozen v1.4 · 2026-06-11_

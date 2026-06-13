@@ -16,14 +16,9 @@ briefs). Keep it lightweight; graduate to heavier orchestration only when warran
 
 ## Ownership map
 
-| Agent | Owns | Directory | Default coding agent |
-| --- | --- | --- | --- |
-| A | Assistant / control surface | `apps/web/src/assistant` | Codex |
-| B | Student classroom flow | `apps/web/src/student` | Codex |
-| C | Course runtime (state machine, WS, API) | `apps/server` | Claude Code |
-| D | AI gateway (safety, budget, routing, fallback) | `packages/ai-gateway` | Claude Code |
-| E | Contracts, schema, docs, **test harness** | `packages/contracts`, `docs/`, `tools/` smoke | Claude Code (lead) |
-| F | Platform shadow (CMS, auth, Langfuse, promptfoo) — pluggable | `apps/cms`, `packages/auth`, `tools/` | Codex / Aider |
+The single source of truth for the ownership map (agents **A–K**, including the Phase 1+
+agents G–K) is [`AGENTS.md`](../../AGENTS.md) → *Agent ownership map*. Read it there to
+avoid drift.
 
 One owner per disjoint path set. Two agents never edit the same contract/schema unless the
 lead owns the merge.
@@ -31,8 +26,11 @@ lead owns the merge.
 ## Per-cycle lifecycle
 
 1. **Freeze contract.** Lead authors/freezes the shared surface for this cycle. Commit.
-2. **Write `TASKS.md`** (repo root): disjoint, path-owned, dependency-ordered tasks; mark
-   which are parallel-safe. Agents read it but don't edit it during work.
+2. **Write the cycle task list** (a `docs/agents/briefs/` task board or the run's task
+   tracker): disjoint, path-owned, dependency-ordered tasks; mark which are parallel-safe.
+   Agents read it but don't edit it during work. (Recent phases track tasks per-PR against
+   [`../../PROGRESS.md`](../../PROGRESS.md) + [`../DEFERRED.md`](../DEFERRED.md) rather than
+   a root `TASKS.md`.)
 3. **Write a task brief per task** (`docs/agents/briefs/<task>.md`, from
    `docs/agents/_TASK_BRIEF.template.md`): goal, non-goals, owned paths, frozen-contract
    refs (read-only), context docs to read, validation commands, DoD checklist, do-not-touch

@@ -1,6 +1,6 @@
 # Enrollment Contract (Phase 1)
 
-**Status**: Frozen v1
+**Status**: Frozen v1.1 (v1 + the sanitized-500 rule — see Changelog)
 **Owner**: Identity Service (Agent G)
 **Phase**: Phase 1 — Persistent identity & enrollment
 **Typed realization**: `packages/contracts/src/enrollment.ts`
@@ -242,6 +242,13 @@ const STATUS: Record<IdentityErrorCode, number> = {
 - Preflight queries return 0; the `STATUS` map typechecks exhaustively.
 - `pnpm --filter @genius-x/contracts typecheck` and the server test suite pass.
 
+## Changelog
+
+- **v1.1** (2026-06-11, lead-serialized — Step-4 review): unexpected (non-domain) errors
+  return a sanitized `500 INTERNAL` — operator detail (name/code) is logged, never echoed
+  to the client (workspace.md cites this rule). No request/response shape change.
+- **v1** (2026-06-09): initial freeze.
+
 ---
 
-_Enrollment Contract · Phase 1 · Frozen v1 · 2026-06-09_
+_Enrollment Contract · Phase 1 · Frozen v1.1 · 2026-06-12_

@@ -102,7 +102,9 @@ choice; semantics identical):
 4. Retrieval **writes back** `lastAccessedAt`/`accessCount` (fields pre-built in Phase 2),
    fire-and-forget.
 
-Prompt assembly from these parts is a versioned prompt contract (`context_v1`) per the
+Prompt assembly from these parts is a versioned prompt contract (`context_v1`; bumped to
+`context_v2` at Phase 6 for the 【爸爸妈妈想对你说】 section — exactly per this contract's
+bump-first discipline) per the
 existing PROMPT_CONTRACT discipline — context injection is a model-input contract, not
 string concatenation scattered in the controller.
 
@@ -268,4 +270,4 @@ mandatory (visible ≠ limited; an invisible cost is a silent normal path).
 - **v1** (2026-06-09): initial freeze — hot/cold split, turn-buffer rules, `LlmRequest.history`,
   episodic memory kind, safety parity, budget/concurrency floor.
 
-_Agent Context Contract · Phase 4 · Frozen v1 (Step-2 hot path implemented) · 2026-06-09_
+_Agent Context Contract · Phase 4 · Frozen v1 (hot+cold paths implemented; CONTEXT_VERSION = context_v2) · 2026-06-12_

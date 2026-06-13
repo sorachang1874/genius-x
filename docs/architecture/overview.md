@@ -6,7 +6,11 @@ map; keep it short and link out.
 ## Layers
 
 ```
-Client (apps/web)            React PWA on iPad — student + assistant, one app, role-separated
+> NOTE: this is the MVP-era classroom orientation map. The full system (identity,
+> workspace, agent memory, IP-character entity, parent surfaces, playground, PostgreSQL
+> persistence) is in scalable-architecture-v2.md + PROGRESS.md.
+
+Client (apps/web)            React SPA on iPad — one app, multi-mode (PWA deferred, DF-M3-5)
    │  HTTPS / WebSocket
 Server (apps/server)         course state machine + classroom sync + API
    │
@@ -26,7 +30,7 @@ Offline: tools/ (Python — prompt eval, content analysis, safety experiments)
 - **Node/TS main pipeline; Python only offline.** Promote a Python tool to a service (with
   its own contract) only if a capability genuinely outgrows the main pipeline.
 
-## Runtime modes (to formalize — see playbook runtime isolation)
+## Runtime modes (formalized P0.5)
 
 local dev · scripted/fake-provider · local live (budgeted) · production (Tencent Lighthouse).
 Keep data, keys, and storage prefixes isolated per mode; select mode via central config,
